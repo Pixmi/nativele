@@ -1,0 +1,9 @@
+<style scoped>
+  :scope { display: block; margin: .5rem 0; }
+  label { display: grid; gap: .25rem; }
+  .error { color: #b00020; margin: .25rem 0 0; }
+</style>
+<label>{{ label }}
+  <input data-ref="input" data-on-input="onInput" data-on-blur="onBlur" />
+</label>
+<p class="error" role="alert" data-if="showError">{{ error }}</p>

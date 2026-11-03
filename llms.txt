@@ -1,0 +1,82 @@
+# ts-dom
+
+> Bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
+
+Workflow: write `x.html` + `x.ts`, run `npx ts-dom gen` (writes `x.html.ts`), then `npx tsc`. Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
+
+## Template syntax (HTML only names things; no expressions)
+- `{{ name }}`: text hole, a single identifier only. NOT `{{ a.b }}` / `{{ a + 1 }}`. Not allowed in attributes.
+- `data-ref="x"`: element available as `this.refs.x` (typed by tag).
+- `data-if="x"`: hidden by default (the element is REMOVED from the DOM, replaced by a comment); shown when state/props/derive `x` is truthy (or `this.show("x", true)`).
+- `<template data-each="items"><li>...</li></template>`: list with exactly one root element; fill it with `this.lists.items.replace(array, item => item.id, (item, { text, refs, show, el }) => {...})`. Not nestable; no `<slot>`, no `data-if` on the root.
+- `data-on-<event>="method"`: calls the public method `method(e: Event, hit: EventHit)` on the component. Method name only (no calls). Event name lowercase. Inside a list item `hit.key` is the item key, also for events emitted by a child component placed in the item. Do not name a method like a DOM/ts-dom member (`remove`, `click`, `focus`, `set`, `render`, ...).
+- `<slot name="x">`: Light DOM by default (library moves children); native with `shadow: true`.
+- `<style>` must be top-level in the HTML file; `<style scoped>` limits it to the component (Light DOM).
+- Using another component: just write its tag (`<form-field data-ref="f" label="Name" data-on-field-input="onName">`); the generated module imports it automatically.
+
+## Component (TypeScript)
+```ts
+import { Component, define, event } from "ts-dom";
+import type { EmitEvent, EventHit } from "ts-dom";
+import tpl from "./counter.html.js";
+
+class MyCounter extends Component(tpl, {
+  state: { count: 0 },                         // owned by the component, change ONLY with this.set()
+  props: { step: 1 },                          // owned by the parent, read-only here (string/number/boolean default => settable from an HTML attribute `step="2"`)
+  derive: { double: (s) => s.count * 2 },      // recomputed after every change; usable by {{ double }} / data-if
+  emits: { "count-change": event<{ count: number }>() },   // events this component sends up (do not bubble by default)
+  // shadow: true,                             // optional Shadow DOM
+}) {
+  inc() {                                      // referenced by data-on-click="inc"
+    this.set((s) => ({ count: s.count + this.props.step }));
+    this.emit("count-change", { count: this.state.count });
+  }
+  override render(view, changed) { /* only for what automatic binding cannot do: lists, attributes, focus */ }
+}
+define("my-counter", MyCounter);
+```
+Rules the compiler enforces: every `{{ hole }}` / `data-if` name must exist in state, props or derive (error `missingStateKeys`); state/props/derive names must be unique (`conflictingKeys`); a prop must not be named like an HTMLElement/ts-dom member such as `title`, `hidden`, `render` (`reservedPropNames`); emitted event names must not be native events (`nativeEventNames`); every `data-on-*` method must exist as a public method (`missingHandlers`, reported by `define()`).
+
+## Data flow (one direction)
+- State: changed only by its owner with `this.set(patch | s => patch)`; no change => no render. `this.batch(fn)` merges several updates. Rendering is synchronous.
+- Props go DOWN: the parent sets them with an attribute or a property (`this.refs.child.value = v.x`, typed). A component never assigns its own props; to ask for a change it `emit`s an event.
+- Events go UP: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag, casting with `EmitEvent<Child, "event-name">`.
+- Data needed several levels away: share a `createStore` module and `this.bind(store, fn)`; do not forward props or re-emit events through middle components (lint rules `prop-forwarding`, `emit-forwarding`).
+- Writing form values back: only assign `input.value` when it differs (`if (input.value !== v.value) input.value = v.value`), otherwise the caret jumps.
+
+## Minimal example
+```html
+<!-- counter.html -->
+<p>Count: {{ count }} (double: {{ double }})</p>
+<button type="button" data-on-click="inc">+1</button>
+<p data-if="big">A lot!</p>
+```
+```ts
+// counter.ts
+import { Component, define } from "ts-dom";
+import tpl from "./counter.html.js";
+class MyCounter extends Component(tpl, {
+  state: { count: 0 },
+  derive: { double: (s) => s.count * 2, big: (s) => s.count >= 10 },
+}) {
+  inc() { this.set((s) => ({ count: s.count + 1 })); }
+}
+define("my-counter", MyCounter);
+```
+
+## Setup
+```sh
+npm i -D typescript && npm i ts-dom
+npx ts-dom gen && npx tsc          # tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict
+```
+In a browser without a bundler map the bare name once: `<script type="importmap">{"imports":{"ts-dom":"/node_modules/ts-dom/dist/index.mjs"}}</script>`; relative imports in your own code need `.js` extensions. With Vite, `ts-dom/vite` is optional.
+
+## Pitfalls
+- Import templates with `./x.html.js`, not `./x.html`. Run `ts-dom gen` before `tsc` (it creates `x.html.ts` and `ts-dom-tags.ts`; both are generated, do not edit or commit).
+- Exports: `export class` the component to get typed `refs.child` in parent templates (`define("tag", Class)` is scanned).
+- `data-if` content is hidden until the name is truthy; `{{ hole }}` stays empty until filled.
+- `slotchange()` is Light-DOM only; with `shadow: true` use the native `slotchange` event.
+
+## Docs
+- [README](README.md): full guide. [README.zh-TW.md](README.zh-TW.md): same in Traditional Chinese.
+- `npx ts-dom rules`: every rule id with a description.

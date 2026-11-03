@@ -1,0 +1,12 @@
+<style scoped>
+  :scope { display: block; font-family: sans-serif; }
+  .tag { background: #eee; padding: 0 .4em; margin-right: .3em; }
+</style>
+<h2>Hello, {{ name }}!</h2>
+<button type="button" data-on-click="toggleAdmin">toggle admin</button>
+<div data-if="admin" class="badge">Admin <slot name="extra"></slot></div>
+<ul>
+  <template data-each="tags">
+    <li class="tag"><span>{{ label }}</span> <b data-if="hot">🔥</b></li>
+  </template>
+</ul>

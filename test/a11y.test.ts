@@ -1,0 +1,240 @@
+import { describe, expect, it } from "vitest";
+import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
+
+const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
+
+describe("a11y should warn", () => {
+  it("img without alt", () => expect(rules(`<img src="a.png">`)).toEqual(["img-alt"]));
+  it("button / a without a name", () => {
+    expect(rules(`<button></button>`)).toEqual(["control-name"]);
+    expect(rules(`<a href="/x"><i></i></a>`)).toEqual(["control-name"]);
+  });
+  it("form controls without a label", () => {
+    expect(rules(`<input type="text">`)).toEqual(["form-label"]);
+    expect(rules(`<select></select><textarea></textarea>`)).toEqual(["form-label", "form-label"]);
+  });
+  it("iframe, dialog, empty heading", () => {
+    expect(rules(`<iframe src="x"></iframe>`)).toEqual(["iframe-title"]);
+    expect(rules(`<dialog></dialog>`)).toEqual(["dialog-name"]);
+    expect(rules(`<h2> </h2>`)).toEqual(["heading-empty"]);
+  });
+  it("invalid role and aria-*", () => {
+    expect(rules(`<div role="buton"></div>`)).toEqual(["aria-role"]);
+    expect(rules(`<div aria-labeledby="x"></div>`)).toEqual(["aria-attr"]);
+  });
+  it("interactive role without tabindex; tabindex greater than 0; aria-hidden focusable element", () => {
+    expect(rules(`<div role="button">go</div>`)).toEqual(["role-tabindex"]);
+    expect(rules(`<div tabindex="3"></div>`)).toEqual(["tabindex-positive"]);
+    expect(rules(`<button aria-hidden="true">x</button>`)).toEqual(["hidden-focusable"]);
+  });
+  it("label for with a missing id, duplicate id, id inside a list", () => {
+    expect(rules(`<label for="nope">x</label><input id="a" aria-label="a">`)).toEqual(["label-for"]);
+    expect(rules(`<i id="a"></i><b id="a"></b>`)).toEqual(["duplicate-id", "duplicate-id"]);
+    expect(rules(`<template data-each="l"><li id="x">{{ a }}</li></template>`)).toEqual(["id-in-list"]);
+  });
+  it("carries line, column and rule id", () => {
+    const d = checkA11y(`<p></p>\n<img src="a">`)[0];
+    expect(d?.line).toBe(2);
+    expect(d?.rule).toBe("img-alt");
+    expect(d?.col).toBe(1);
+    expect(d?.message).toMatch(/^<img> has no alt/);
+    expect(d?.message).not.toMatch(/^\[/);
+    expect(d?.message).toContain("Fix:");
+  });
+});
+
+describe("a11y semantics and id references", () => {
+  it("aria-idref: references an id that does not exist", () => {
+    expect(rules(`<p id="a">x</p><div aria-labelledby="a nope"></div>`)).toEqual(["aria-idref"]);
+    expect(rules(`<div aria-describedby="x"></div>`)).toEqual(["aria-idref"]);
+    expect(rules(`<button aria-controls="panel">x</button><div id="panel"></div>`)).toEqual([]);
+    expect(rules(`<div data-ref="d" aria-labelledby="set-by-ts"></div>`)).toEqual([]);
+  });
+  it("heading-order: levels must not be skipped", () => {
+    expect(rules(`<h1>a</h1><h3>b</h3>`)).toEqual(["heading-order"]);
+    expect(rules(`<h2>a</h2><h3>b</h3><h2>c</h2><h3>d</h3>`)).toEqual([]);
+    expect(rules(`<h3>only one</h3>`)).toEqual([]);
+  });
+  it("table-header", () => {
+    expect(rules(`<table><tr><td>x</td></tr></table>`)).toEqual(["table-header"]);
+    expect(rules(`<table><tr><th>x</th></tr></table>`)).toEqual([]);
+    expect(rules(`<table role="presentation"><tr><td>x</td></tr></table>`)).toEqual([]);
+  });
+  it("list-structure: children of ul/ol and the parent of li", () => {
+    expect(rules(`<ul><div>x</div></ul>`)).toEqual(["list-structure"]);
+    expect(rules(`<ul><template data-each="l"><div>{{ a }}</div></template></ul>`)).toEqual(["list-structure"]);
+    expect(rules(`<div><li>x</li></div>`)).toEqual(["list-structure"]);
+    expect(rules(`<ul><li>x</li><template data-each="l"><li>{{ a }}</li></template></ul>`)).toEqual([]);
+    expect(rules(`<li>a top-level li leaves the parent to the using element</li>`)).toEqual([]);
+  });
+  it("landmark-label: several navs must be told apart", () => {
+    expect(rules(`<nav>a</nav><nav>b</nav>`)).toEqual(["landmark-label", "landmark-label"]);
+    expect(rules(`<nav aria-label="Main">a</nav><nav aria-label="Footer">b</nav>`)).toEqual([]);
+    expect(rules(`<nav>only</nav>`)).toEqual([]);
+  });
+  it("redundant-role", () => {
+    expect(rules(`<button role="button">x</button>`)).toEqual(["redundant-role"]);
+    expect(rules(`<nav role="navigation">x</nav><a href="/" role="link">x</a>`)).toEqual(["redundant-role", "redundant-role"]);
+    expect(rules(`<ul role="list"><li>x</li></ul>`)).toEqual(["redundant-role"]);
+    expect(rules(`<ul role="menu"><li role="menuitem" tabindex="-1">x</li></ul>`)).toEqual([]);
+  });
+});
+
+describe("click-semantics", () => {
+  it("data-on-click on a non-interactive element warns", () => {
+    expect(rules(`<div data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
+    expect(rules(`<template data-each="l"><li data-on-click="go">{{ a }}</li></template>`)).toEqual(["click-semantics"]);
+  });
+  it("button, a[href], label and elements with a role and tabindex do not warn", () => {
+    expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><label data-on-click="go">x</label>`)).toEqual([]);
+    expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`).sort()).toEqual(["click-semantics", "role-tabindex"]);
+  });
+  it("other events are not checked", () => {
+    expect(rules(`<form data-on-submit="go"></form><input data-on-input="go" aria-label="x">`)).toEqual([]);
+  });
+});
+
+describe("a11y should not false-positive", () => {
+  it("controls with a name", () => {
+    expect(rules(`<button>Go</button><button aria-label="x"></button><button>{{ label }}</button>`)).toEqual([]);
+    expect(rules(`<a href="/"><img src="a" alt="home"></a>`)).toEqual([]);
+    expect(rules(`<button><slot></slot></button>`)).toEqual([]);
+  });
+  it("elements managed by TS (with data-ref) skip the missing-name checks", () => {
+    expect(rules(`<button data-ref="b"></button><img data-ref="i"><input data-ref="n"><h1 data-ref="t"></h1>`)).toEqual([]);
+  });
+  it("labelled inputs", () => {
+    expect(rules(`<label>Name <input></label>`)).toEqual([]);
+    expect(rules(`<label for="n">Name</label><input id="n">`)).toEqual([]);
+    expect(rules(`<input type="hidden"><input type="submit"><input aria-label="q">`)).toEqual([]);
+  });
+  it("decorative images, valid roles, focusable roles", () => {
+    expect(rules(`<img src="a" alt=""><img src="b" role="presentation">`)).toEqual([]);
+    expect(rules(`<div role="button" tabindex="0">x</div><button role="tab">x</button><div role="doc-toc"></div>`)).toEqual([]);
+    expect(rules(`<div tabindex="0"></div><div tabindex="-1"></div><div aria-hidden="true"></div>`)).toEqual([]);
+  });
+  it("style content and template items do not affect the result", () => {
+    expect(rules(`<style>a{}</style><template data-each="l"><li><button>{{ x }}</button></li></template>`)).toEqual([]);
+  });
+});
+
+describe("rule coverage and messages", () => {
+  /** At least one input per rule id. */
+  const INPUTS: Record<string, string> = {
+    "img-alt": `<img src="a.png">`,
+    "control-name": `<button></button>`,
+    "form-label": `<input type="text">`,
+    "iframe-title": `<iframe src="x"></iframe>`,
+    "dialog-name": `<dialog></dialog>`,
+    "heading-empty": `<h2> </h2>`,
+    "aria-role": `<div role="buton"></div>`,
+    "aria-attr": `<div aria-labeledby="x"></div>`,
+    "role-tabindex": `<div role="button">go</div>`,
+    "tabindex-positive": `<div tabindex="3"></div>`,
+    "hidden-focusable": `<button aria-hidden="true">x</button>`,
+    "label-for": `<label for="nope">x</label>`,
+    "id-in-list": `<template data-each="l"><li id="x">{{ a }}</li></template>`,
+    "duplicate-id": `<i id="a"></i><b id="a"></b>`,
+    "aria-idref": `<div aria-labelledby="nope"></div>`,
+    "heading-order": `<h1>a</h1><h3>b</h3>`,
+    "table-header": `<table><tr><td>x</td></tr></table>`,
+    "list-structure": `<ul><div>x</div></ul>`,
+    "landmark-label": `<nav>a</nav><nav>b</nav>`,
+    "redundant-role": `<button role="button">x</button>`,
+    "click-semantics": `<div data-on-click="go">x</div>`,
+  };
+  it("every A11Y_RULES key is produced by at least one input", () => {
+    for (const rule of Object.keys(A11Y_RULES)) {
+      expect(INPUTS[rule], `no input for ${rule}`).toBeTypeOf("string");
+      expect(rules(INPUTS[rule] as string), rule).toContain(rule);
+    }
+    for (const rule of Object.keys(INPUTS)) expect(A11Y_RULES, rule).toHaveProperty(rule);
+  });
+  it("every default message contains a Fix: hint", () => {
+    for (const [rule, msg] of Object.entries(A11Y_RULES)) {
+      expect(msg, rule).toContain("Fix:");
+      expect(msg, rule).not.toMatch(/^\[/);
+    }
+  });
+  it("every produced diagnostic is a warning with a position and a Fix: hint", () => {
+    for (const [rule, html] of Object.entries(INPUTS)) {
+      const ds = checkA11y(html).filter((d) => d.rule === rule);
+      expect(ds.length, rule).toBeGreaterThan(0);
+      for (const d of ds) {
+        expect(d.severity).toBe("warning");
+        expect(d.line).toBeGreaterThanOrEqual(1);
+        expect(d.col).toBeGreaterThanOrEqual(1);
+        expect(d.message).toContain("Fix:");
+        expect(d.message).not.toMatch(/^\[/);
+      }
+    }
+  });
+  it("detailed messages name the offending element", () => {
+    expect(checkA11y(`<button></button>`)[0]?.message).toMatch(/^<button> has no accessible name/);
+    expect(checkA11y(`<div role="buton"></div>`)[0]?.message).toContain(`"buton"`);
+    expect(checkA11y(`<h1>a</h1><h4>b</h4>`)[0]?.message).toMatch(/<h4> skips a heading level/);
+    expect(checkA11y(`<div aria-labelledby="nope"></div>`)[0]?.message).toContain(`"nope"`);
+  });
+  it("ignore silences each rule by id", () => {
+    for (const [rule, html] of Object.entries(INPUTS)) expect(rules(html, [rule]), rule).not.toContain(rule);
+  });
+});
+
+describe("ignore", () => {
+  it("individual rules can be turned off", () => {
+    expect(rules(`<img src="a"><button></button>`, ["img-alt"])).toEqual(["control-name"]);
+  });
+});
+
+describe("Vite plugin", () => {
+  const setup = async (files: Record<string, string>, opts: Record<string, unknown> = {}) => {
+    const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { tsDom } = await import("../src/lib/vite-plugin.ts");
+    const dir = mkdtempSync(join(tmpdir(), "tsdom-"));
+    mkdirSync(join(dir, "src"));
+    for (const [n, c] of Object.entries(files)) writeFileSync(join(dir, "src", n), c);
+    const warns: string[] = [];
+    const ctx = { warn: (m: string) => warns.push(m), error: (m: string): never => { throw new Error(m); } };
+    return { dir, warns, ctx, plugin: tsDom({ dirs: [join(dir, "src")], ...opts }) };
+  };
+  it("buildStart generates .html.ts; a11y does not warn by default", async () => {
+    const { existsSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<img src="a"><button></button>` });
+    t.plugin.buildStart.call(t.ctx);
+    expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(true);
+    expect(t.warns).toEqual([]);
+  });
+  it("a11y: true warns; ignore turns individual checks off", async () => {
+    const t = await setup({ "x.html": `<img src="a"><button></button>` }, { a11y: true });
+    t.plugin.buildStart.call(t.ctx);
+    expect(t.warns.length).toBe(2);
+    const u = await setup({ "x.html": `<img src="a"><button></button>` }, { a11y: { ignore: ["img-alt"] } });
+    u.plugin.buildStart.call(u.ctx);
+    expect(u.warns.length).toBe(1);
+    expect(u.warns[0]).toMatch(/control-name/);
+  });
+  it("a template error aborts the build; full-page documents are skipped", async () => {
+    const bad = await setup({ "x.html": `<a data-ref="d"></a><b data-ref="d"></b>` });
+    expect(() => bad.plugin.buildStart.call(bad.ctx)).toThrow(/duplicate-ref.*more than once/);
+    const { existsSync } = await import("node:fs");
+    const page = await setup({ "index.html": `<!doctype html><html><body><script></script></body></html>` });
+    page.plugin.buildStart.call(page.ctx);
+    expect(existsSync(`${page.dir}/src/index.html.ts`)).toBe(false);
+  });
+  it("dev: a watched .html change regenerates the module", async () => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+    t.plugin.buildStart.call(t.ctx);
+    const handlers: Record<string, (f: string) => void> = {};
+    t.plugin.configureServer({
+      watcher: { add: () => {}, on: (ev, fn) => (handlers[ev] = fn) },
+      config: { logger: { error: () => {}, warn: () => {} } },
+    });
+    writeFileSync(`${t.dir}/src/x.html`, `<p>{{ b }}</p>`);
+    handlers.change?.(`${t.dir}/src/x.html`);
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`text: "b"`);
+  });
+});

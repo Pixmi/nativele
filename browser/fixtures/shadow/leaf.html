@@ -1,0 +1,8 @@
+<style>
+  p { color: rgb(0, 128, 0); }
+</style>
+<p data-ref="msg">{{ label }}:{{ count }}</p>
+<button type="button" data-on-click="bump">bump</button>
+<input data-ref="field" data-on-focus="onFocus" aria-label="field" />
+<span class="big" data-if="big">big</span>
+<slot name="extra">fallback</slot>

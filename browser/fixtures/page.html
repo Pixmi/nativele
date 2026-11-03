@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>fixture</title></head>
+  <body>
+    <p class="t" id="outside">outside</p>
+    <!-- Components are defined before parsing: Light DOM slots must wait for DOMContentLoaded -->
+    <light-card id="parsed"><b slot="head">H</b>body</light-card>
+    <shadow-card id="shadow"><b slot="head">SH</b>sbody</shadow-card>
+    <script type="module" src="./card.ts"></script>
+    <script type="module" src="./lazy.ts"></script>
+  </body>
+</html>

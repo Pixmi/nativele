@@ -1,0 +1,19 @@
+<style scoped>
+  :scope { display: block; max-width: 28rem; font-family: system-ui, sans-serif; }
+  ul { padding-left: 1rem; }
+  li { margin: .25rem 0; }
+</style>
+<h2><slot name="title">Sign up</slot></h2>
+<form data-on-submit="onSubmit" novalidate>
+  <form-field data-ref="name" label="Name" data-on-field-input="onName"></form-field>
+  <form-field data-ref="email" label="Email" type="email" data-on-field-input="onEmail"></form-field>
+  <label><input type="checkbox" data-ref="agree" data-on-change="onAgree" /> I agree to the terms</label>
+  <p><button type="submit" data-ref="submit">Sign up</button></p>
+</form>
+<p data-if="empty">Nobody has signed up yet</p>
+<ul>
+  <template data-each="entries">
+    <li><entry-row data-ref="row" data-on-remove-entry="removeEntry"></entry-row></li>
+  </template>
+</ul>
+<p>{{ count }} signed up</p>

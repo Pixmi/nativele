@@ -1,0 +1,14 @@
+<form data-on-submit="add">
+  <input data-ref="input" aria-label="New todo" />
+  <button type="submit">Add</button>
+</form>
+<ul>
+  <template data-each="items">
+    <li>
+      <input type="checkbox" data-ref="check" data-on-change="toggle" />
+      <span>{{ title }}</span>
+      <button type="button" data-on-click="removeItem">Delete</button>
+    </li>
+  </template>
+</ul>
+<p>{{ remaining }} left</p>

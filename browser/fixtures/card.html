@@ -1,0 +1,16 @@
+<style scoped>
+  :scope { display: block; }
+  .t { color: rgb(255, 0, 0); }
+</style>
+<style>
+  .global-mark { color: rgb(0, 0, 255); }
+</style>
+<header><slot name="head">fallback</slot></header>
+<main><slot></slot></main>
+<p class="t" data-ref="t">{{ title }}</p>
+<div data-if="extra" data-ref="extra">extra</div>
+<ul>
+  <template data-each="rows">
+    <li class="t">{{ n }}</li>
+  </template>
+</ul>

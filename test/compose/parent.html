@@ -1,0 +1,9 @@
+<x-child data-ref="name" label="Name" max-length="5" data-on-value-change="onName"></x-child>
+<x-child data-ref="email" label="Email" data-on-value-change="onEmail"><span slot="hint">{{ hint }}</span></x-child>
+<ul>
+  <template data-each="rows">
+    <li><x-child data-ref="row" data-on-value-change="onRow"></x-child></li>
+  </template>
+</ul>
+<div data-on-value-change="onWrapper"><x-child data-ref="inner"></x-child></div>
+<p>{{ summary }}</p>

@@ -1,0 +1,13 @@
+<style>
+  :host { display: block; }
+  .item { color: rgb(0, 0, 255); }
+</style>
+<sh-leaf data-ref="leaf" label="static" count="3" data-on-bumped="onBumped"></sh-leaf>
+<lt-leaf data-ref="lleaf" label="light-in-shadow" data-on-bumped="onLightBumped"></lt-leaf>
+<ul>
+  <template data-each="rows">
+    <li class="item"><sh-leaf data-ref="row" data-on-bumped="onRow"></sh-leaf></li>
+  </template>
+</ul>
+<p class="total">{{ total }}</p>
+<slot name="foot">no foot</slot>

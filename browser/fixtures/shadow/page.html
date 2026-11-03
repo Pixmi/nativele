@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>shadow fixture</title>
+    <style>
+      /* Document styles: they must not reach inside shadow roots, but they do style slotted light DOM content */
+      p { color: rgb(255, 0, 0) !important; }
+      b.slotted, #slotted { color: rgb(200, 0, 0); }
+    </style>
+  </head>
+  <body>
+    <sh-leaf id="plain" label="plain"><b slot="extra" id="slotted">slotted</b></sh-leaf>
+    <sh-panel id="panel"><i slot="foot">footer</i></sh-panel>
+    <lt-host id="host"></lt-host>
+    <sh-scoped id="scoped"></sh-scoped>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

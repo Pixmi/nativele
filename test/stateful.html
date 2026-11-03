@@ -1,0 +1,10 @@
+<h1>{{ title }}</h1>
+<p data-if="open" data-ref="p">{{ count }} items, {{ double }} total</p>
+<button type="button" data-ref="b" data-on-click="inc">+</button>
+<ul>
+  <template data-each="rows">
+    <li>{{ n }} <button type="button" data-on-click="del">x</button></li>
+  </template>
+</ul>
+<input data-ref="inp" data-on-focus="focused" aria-label="x" />
+<div><slot></slot></div>

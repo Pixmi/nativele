@@ -1,0 +1,29 @@
+<style scoped>
+  :scope { display: block; max-width: 28rem; font-family: system-ui, sans-serif; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; gap: .5rem; align-items: center; padding: .25rem 0; }
+  li.done span { text-decoration: line-through; color: gray; }
+  [aria-pressed="true"] { font-weight: bold; }
+</style>
+<h1><slot name="title">Todo</slot></h1>
+<form data-on-submit="add">
+  <label for="todo-new">Add a todo</label>
+  <input id="todo-new" data-ref="input" autocomplete="off" />
+  <button type="submit">Add</button>
+</form>
+<p data-if="empty">No matching todos</p>
+<ul>
+  <template data-each="items">
+    <li>
+      <input type="checkbox" data-ref="check" data-on-change="toggle" />
+      <span>{{ title }}</span>
+      <button type="button" data-ref="remove" data-on-click="removeTodo">✕</button>
+    </li>
+  </template>
+</ul>
+<footer>
+  <span>{{ remaining }} left</span>
+  <button type="button" data-ref="all" data-on-click="setFilter" data-filter="all">All</button>
+  <button type="button" data-ref="active" data-on-click="setFilter" data-filter="active">Active</button>
+  <button type="button" data-ref="done" data-on-click="setFilter" data-filter="done">Done</button>
+</footer>

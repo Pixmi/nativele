@@ -1,0 +1,6 @@
+node_modules
+*.html.ts
+dist
+demo-dist
+*.tgz
+ts-dom-tags.ts

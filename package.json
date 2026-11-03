@@ -1,0 +1,82 @@
+{
+  "name": "ts-dom",
+  "version": "0.1.0",
+  "description": "Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
+  "keywords": [
+    "html",
+    "typescript",
+    "custom-elements",
+    "web-components",
+    "dom",
+    "template",
+    "vite",
+    "codegen"
+  ],
+  "license": "MIT",
+  "author": "ts-dom contributors",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "ts-dom": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./vite": {
+      "types": "./dist/vite-plugin.d.mts",
+      "default": "./dist/vite-plugin.mjs"
+    },
+    "./oxlint": {
+      "types": "./dist/oxlint-plugin.d.mts",
+      "default": "./dist/oxlint-plugin.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-TW.md",
+    "llms.txt",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "gen": "node src/cli.ts gen examples test browser",
+    "check": "npm run gen && tsc",
+    "test": "vp test run test/",
+    "lint": "vp lint",
+    "lint:html": "node src/cli.ts lint examples",
+    "prepack": "vp pack --publint --attw",
+    "build:lib": "vp pack",
+    "test:browser": "vp test run browser/",
+    "verify:pack": "vp pack --publint --attw",
+    "smoke": "bash scripts/consumer-smoke.sh",
+    "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh"
+  },
+  "dependencies": {
+    "parse5": "^8.1.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@types/node": "^26.6.6",
+    "happy-dom": "^21.0.4",
+    "playwright-core": "^1.64.1",
+    "publint": "^0.3.25",
+    "typescript": "^7.0.2",
+    "vite-plus": "^1.4.0"
+  },
+  "sideEffects": [
+    "./examples/**",
+    "./browser/**",
+    "./test/**"
+  ]
+}
