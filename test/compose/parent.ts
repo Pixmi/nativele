@@ -1,5 +1,5 @@
-import { Component, define } from "nativel";
-import type { EmitEvent, EventHit } from "nativel";
+import { Component, define } from "nativele";
+import type { EmitEvent, EventHit } from "nativele";
 import type { FieldChild } from "./child.js";
 import tpl from "./parent.html.js";
 

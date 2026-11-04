@@ -1,4 +1,4 @@
-import { Component, define, event } from "nativel";
+import { Component, define, event } from "nativele";
 import tpl from "./entry-row.html.js";
 
 /** One row of the list: it only shows its props and tells the parent when Remove is pressed. */

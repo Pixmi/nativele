@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
-import { nativel } from "./src/lib/vite-plugin.ts";
+import { nativele } from "./src/lib/vite-plugin.ts";
 
 const lib = fileURLToPath(new URL("./src/lib/index.ts", import.meta.url));
 
@@ -18,20 +18,20 @@ export default defineConfig({
     clean: true,
   },
   build: { outDir: "demo-dist" },
-  resolve: { alias: { "nativel": lib } },
-  plugins: [nativel({ dirs: ["examples", "test", "browser"], a11y: true })],
+  resolve: { alias: { "nativele": lib } },
+  plugins: [nativele({ dirs: ["examples", "test", "browser"], a11y: true })],
   lint: {
-    ignorePatterns: ["node_modules", "dist", "demo-dist", "**/*.html.ts", "**/nativel-tags.ts"],
-    jsPlugins: [{ name: "nativel", specifier: "./src/lib/oxlint-plugin.ts" }],
+    ignorePatterns: ["node_modules", "dist", "demo-dist", "**/*.html.ts", "**/nativele-tags.ts"],
+    jsPlugins: [{ name: "nativele", specifier: "./src/lib/oxlint-plugin.ts" }],
     rules: {
-      "nativel/unused-markup": "error",
+      "nativele/unused-markup": "error",
       // ARIA / accessibility checks: off by default, enabled here as warnings; use ignore to turn individual checks off
-      "nativel/a11y": ["warn", { ignore: [] }],
+      "nativele/a11y": ["warn", { ignore: [] }],
       // Data-flow suggestions: avoid passing props and events down or up level by level
-      "nativel/data-flow": ["warn", { ignore: [] }],
+      "nativele/data-flow": ["warn", { ignore: [] }],
     },
     // Tests use refs from outside the class through instances, so the "the component itself must use it" rule does not apply
-    overrides: [{ files: ["test/**", "browser/**"], rules: { "nativel/unused-markup": "off", "nativel/a11y": "off", "nativel/data-flow": "off" } }],
+    overrides: [{ files: ["test/**", "browser/**"], rules: { "nativele/unused-markup": "off", "nativele/a11y": "off", "nativele/data-flow": "off" } }],
   },
   test: { environment: "happy-dom" },
 });

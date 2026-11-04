@@ -1,4 +1,4 @@
-import { Component, define, event } from "nativel";
+import { Component, define, event } from "nativele";
 import tpl from "./form-field.html.js";
 
 /**

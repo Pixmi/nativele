@@ -13,7 +13,7 @@ export interface LintIssue extends Diagnostic {
 const esc = (s: string) => s.replace(/[$]/g, "\\$&");
 
 /** Marker that templateCode() appends when it sees `Component(tpl, { state | props | derive })`. */
-const STATEFUL_MARK = "/*nativel:stateful*/";
+const STATEFUL_MARK = "/*nativele:stateful*/";
 
 // ---------------------------------------------------------------------------
 // Reading the component class out of TypeScript source (text based, no parser)

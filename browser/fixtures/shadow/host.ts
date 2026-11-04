@@ -1,4 +1,4 @@
-import { Component, define } from "nativel";
+import { Component, define } from "nativele";
 import tpl from "./host.html.js";
 
 /** A Light DOM parent that contains a Shadow DOM child. */

@@ -19,13 +19,13 @@ mkdir src
 
 cat > vite.config.ts <<'CFG'
 import { defineConfig } from "vite-plus";
-import { nativel } from "nativel/vite";
+import { nativele } from "nativele/vite";
 export default defineConfig({
-  plugins: [nativel({ a11y: true })],
+  plugins: [nativele({ a11y: true })],
   lint: {
     ignorePatterns: ["node_modules", "dist", "**/*.html.ts"],
-    jsPlugins: [{ name: "nativel", specifier: "nativel/oxlint" }],
-    rules: { "nativel/unused-markup": "error", "nativel/a11y": "warn" },
+    jsPlugins: [{ name: "nativele", specifier: "nativele/oxlint" }],
+    rules: { "nativele/unused-markup": "error", "nativele/a11y": "warn" },
   },
 });
 CFG
@@ -42,7 +42,7 @@ cat > src/hello.html <<'HTML'
 <slot name="extra"></slot>
 HTML
 cat > src/hello.ts <<'TS'
-import { Component, createStore, define } from "nativel";
+import { Component, createStore, define } from "nativele";
 import tpl from "./hello.html.js";
 
 class Hello extends Component(tpl) {
@@ -65,13 +65,13 @@ define("x-hello", Hello);
 TS
 echo '<!doctype html><x-hello></x-hello><script type="module" src="/src/hello.ts"></script>' > index.html
 
-echo "[smoke] gen";   npx nativel gen
+echo "[smoke] gen";   npx nativele gen
 echo "[smoke] tsc";   npx tsc
-echo "[smoke] lint";  npx nativel lint --a11y --strict
+echo "[smoke] lint";  npx nativele lint --a11y --strict
 echo "[smoke] vp lint"; npx vp lint
 echo "[smoke] build"; npx vp build >/dev/null
 test -s dist/index.html
 # Make sure the type check really rejects a wrong name
-echo 'import tpl from "./hello.html.js"; import { Component } from "nativel"; class X extends Component(tpl) { m() { this.refs.nope; } } void X;' > src/bad.ts
+echo 'import tpl from "./hello.html.js"; import { Component } from "nativele"; class X extends Component(tpl) { m() { this.refs.nope; } } void X;' > src/bad.ts
 if npx tsc >/dev/null 2>&1; then echo "[smoke] expected tsc to fail but it passed" >&2; exit 1; fi
 echo "[smoke] OK"

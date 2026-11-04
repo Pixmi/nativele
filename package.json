@@ -1,5 +1,5 @@
 {
-  "name": "nativel",
+  "name": "nativele",
   "version": "0.2.0",
   "description": "A TypeScript-driven, HTML-first UI library. Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
   "keywords": [
@@ -13,21 +13,21 @@
     "codegen"
   ],
   "license": "MIT",
-  "author": "nativel contributors",
+  "author": "nativele contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Pixmi/nativel.git"
+    "url": "git+https://github.com/Pixmi/nativele.git"
   },
-  "homepage": "https://github.com/Pixmi/nativel#readme",
+  "homepage": "https://github.com/Pixmi/nativele#readme",
   "bugs": {
-    "url": "https://github.com/Pixmi/nativel/issues"
+    "url": "https://github.com/Pixmi/nativele/issues"
   },
   "type": "module",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "nativel": "./dist/cli.mjs"
+    "nativele": "./dist/cli.mjs"
   },
   "exports": {
     ".": {

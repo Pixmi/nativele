@@ -32,7 +32,7 @@ export const A11Y_RULES = {
   "list-structure": "Invalid list structure. Fix: <ul>/<ol> may only contain <li>, and <li> must be inside <ul>, <ol> or <menu>.",
   "landmark-label": "There are several landmarks of the same kind. Fix: give each <nav> / <aside> a distinct aria-label.",
   "redundant-role": "The role repeats the element's native role. Fix: remove the role attribute.",
-  "click-semantics": "data-on-click is on an element that is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
+  "click-semantics": "data-on-click is on an element that is not nativeley operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
 } as const;
 export type A11yRule = keyof typeof A11Y_RULES;
 
@@ -165,13 +165,13 @@ export function checkA11y(html: string, ignore: readonly string[] = []): A11yDia
 
     const tabindex = attr(el, "tabindex");
     if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed) {
-      report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
+      report("role-tabindex", el, `<${tag} role="${role}"> is not nativeley focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);
     if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el);
 
     if (has(el, "data-on-click") && !focusable(el) && tag !== "label" && !(role && INTERACTIVE_ROLES.has(role) && tabindex !== undefined)) {
-      report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
+      report("click-semantics", el, `data-on-click is on <${tag}>, which is not nativeley operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
     }
 
     // Semantic checks

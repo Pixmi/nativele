@@ -39,7 +39,7 @@ export function createInjector(sheets: Sheet[]): (host: HTMLElement) => void {
         console.warn(`<${tag}>: [host-in-light-dom] :host has no effect in Light DOM. Fix: select the element by its tag name (${tag} { ... }) or use <style scoped> with :scope, or opt into Shadow DOM with { shadow: true }.`);
       }
       const el = doc.createElement("style");
-      el.dataset.nativel = scoped ? tag : "";
+      el.dataset.nativele = scoped ? tag : "";
       el.textContent = scoped ? scopeCss(css, tag) : css;
       doc.head.append(el);
     }

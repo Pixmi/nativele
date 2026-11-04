@@ -1,5 +1,5 @@
-import { Component, define } from "nativel";
-import type { EmitEvent } from "nativel";
+import { Component, define } from "nativele";
+import type { EmitEvent } from "nativele";
 import type { QuantityInput } from "./quantity-input.js";
 import tpl from "./order-line.html.js";
 

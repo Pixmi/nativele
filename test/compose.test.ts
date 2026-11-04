@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { Component, define, event } from "nativel";
-import type { EmitEvent } from "nativel";
+import { Component, define, event } from "nativele";
+import type { EmitEvent } from "nativele";
 import { FieldChild } from "./compose/child.ts";
 import { ParentForm } from "./compose/parent.ts";
 import tpl from "./compose/child.html.js";
@@ -81,14 +81,14 @@ describe("definition-time checks", () => {
       void X;
     }).toThrow(/\[conflicting-keys\]/);
   });
-  it("a prop shares a name with a member of HTMLElement or nativel", () => {
+  it("a prop shares a name with a member of HTMLElement or nativele", () => {
     expect(() => {
       // @ts-expect-error reservedPropNames (HTMLElement.title)
       class X extends Component(tpl, { props: { title: "" } }) {}
       void X;
     }).toThrow(/\[reserved-prop\]/);
     expect(() => {
-      // @ts-expect-error reservedPropNames (nativel render)
+      // @ts-expect-error reservedPropNames (nativele render)
       class X extends Component(tpl, { props: { render: "" } }) {}
       void X;
     }).toThrow(/\[reserved-prop\]/);

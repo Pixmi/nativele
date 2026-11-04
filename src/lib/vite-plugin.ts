@@ -3,10 +3,10 @@ import { resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
 
-export interface NativelPluginOptions {
+export interface NativelePluginOptions {
   /** Directories to scan for .html files and generate .html.ts into. Default: ["src"] */
   dirs?: string[];
-  /** Module name the generated files import the runtime from. Default: "nativel" */
+  /** Module name the generated files import the runtime from. Default: "nativele" */
   runtime?: string;
   /** How text nodes keep their whitespace: "preserve" (default) or "collapse" (see `GenerateOptions`). */
   whitespace?: "preserve" | "collapse";
@@ -20,9 +20,9 @@ export interface NativelPluginOptions {
 
 /**
  * Optional Vite plugin: generates `.html.ts` when the build starts and regenerates it while the dev server runs.
- * nativel does not depend on it: `nativel gen` (or `--watch`) together with tsc is enough.
+ * nativele does not depend on it: `nativele gen` (or `--watch`) together with tsc is enough.
  */
-export function nativel(opts: NativelPluginOptions = {}) {
+export function nativele(opts: NativelePluginOptions = {}) {
   const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const dirs = opts.dirs ?? ["src"];
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
@@ -39,7 +39,7 @@ export function nativel(opts: NativelPluginOptions = {}) {
   };
 
   return {
-    name: "nativel",
+    name: "nativele",
     enforce: "pre" as const,
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
       try {

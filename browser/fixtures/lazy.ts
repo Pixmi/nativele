@@ -1,4 +1,4 @@
-import { Component } from "nativel";
+import { Component } from "nativele";
 import tpl from "./lazy.html.js";
 
 /** Deliberately not defined: tests "a prop assigned before the element is upgraded" */

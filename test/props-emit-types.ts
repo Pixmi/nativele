@@ -1,7 +1,7 @@
 // Compile-only type matrix for props / emits (checked by `tsc`, not run by vitest).
 // Every @ts-expect-error below MUST be a real type error; every line without one MUST compile.
-import { Component, define, event } from "nativel";
-import type { EmitEvent } from "nativel";
+import { Component, define, event } from "nativele";
+import type { EmitEvent } from "nativele";
 import { FieldChild } from "./compose/child.ts";
 import tpl from "./compose/child.html.js";
 
@@ -73,7 +73,7 @@ const v: string = e.detail.value;
 const n: number = e.detail.value;
 void [v, n];
 yes<IsNever<EmitEvent<FieldChild, "not-declared">>>(); // an undeclared event is `never`
-// An HTMLElement that is not a nativel component has no emitted events
+// An HTMLElement that is not a nativele component has no emitted events
 yes<IsNever<EmitEvent<HTMLElement, "value-change">>>();
 void el;
 

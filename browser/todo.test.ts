@@ -77,6 +77,6 @@ describe("Todo list e2e (real Chrome)", () => {
     expect(await page.textContent("todo-app p")).toBe("No matching todos");
   });
   it("<style> is injected only once across multiple component instances", async () => {
-    expect(await page.$$eval("style[data-nativel='todo-app']", (e) => e.length)).toBe(1);
+    expect(await page.$$eval("style[data-nativele='todo-app']", (e) => e.length)).toBe(1);
   });
 });

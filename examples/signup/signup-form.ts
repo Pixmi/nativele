@@ -1,5 +1,5 @@
-import { Component, define } from "nativel";
-import type { EmitEvent, EventHit } from "nativel";
+import { Component, define } from "nativele";
+import type { EmitEvent, EventHit } from "nativele";
 import type { FormField } from "./form-field.js";
 import tpl from "./signup-form.html.js";
 

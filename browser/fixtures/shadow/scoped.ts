@@ -1,4 +1,4 @@
-import { Component, define } from "nativel";
+import { Component, define } from "nativele";
 import tpl from "./scoped.html.js";
 
 /** `scoped` has no effect in Shadow DOM (the shadow root already isolates the style). */

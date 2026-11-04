@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Component, createStore, define } from "nativel";
+import { Component, createStore, define } from "nativele";
 import tpl from "./list.html.js";
 import lightTpl from "./light.html.js";
 import hostTpl from "./host.html.js";
@@ -179,9 +179,9 @@ describe("scoped fallback", () => {
 describe("styles", () => {
   it("light: <style> is injected into head only once, and scoped styles are wrapped in @scope", () => {
     document.body.append(document.createElement("t-styled"), document.createElement("t-styled"));
-    const styles = [...document.head.querySelectorAll("style[data-nativel]")];
-    const g = styles.filter((e) => (e as HTMLElement).dataset.nativel === "");
-    const sc = styles.filter((e) => (e as HTMLElement).dataset.nativel === "t-styled");
+    const styles = [...document.head.querySelectorAll("style[data-nativele]")];
+    const g = styles.filter((e) => (e as HTMLElement).dataset.nativele === "");
+    const sc = styles.filter((e) => (e as HTMLElement).dataset.nativele === "t-styled");
     expect(g.length).toBe(1);
     expect(g[0]?.textContent).toContain(".g");
     expect(sc.length).toBe(1);
@@ -192,7 +192,7 @@ describe("styles", () => {
     const el = document.createElement("t-styled-shadow") as StyledShadow;
     document.body.append(el);
     expect(el.shadowRoot?.querySelector("style")).not.toBeNull();
-    expect(document.head.querySelectorAll("style[data-nativel]").length).toBe(2);
+    expect(document.head.querySelectorAll("style[data-nativele]").length).toBe(2);
   });
   it("using :host in light mode warns", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

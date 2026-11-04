@@ -40,7 +40,7 @@ describe("Real browser: Light DOM", () => {
   });
   it("scoped uses the native browser @scope and only applies inside the component", async () => {
     const native = await page.evaluate(() => {
-      const el = [...document.querySelectorAll("style[data-nativel]")].find((s) => (s as HTMLElement).dataset.nativel === "light-card") as HTMLStyleElement;
+      const el = [...document.querySelectorAll("style[data-nativele]")].find((s) => (s as HTMLElement).dataset.nativele === "light-card") as HTMLStyleElement;
       return typeof CSSScopeRule !== "undefined" && el.sheet?.cssRules[0] instanceof CSSScopeRule;
     });
     expect(native).toBe(true);
@@ -48,7 +48,7 @@ describe("Real browser: Light DOM", () => {
     expect(await color("#outside")).not.toBe("rgb(255, 0, 0)");
   });
   it("<style> is injected only once and does not stay inside the component", async () => {
-    expect(await page.$$eval("style[data-nativel]", (e) => e.length)).toBe(2);
+    expect(await page.$$eval("style[data-nativele]", (e) => e.length)).toBe(2);
     expect(await page.$("light-card style")).toBeNull();
   });
   it("dynamically adding and removing slot content, and slotchange", async () => {
@@ -169,7 +169,7 @@ describe("Real browser: fallback without @scope (CSS nesting)", () => {
     await p2.goto(`${baseUrl}/browser/fixtures/page.html`);
     await p2.waitForFunction(() => document.querySelector("#parsed p"));
     const r = await p2.evaluate(() => {
-      const el = [...document.querySelectorAll("style[data-nativel]")].find((x) => (x as HTMLElement).dataset.nativel === "light-card") as HTMLStyleElement;
+      const el = [...document.querySelectorAll("style[data-nativele]")].find((x) => (x as HTMLElement).dataset.nativele === "light-card") as HTMLStyleElement;
       const c = (sel: string) => getComputedStyle(document.querySelector(sel) as Element).color;
       return {
         hasScope: "CSSScopeRule" in window,

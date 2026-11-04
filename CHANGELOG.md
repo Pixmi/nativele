@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - Version `0.x`: the API is still evolving. **A minor version (0.Y.0) may contain breaking changes**; a patch version (0.Y.Z) only fixes bugs and documentation.
 - From `1.0.0` on, [SemVer](https://semver.org/) applies: breaking changes only in major versions.
-- Public API: the exports of `nativel`, `nativel/vite` and `nativel/oxlint`; the commands and flags of the `nativel` CLI; the `data-*` and `{{ }}` syntax of templates; rule ids (`nativel/unused-markup`, `nativel/a11y`, `nativel/data-flow` and their `ignore` ids).
+- Public API: the exports of `nativele`, `nativele/vite` and `nativele/oxlint`; the commands and flags of the `nativele` CLI; the `data-*` and `{{ }}` syntax of templates; rule ids (`nativele/unused-markup`, `nativele/a11y`, `nativele/data-flow` and their `ignore` ids).
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
@@ -29,23 +29,23 @@ First release.
 - Trusted Types compatible: the generated `x.html.ts` holds the parsed markup as data and the runtime builds it with `createElement`, `setAttribute` and `createTextNode`, so no HTML string is parsed and pages that enforce `require-trusted-types-for 'script'` work without a policy (verified in real Chrome).
 - Components accept atomic moves (`connectedMoveCallback`) and keyed lists reorder with `moveBefore` where available, so a moved item is not disconnected and keeps its focus and subscriptions.
 - `tpl.instantiate()` builds a template without a component and returns typed `root`, `refs`, `lists`, `text` and `show`.
-- `nativel gen` rejects `<script>`, `on*` attributes, `srcdoc` and `javascript:` URLs (rules `forbidden-tag`, `forbidden-attribute`, `unsafe-url`), because they run code or are blocked when Trusted Types is enforced.
+- `nativele gen` rejects `<script>`, `on*` attributes, `srcdoc` and `javascript:` URLs (rules `forbidden-tag`, `forbidden-attribute`, `unsafe-url`), because they run code or are blocked when Trusted Types is enforced.
 - `whitespace: "collapse"` (CLI `--whitespace=collapse`, Vite plugin option) collapses whitespace runs and drops line-break-only text between tags; the default keeps text as written.
 - `replace()` throws `[duplicate-key]` for two items with the same key and leaves the list untouched. `EventHit<Item>` types `hit.item` when the handler annotates it. `bind` accepts any source with `get` and `subscribe` (`ReadableStore`).
-- `nativel gen --include=<glob> --exclude=<glob>` (and the Vite plugin options) generate only the selected templates, for migrating a project in steps.
+- `nativele gen --include=<glob> --exclude=<glob>` (and the Vite plugin options) generate only the selected templates, for migrating a project in steps.
 
 ### Composition
 
 - Child components used in a template are imported automatically by the generated `x.html.ts`; HTML is the only source of dependencies.
-- `nativel gen` also generates `nativel-tags.ts`, which registers every exported `define("tag", Class)` component in `HTMLElementTagNameMap`, so `refs.child` is fully typed. `define()` calls inside strings and comments are ignored.
+- `nativele gen` also generates `nativele-tags.ts`, which registers every exported `define("tag", Class)` component in `HTMLElementTagNameMap`, so `refs.child` is fully typed. `define()` calls inside strings and comments are ignored.
 
 ### Tooling
 
-- No Vite or bundler required: `nativel gen` writes `x.html.ts` (a real TypeScript module with the template markup and its types), imported as `./x.html.js`; the compiled JS runs in a browser with an import map. `nativel gen --watch` is available.
-- `nativel` CLI: `gen [--watch]`, `lint [--a11y] [--strict] [--json]`, `rules`.
-- `nativel/vite`: optional plugin (generate, watch, optional a11y warnings).
-- Every diagnostic has a stable rule id, an HTML location where possible, and says what is wrong and how to fix it. `nativel rules` lists them.
-- `nativel/oxlint` rules: `unused-markup` (errors), `data-flow` (warnings: `prop-forwarding`, `emit-forwarding`, `props-mutation`, `custom-event-on-native`, plus the HTML-level child contract checks `unknown-prop`, `invalid-prop-value`, `unknown-event`), `a11y` (21 rules, opt in).
+- No Vite or bundler required: `nativele gen` writes `x.html.ts` (a real TypeScript module with the template markup and its types), imported as `./x.html.js`; the compiled JS runs in a browser with an import map. `nativele gen --watch` is available.
+- `nativele` CLI: `gen [--watch]`, `lint [--a11y] [--strict] [--json]`, `rules`.
+- `nativele/vite`: optional plugin (generate, watch, optional a11y warnings).
+- Every diagnostic has a stable rule id, an HTML location where possible, and says what is wrong and how to fix it. `nativele rules` lists them.
+- `nativele/oxlint` rules: `unused-markup` (errors), `data-flow` (warnings: `prop-forwarding`, `emit-forwarding`, `props-mutation`, `custom-event-on-native`, plus the HTML-level child contract checks `unknown-prop`, `invalid-prop-value`, `unknown-event`), `a11y` (21 rules, opt in).
 
 ### Design decisions
 

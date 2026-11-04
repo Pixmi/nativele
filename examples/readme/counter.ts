@@ -1,4 +1,4 @@
-import { Component, define } from "nativel";
+import { Component, define } from "nativele";
 import tpl from "./counter.html.js";
 
 export class MyCounter extends Component(tpl, {
