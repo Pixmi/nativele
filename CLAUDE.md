@@ -29,8 +29,9 @@
 
 ## 語言
 
-- 對外文件一律使用英語：`README.md`、`CHANGELOG.md`、`llms.txt`、程式碼註解、錯誤與診斷訊息、PR 描述。
-- 只有 `README.zh-TW.md` 是繁體中文，內容要與 `README.md` 同步；改了其一就改另一份。
+- 對外文件一律使用英語：`README.md`、`docs/` 下的指南、`CHANGELOG.md`、`llms.txt`、程式碼註解、錯誤與診斷訊息、PR 描述。
+- 只有 `README.zh-TW.md` 是繁體中文，內容要與 `README.md` 同步；改了其一就改另一份。`docs/` 的指南只有英文，不另做中文版。
+- `README.md` 只放入門內容（簡介、精簡版、給 agent 的規則、快速開始、範例清單、指南連結），詳細說明寫在 `docs/` 對應主題的檔案；README 指向指南的連結用 GitHub 完整網址，在 npm 頁面上才不會失效。
 - 本檔與其他給開發者與 Claude 的說明用繁體中文。
 
 ## 開發規範
@@ -38,7 +39,7 @@
 - 提交前跑 `npm run check`、`npm test`、`npm run lint`；動到執行期行為時再跑 `npm run test:browser`。
 - 預設不寫註解，只寫程式本身看不出的原因（外部限制、不能改動的順序），不重述程式在做什麼。
 - 診斷訊息格式為 `file:line:col severity [rule-id] message`，結尾附 `Fix:` 提示，新增的規則要照做。
-- 新增規則或公開 API 要同步更新 `README.md`、`README.zh-TW.md`、`llms.txt` 與 `CHANGELOG.md`。
+- 新增規則或公開 API 要同步更新 `docs/` 對應的指南、`llms.txt` 與 `CHANGELOG.md`；影響入門內容時才改 `README.md` 與 `README.zh-TW.md`。
 - 公開 API 的破壞性變更要寫進 `CHANGELOG.md` 的對應版本，版本規則見該檔的 Versioning policy。
 - 產生的 `*.html.ts` 與 `ts-dom-tags.ts` 不提交。
 - 發布：版本只寫在 `package.json` 的 `version`；改了版本的提交合併到 main 後，`.github/workflows/release.yml` 檢查版本格式與 `CHANGELOG.md` 對應標題，驗證通過就以 npm Trusted Publishing（OIDC，不使用 token）執行 `npm stage publish` 把版本送進 npm 暫存區，並建立 `v<版本>` 的 tag 與 GitHub Release（版本已有 tag 時不動作；含 `-` 的是預先發布，npm 標 `next`）。版本要到 npmjs.com 的 Staged Packages 或用 `npm stage approve` 由維護者以 2FA 核准後才公開。Release 說明取自改版本那個 PR 的描述，所以改版本的 PR 描述要寫成 Release 內容（Summary、Changes、Breaking Changes）。

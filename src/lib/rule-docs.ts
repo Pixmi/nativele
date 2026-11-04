@@ -299,6 +299,17 @@ inc() { this.count = this.count + 1; }`,
     good: `// counter.ts
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
+  "unguarded-input-value": {
+    why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs.",
+    bad: `// form.ts
+override render(view: { name: string }) {
+  this.refs.name.value = view.name;
+}`,
+    good: `// form.ts
+override render(view: { name: string }) {
+  if (this.refs.name.value !== view.name) this.refs.name.value = view.name;
+}`,
+  },
   "custom-event-on-native": {
     why: "A child's custom event does not bubble, so a handler on a native element would never receive it. Events are handled on the tag of the component that emits them.",
     bad: `<div data-on-quantity-change="update">

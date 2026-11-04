@@ -122,7 +122,7 @@ describe("data-flow checks", () => {
   });
   it("prop-forwarding: only refs to custom elements count, not native elements", () => {
     const code = `class P extends Component(t, { props: { name: "" } }) { render(v) { this.refs.inp.value = v.name; } }`;
-    expect(flow(code, `<input data-ref="inp">`).length).toBe(0);
+    expect(flow(code, `<input data-ref="inp">`).filter((d) => d.rule === "prop-forwarding").length).toBe(0);
   });
   it("emit-forwarding: the handler only re-emits the same event, or is a pure relay", () => {
     const same = `class P extends Component(t, { emits: { saved: event() } }) { onSaved(e) { this.log(); this.emit("saved", e.detail); } }`;
@@ -321,5 +321,24 @@ describe("formatIssue", () => {
     const issue = lintUsage([d], [])[0];
     expect(issue).toBeDefined();
     expect(formatIssue(issue!)).toMatch(/o\.html:1:1 error \[no-importer\] .*Fix:/);
+  });
+});
+
+describe("data-flow: unguarded-input-value", () => {
+  const html = `<input data-ref="name"><output data-ref="out"></output>`;
+  const rules = async (classBody: string) => {
+    const { componentClasses, dataFlow } = await import("../src/lib/lint.ts");
+    const code = `import tpl from "./f.html.js";\nclass F extends Component(tpl, { state: { name: "" } }) {\n${classBody}\n}`;
+    return dataFlow(html, componentClasses(code, "./f.html.js")).map((d) => d.rule);
+  };
+  it("flags a render() that writes the value without comparing", async () => {
+    expect(await rules(`  override render(v) {\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+  });
+  it("accepts a comparison on the same line or the line before", async () => {
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name) this.refs.name.value = v.name;\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name)\n      this.refs.name.value = v.name;\n  }`)).toEqual([]);
+  });
+  it("leaves event handlers and elements that are not form controls alone", async () => {
+    expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);
   });
 });

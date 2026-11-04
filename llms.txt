@@ -43,7 +43,7 @@ Rules the compiler enforces: every `{{ hole }}` / `data-if` name must exist in s
 - Props go DOWN: the parent sets them with an attribute or a property (`this.refs.child.value = v.x`, typed). A component never assigns its own props; to ask for a change it `emit`s an event.
 - Events go UP: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag, casting with `EmitEvent<Child, "event-name">`.
 - Data needed several levels away: share a `createStore` module and `this.bind(store, fn)`; do not forward props or re-emit events through middle components (lint rules `prop-forwarding`, `emit-forwarding`).
-- Writing form values back: only assign `input.value` when it differs (`if (input.value !== v.value) input.value = v.value`), otherwise the caret jumps.
+- Writing form values back (lint rule `unguarded-input-value`): only assign `input.value` when it differs (`if (input.value !== v.value) input.value = v.value`), otherwise the caret jumps.
 
 ## Minimal example
 ```html
@@ -99,5 +99,6 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 - `slotchange()` is Light-DOM only; with `shadow: true` use the native `slotchange` event.
 
 ## Docs
-- [README](README.md): full guide. [README.zh-TW.md](README.zh-TW.md): same in Traditional Chinese.
+- [README](README.md): introduction, the short version, rules for agents, quick start. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.
+- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [lists](docs/lists.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md).
 - `npx ts-dom rules`: every rule id with a description.
