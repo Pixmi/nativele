@@ -681,6 +681,18 @@ this.lists.tags.replace(
 - `data-each` 不能巢狀。
 - `<slot>` 不能放在項目內。
 
+## Trusted Types、翻譯與圖示
+
+- Trusted Types：啟用 `require-trusted-types-for 'script'` 的頁面不需要設定任何 policy 就能用，因為 `ts-dom gen` 把標記寫成資料，執行期只用 DOM 呼叫建立。你自己的程式碼也要避免 `innerHTML`。
+- 翻譯：ts-dom 不內建 i18n。把翻譯後的字串寫進文字洞，例如 `this.text.title = t("title")`，屬性則在 `render()` 裡處理；HTML 要不要完全不放文字由你決定。
+- 圖示：ts-dom 不管理圖示。把圖示做成你自己的自訂元素，用 `createElementNS` 從你選的來源建立 SVG，在模板裡當子元件使用：
+
+```html
+<app-icon name="send" class="size-4"></app-icon>
+```
+
+- 重新排序：清單（`data-each`）在瀏覽器支援時用 `moveBefore` 搬動項目，所有元件都接受這種搬動而不會被斷開再連上，所以被搬動的項目保有焦點、捲動位置與訂閱。
+
 ## 檢查
 
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。

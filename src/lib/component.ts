@@ -499,6 +499,9 @@ export function Component(
       this.connected();
     }
 
+    /** Opts in to atomic moves (`moveBefore`): a moved component stays connected, keeping its state, focus and subscriptions. */
+    connectedMoveCallback(): void {}
+
     disconnectedCallback(): void {
       this.#slots?.disconnect();
       for (const fn of this.#cleanups.splice(0)) fn();

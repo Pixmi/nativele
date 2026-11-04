@@ -681,6 +681,18 @@ Notes:
 - `data-each` cannot be nested.
 - `<slot>` cannot be placed inside an item.
 
+## Trusted Types, Translations and Icons
+
+- Trusted Types: pages that enforce `require-trusted-types-for 'script'` work with no policy, because `ts-dom gen` writes the markup as data and the runtime builds it with DOM calls. Your own code must avoid `innerHTML` too.
+- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way.
+- Icons: ts-dom does not manage icons. Make an icon a custom element of your own that builds its SVG with `createElementNS` from whatever source you use, and place it in a template as a child component:
+
+```html
+<app-icon name="send" class="size-4"></app-icon>
+```
+
+- Reordering: a keyed list (`data-each`) moves its items with `moveBefore` where the browser has it, and every component accepts the move without being disconnected, so a moved item keeps its focus, scroll position and subscriptions.
+
 ## Checks
 
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
