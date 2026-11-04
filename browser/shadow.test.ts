@@ -56,7 +56,7 @@ describe("Shadow DOM: rendering and isolation", () => {
   it("a Shadow DOM component's <style> stays inside its shadow root and is never injected into <head>", async () => {
     expect(await inShadow("#plain", (r) => r.querySelector("style") !== null)).toBe(true);
     // The Light DOM variant (lt-leaf) does inject a global style; the Shadow DOM components must not.
-    const tags = await page.evaluate(() => [...document.querySelectorAll("style[data-ts-dom]")].map((e) => (e as HTMLElement).dataset.tsDom));
+    const tags = await page.evaluate(() => [...document.querySelectorAll("style[data-nativel]")].map((e) => (e as HTMLElement).dataset.nativel));
     expect(tags).not.toContain("sh-leaf");
     expect(tags).not.toContain("sh-panel");
     expect(tags).not.toContain("sh-scoped");
@@ -69,7 +69,7 @@ describe("Shadow DOM: rendering and isolation", () => {
   });
   it("<style scoped> has no effect in Shadow DOM: it behaves like a normal shadow style and is not injected globally", async () => {
     expect(await color("#scoped", ".x")).toBe("rgb(1, 2, 3)");
-    expect(await page.evaluate(() => document.querySelector("style[data-ts-dom='sh-scoped']"))).toBeNull();
+    expect(await page.evaluate(() => document.querySelector("style[data-nativel='sh-scoped']"))).toBeNull();
   });
 });
 

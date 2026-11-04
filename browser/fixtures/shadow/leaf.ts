@@ -1,4 +1,4 @@
-import { Component, define, event } from "ts-dom";
+import { Component, define, event } from "nativel";
 import tpl from "./leaf.html.js";
 
 // The same component in both modes, to compare Shadow DOM against Light DOM.

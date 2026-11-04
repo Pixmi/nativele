@@ -1,5 +1,5 @@
-import { Component, define } from "ts-dom";
-import type { EventHit } from "ts-dom";
+import { Component, define } from "nativel";
+import type { EventHit } from "nativel";
 import tpl from "./todo-list.html.js";
 
 interface Item {

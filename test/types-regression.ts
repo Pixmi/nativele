@@ -1,6 +1,6 @@
 // Compile-only regression file (checked by `tsc`, not run by vitest).
 // Any option shape below that stops compiling is a typing regression.
-import { Component } from "ts-dom";
+import { Component } from "nativel";
 import tpl from "./stateful.html.js";
 
 const state = { title: "", count: 1, open: true };

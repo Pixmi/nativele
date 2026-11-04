@@ -1,4 +1,4 @@
-import { Component, define } from "ts-dom";
+import { Component, define } from "nativel";
 import tpl from "./counter.html.js";
 
 export class MyCounter extends Component(tpl, {

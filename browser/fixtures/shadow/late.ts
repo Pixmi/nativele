@@ -1,4 +1,4 @@
-import { Component } from "ts-dom";
+import { Component } from "nativel";
 import tpl from "./late.html.js";
 
 /** Deliberately not defined: tests "a prop assigned before the element is upgraded" in Shadow DOM mode. */

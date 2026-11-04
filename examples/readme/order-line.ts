@@ -1,5 +1,5 @@
-import { Component, define } from "ts-dom";
-import type { EmitEvent } from "ts-dom";
+import { Component, define } from "nativel";
+import type { EmitEvent } from "nativel";
 import type { QuantityInput } from "./quantity-input.js";
 import tpl from "./order-line.html.js";
 

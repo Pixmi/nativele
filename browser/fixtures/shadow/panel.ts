@@ -1,5 +1,5 @@
-import { Component, define } from "ts-dom";
-import type { EmitEvent, EventHit } from "ts-dom";
+import { Component, define } from "nativel";
+import type { EmitEvent, EventHit } from "nativel";
 import type { ShadowLeaf } from "./leaf.js";
 import tpl from "./panel.html.js";
 

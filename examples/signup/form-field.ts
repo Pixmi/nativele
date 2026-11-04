@@ -1,4 +1,4 @@
-import { Component, define, event } from "ts-dom";
+import { Component, define, event } from "nativel";
 import tpl from "./form-field.html.js";
 
 /**

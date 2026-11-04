@@ -1,4 +1,4 @@
-import { Component, define, event } from "ts-dom";
+import { Component, define, event } from "nativel";
 import tpl from "./child.html.js";
 
 export class FieldChild extends Component(tpl, {
