@@ -86,7 +86,19 @@ export class List<L extends ListSchema = ListSchema> {
     if (!Array.isArray(items)) {
       throw new Error(`[invalid-items] items must be an array of objects, but got ${items === null ? "null" : typeof items}. Fix: assign an array, for example items = view.todos ?? [].`);
     }
+    if (items.length) this.#checkProp();
     this.replace(items, this.#keyOf, this.#assign, { skipUnchanged: true });
+  }
+
+  // Checked once, before the list changes, so a wrong data-prop leaves no half-built list behind.
+  #checkProp(): void {
+    const prop = this.binding?.prop as string;
+    const tag = this.proto.localName;
+    if (!customElements.get(tag)) return;
+    const probe = this.#items.values().next().value?.el ?? document.importNode(this.proto, false);
+    if (!(prop in probe)) {
+      throw new Error(`[unknown-prop] <${tag}> has no "${prop}" property (data-prop). Fix: declare ${prop} in the component's props, or change data-prop.`);
+    }
   }
 
   readonly #keyOf = (item: unknown): PropertyKey => {
@@ -102,12 +114,7 @@ export class List<L extends ListSchema = ListSchema> {
   };
 
   readonly #assign = (item: unknown, { el }: ItemContext<L>): void => {
-    const prop = this.binding?.prop as string;
-    customElements.upgrade(el);
-    if (customElements.get(el.localName) && !(prop in el)) {
-      throw new Error(`[unknown-prop] <${el.localName}> has no "${prop}" property (data-prop). Fix: declare ${prop} in the component's props, or change data-prop.`);
-    }
-    (el as unknown as Record<string, unknown>)[prop] = item;
+    (el as unknown as Record<string, unknown>)[this.binding?.prop as string] = item;
   };
 
   /** From any node inside an item, find the key and data of the item it belongs to (used by event handlers). */
