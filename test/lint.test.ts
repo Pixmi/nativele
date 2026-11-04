@@ -21,7 +21,7 @@ class Card extends Component(cardTpl, { shadow: true }) {
     expect(templateCode(code, "./card.html.js")).not.toContain("this.refs.title.textContent");
   });
   it("reports an unused title in Card (List must not mask it)", () => {
-    const d = mkdtempSync(join(tmpdir(), "tsdom-"));
+    const d = mkdtempSync(join(tmpdir(), "nativele-"));
     writeFileSync(join(d, "list.html"), `<h1 data-ref="title"></h1>`);
     writeFileSync(join(d, "card.html"), `<h1 data-ref="title"></h1>`);
     writeFileSync(join(d, "w.ts"), code);
@@ -37,11 +37,11 @@ describe("state and data-on-*", () => {
   const html = `<h1>{{ title }}</h1><p data-if="open"></p><button data-on-click="inc"></button>`;
   it("templateCode detects the state option and adds the marker", () => {
     const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: { title: "" } }) { inc() {} }`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
+    expect(templateCode(code, "./a.html.js")).toContain("nativele:stateful");
     const shorthand = `import t from "./a.html.js";\nclass A extends Component(t, { state }) { inc() {} }`;
-    expect(templateCode(shorthand, "./a.html.js")).toContain("ts-dom:stateful");
+    expect(templateCode(shorthand, "./a.html.js")).toContain("nativele:stateful");
     const plain = `import t from "./a.html.js";\nclass A extends Component(t, { shadow: true }) { inc() {} }`;
-    expect(templateCode(plain, "./a.html.js")).not.toContain("ts-dom:stateful");
+    expect(templateCode(plain, "./a.html.js")).not.toContain("nativele:stateful");
   });
   it("with state, {{ }} and data-if are auto-bound and need not appear in code", () => {
     const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: {} }) { inc() {} }`;
@@ -57,10 +57,10 @@ describe("state and data-on-*", () => {
     expect(missing.length).toBe(1);
     expect(missing[0]?.message).toContain("inc");
     for (const def of [`inc() {}`, `inc = () => {}`, `override inc(): void {}`, `async inc() {}`, `public inc(e: Event) {}`]) {
-      expect(unusedMarkup(html, `class A { ${def} /*ts-dom:stateful*/ }`)).toEqual([]);
+      expect(unusedMarkup(html, `class A { ${def} /*nativele:stateful*/ }`)).toEqual([]);
     }
     // A mere call (this.inc()) is not a definition
-    expect(unusedMarkup(html, `class A { x() { this.inc(); } /*ts-dom:stateful*/ }`).length).toBe(1);
+    expect(unusedMarkup(html, `class A { x() { this.inc(); } /*nativele:stateful*/ }`).length).toBe(1);
   });
 });
 
@@ -77,7 +77,7 @@ describe("dynamic access", () => {
 
 describe("lintUsage", () => {
   it("finds unused markup", () => {
-    const d = mkdtempSync(join(tmpdir(), "tsdom-"));
+    const d = mkdtempSync(join(tmpdir(), "nativele-"));
     writeFileSync(join(d, "a.html"), `<b data-ref="used"></b><i data-ref="dead"></i><p data-if="c"></p><u>{{ n }}</u><template data-each="l"><li>{{ x }}</li></template>`);
     writeFileSync(join(d, "a.ts"), `import t from "./a.html.js"; this.refs.used; this.text.n = 1;`);
     const issues = lintUsage([d], [join(d, "a.ts")]);
@@ -88,7 +88,7 @@ describe("lintUsage", () => {
     expect(msgs.some((m) => m.includes(`"used"`) || m.includes("{{ n }}"))).toBe(false);
   });
   it("HTML that nobody imports", () => {
-    const d = mkdtempSync(join(tmpdir(), "tsdom-"));
+    const d = mkdtempSync(join(tmpdir(), "nativele-"));
     writeFileSync(join(d, "o.html"), `<p></p>`);
     const issue = lintUsage([d], [])[0];
     expect(issue?.rule).toBe("no-importer");
@@ -156,7 +156,7 @@ describe("data-flow checks", () => {
   });
   it("templateCode: the props option also enables stateful mode", () => {
     const code = `import t from "./a.html.js";\nclass A extends Component(t, { props: { label: "" } }) {}`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
+    expect(templateCode(code, "./a.html.js")).toContain("nativele:stateful");
   });
 });
 
@@ -202,7 +202,7 @@ describe("unusedMarkup locations and messages", () => {
 
 describe("child component contract rules", () => {
   const setup = (files: Record<string, string>) => {
-    const dir = mkdtempSync(join(tmpdir(), "tsdom-"));
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
     for (const [n, c] of Object.entries(files)) writeFileSync(join(dir, n), c);
     return dir;
   };
@@ -316,7 +316,7 @@ describe("formatIssue", () => {
     expect(formatIssue({ file: "b.html", rule: "unknown-prop", severity: "warning", message: "m", line: 1, col: 1 })).toBe("b.html:1:1 warning [unknown-prop] m");
   });
   it("formats a real issue from lintUsage", () => {
-    const d = mkdtempSync(join(tmpdir(), "tsdom-"));
+    const d = mkdtempSync(join(tmpdir(), "nativele-"));
     writeFileSync(join(d, "o.html"), `<p></p>`);
     const issue = lintUsage([d], [])[0];
     expect(issue).toBeDefined();

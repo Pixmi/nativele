@@ -1,7 +1,7 @@
 {
-  "name": "ts-dom",
+  "name": "nativele",
   "version": "0.2.0",
-  "description": "Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
+  "description": "A TypeScript-driven, HTML-first UI library. Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
   "keywords": [
     "html",
     "typescript",
@@ -13,21 +13,21 @@
     "codegen"
   ],
   "license": "MIT",
-  "author": "ts-dom contributors",
+  "author": "nativele contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Pixmi/ts-dom.git"
+    "url": "git+https://github.com/Pixmi/nativele.git"
   },
-  "homepage": "https://github.com/Pixmi/ts-dom#readme",
+  "homepage": "https://github.com/Pixmi/nativele#readme",
   "bugs": {
-    "url": "https://github.com/Pixmi/ts-dom/issues"
+    "url": "https://github.com/Pixmi/nativele/issues"
   },
   "type": "module",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "ts-dom": "./dist/cli.mjs"
+    "nativele": "./dist/cli.mjs"
   },
   "exports": {
     ".": {

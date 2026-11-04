@@ -141,7 +141,7 @@ export function Component<S extends Schema>(
  * When something is wrong the return type becomes an object type describing the problem, so
  * `class X extends Component(...)` fails in tsc and lists the names:
  * `missingStateKeys` (the HTML uses a name that does not exist), `conflictingKeys` (state / props / derive share a name),
- * `reservedPropNames` (a prop shares a name with HTMLElement or a ts-dom member), `nativeEventNames` (emits shares a name with a native event).
+ * `reservedPropNames` (a prop shares a name with HTMLElement or a nativele member), `nativeEventNames` (emits shares a name with a native event).
  * (The check lives in the return type, not in the parameter: in the parameter it prevents TypeScript from inferring the type of derive.)
  */
 export function Component<
@@ -170,7 +170,7 @@ export function Component(
   const stateKeys = Object.keys(opts.state ?? {});
   // Reject declarations that would cause hard-to-trace problems as early as possible, at definition time
   for (const k of propKeys) {
-    if (k in HTMLElement.prototype || RESERVED_NAMES.has(k)) throw new Error(`[reserved-prop] props.${k} has the same name as a member of HTMLElement or ts-dom, which it would shadow. Fix: rename the prop (e.g. ${k}Text).`);
+    if (k in HTMLElement.prototype || RESERVED_NAMES.has(k)) throw new Error(`[reserved-prop] props.${k} has the same name as a member of HTMLElement or nativele, which it would shadow. Fix: rename the prop (e.g. ${k}Text).`);
     if (stateKeys.includes(k)) throw new Error(`[conflicting-keys] "${k}" is declared in both state and props. Data must have exactly one owner. Fix: keep it in props (the parent owns it) or in state (the component owns it), not both.`);
   }
   for (const k of Object.keys(opts.derive ?? {})) {

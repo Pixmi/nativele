@@ -6,10 +6,10 @@ import { CODEGEN_RULES, CodegenError, generateAll, listHtml, watchAll } from "./
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
-const HELP = `ts-dom <command> [dirs...] [flags]
+const HELP = `nativele <command> [dirs...] [flags]
 
 Commands
-  gen   [dirs...]   Generate x.html.ts for every x.html, plus ts-dom-tags.ts (default dir: src)
+  gen   [dirs...]   Generate x.html.ts for every x.html, plus nativele-tags.ts (default dir: src)
         --watch           keep watching and regenerate on change
         --include=<glob>  only these templates (repeatable; relative to each dir, ** crosses folders)
         --exclude=<glob>  leave these templates out (repeatable)
@@ -29,16 +29,16 @@ function tsFiles(dir: string): string[] {
     if (n === "node_modules") return [];
     const f = join(dir, n);
     if (statSync(f).isDirectory()) return tsFiles(f);
-    return n.endsWith(".ts") && !n.endsWith(".d.ts") && !n.endsWith(".html.ts") && n !== "ts-dom-tags.ts" ? [f] : [];
+    return n.endsWith(".ts") && !n.endsWith(".d.ts") && !n.endsWith(".html.ts") && n !== "nativele-tags.ts" ? [f] : [];
   });
 }
 
 function printRules(): void {
   const groups: [string, string, Record<string, string>][] = [
-    ["gen", "reported by `ts-dom gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
-    ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup", UNUSED_MARKUP_RULES],
-    ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow", DATA_FLOW_RULES],
-    ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
+    ["gen", "reported by `nativele gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
+    ["lint: unused-markup", "errors from `nativele lint` / oxlint rule nativele/unused-markup", UNUSED_MARKUP_RULES],
+    ["lint: data-flow", "warnings from `nativele lint` / oxlint rule nativele/data-flow", DATA_FLOW_RULES],
+    ["lint: a11y", "warnings from `nativele lint --a11y` / oxlint rule nativele/a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
   ];
   for (const [name, note, rules] of groups) {
     console.log(`\n${name}: ${note}`);
@@ -66,10 +66,10 @@ try {
       }
     }
     if (flags.has("--watch")) {
-      console.log(`[ts-dom] watching ${dirs.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
+      console.log(`[nativele] watching ${dirs.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
       watchAll(dirs, {
         ...generate,
-        onGenerate: (f) => console.log(`[ts-dom] generated ${f}`),
+        onGenerate: (f) => console.log(`[nativele] generated ${f}`),
         onError: (m) => console.error(m),
       });
       await new Promise(() => {}); // keep running until interrupted
@@ -89,7 +89,7 @@ try {
     else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
     const errors = issues.filter((i) => i.severity === "error").length;
     if (errors || (flags.has("--strict") && issues.length)) process.exitCode = 1;
-    if (!flags.has("--json") && !issues.length) console.log("ts-dom lint: no issues");
+    if (!flags.has("--json") && !issues.length) console.log("nativele lint: no issues");
   } else if (cmd === "rules") {
     printRules();
   } else {

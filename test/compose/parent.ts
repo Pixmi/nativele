@@ -1,5 +1,5 @@
-import { Component, define } from "ts-dom";
-import type { EmitEvent, EventHit } from "ts-dom";
+import { Component, define } from "nativele";
+import type { EmitEvent, EventHit } from "nativele";
 import type { FieldChild } from "./child.js";
 import tpl from "./parent.html.js";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Component, define } from "ts-dom";
-import type { EventHit } from "ts-dom";
+import { Component, define } from "nativele";
+import type { EventHit } from "nativele";
 import tpl from "./stateful.html.js";
 
 interface Row {

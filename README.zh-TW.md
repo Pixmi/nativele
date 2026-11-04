@@ -1,4 +1,6 @@
-# ts-dom
+# Nativele
+
+以 TypeScript 驅動、HTML 優先的 UI 函式庫。
 
 [English](README.md) | 繁體中文
 
@@ -12,8 +14,8 @@
 ```
 
 ```ts
-import { Component, define } from "ts-dom";
-import tpl from "./user-card.html.js"; // 由 ts-dom gen 產生，含型別
+import { Component, define } from "nativele";
+import tpl from "./user-card.html.js"; // 由 nativele gen 產生，含型別
 
 class UserCard extends Component(tpl, {
   state: { name: "Ada", admin: true }, // 資料只在這裡；{{ name }}、data-if="admin" 自動對應同名欄位
@@ -30,8 +32,8 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 ## 快速開始
 
 ```sh
-npm i -D typescript && npm i ts-dom
-npx ts-dom gen      # 為每個 x.html 產生 x.html.ts（含型別）
+npm i -D typescript && npm i nativele
+npx nativele gen      # 為每個 x.html 產生 x.html.ts（含型別）
 npx tsc             # 型別檢查並編譯；不需要 Vite 或其他 bundler
 ```
 
@@ -51,7 +53,7 @@ HTML 只描述結構、資料放哪裡、事件找哪個方法：
 TypeScript 擁有資料與行為。`{{ count }}`、`{{ double }}`、`data-if="big"` 自動對應同名的 state 或衍生值，資料只用 `this.set()` 修改：
 
 ```ts
-import { Component, define } from "ts-dom";
+import { Component, define } from "nativele";
 import tpl from "./counter.html.js";
 
 export class MyCounter extends Component(tpl, {
@@ -90,8 +92,8 @@ HTML 用了 `state` 與 `derive` 都沒有的名稱、`data-on-click` 指向不�
 ```
 
 ```ts
-import { Component, define } from "ts-dom";
-import type { EventHit } from "ts-dom";
+import { Component, define } from "nativele";
+import type { EventHit } from "nativele";
 import tpl from "./todo-list.html.js";
 
 interface Item {
@@ -152,7 +154,7 @@ define("todo-list", TodoList);
 ```
 
 ```ts
-import { Component, define, event } from "ts-dom";
+import { Component, define, event } from "nativele";
 import tpl from "./quantity-input.html.js";
 
 /** A child component: the parent owns the value (a prop); the child only asks for a change through an event. */
@@ -170,7 +172,7 @@ export class QuantityInput extends Component(tpl, {
 define("quantity-input", QuantityInput);
 ```
 
-父層在自己的 HTML 裡直接使用子元件的標籤。`ts-dom gen` 會自動 `import` 子元件，並讓 `this.refs.qty` 有子元件的完整型別：
+父層在自己的 HTML 裡直接使用子元件的標籤。`nativele gen` 會自動 `import` 子元件，並讓 `this.refs.qty` 有子元件的完整型別：
 
 ```html
 <quantity-input data-ref="qty" min="1" max="5" data-on-quantity-change="onQuantity"></quantity-input>
@@ -178,8 +180,8 @@ define("quantity-input", QuantityInput);
 ```
 
 ```ts
-import { Component, define } from "ts-dom";
-import type { EmitEvent } from "ts-dom";
+import { Component, define } from "nativele";
+import type { EmitEvent } from "nativele";
 import type { QuantityInput } from "./quantity-input.js";
 import tpl from "./order-line.html.js";
 
@@ -215,7 +217,7 @@ define("order-line", OrderLine);
 
 和 Vue 模板的對照：
 
-| Vue | ts-dom | 差異 |
+| Vue | nativele | 差異 |
 |---|---|---|
 | `{{ expr }}` | `{{ name }}` | 只能是單一識別字，不能是路徑或運算 |
 | `v-if` | `data-if="name"` | 條件由 TS 呼叫 `show(name, bool)` 決定 |
@@ -230,7 +232,7 @@ define("order-line", OrderLine);
 
 ```sh
 npm i -D typescript
-npm i ts-dom
+npm i nativele
 ```
 
 `tsconfig.json`（與一般 TS 專案相同，沒有特殊選項）：
@@ -252,15 +254,15 @@ npm i ts-dom
 流程：先產生範本模組，再用 `tsc` 編譯與型別檢查。
 
 ```sh
-npx ts-dom gen        # 為 src/ 下每個 x.html 產生 x.html.ts
+npx nativele gen        # 為 src/ 下每個 x.html 產生 x.html.ts
 npx tsc               # 型別檢查並編譯到 out/
 ```
 
-文字中的空白預設照原樣保留。若想把連續空白收成一個空格、並丟掉標籤之間只含換行的文字（讓縮排的 HTML 不產生多餘空格），用 `npx ts-dom gen --whitespace=collapse` 或 Vite 外掛選項 `whitespace: "collapse"`；`<pre>` 與 `<textarea>` 不受影響。
+文字中的空白預設照原樣保留。若想把連續空白收成一個空格、並丟掉標籤之間只含換行的文字（讓縮排的 HTML 不產生多餘空格），用 `npx nativele gen --whitespace=collapse` 或 Vite 外掛選項 `whitespace: "collapse"`；`<pre>` 與 `<textarea>` 不受影響。
 
-只想產生部分範本時（例如分階段遷移專案），傳入相對於各目錄的 glob：`npx ts-dom gen src --include='new/**' --exclude='**/draft-*.html'`，或用 Vite 外掛選項 `include`、`exclude`。`*` 只比對同一層資料夾，`**` 可跨資料夾。
+只想產生部分範本時（例如分階段遷移專案），傳入相對於各目錄的 glob：`npx nativele gen src --include='new/**' --exclude='**/draft-*.html'`，或用 Vite 外掛選項 `include`、`exclude`。`*` 只比對同一層資料夾，`**` 可跨資料夾。
 
-開發時可用 `npx ts-dom gen --watch` 持續監看 `.html`，搭配 `tsc --watch`。
+開發時可用 `npx nativele gen --watch` 持續監看 `.html`，搭配 `tsc --watch`。
 
 在程式中以 `.js` 結尾匯入範本（標準 NodeNext 寫法，TS 會對應到產生的 `x.html.ts`）：
 
@@ -270,11 +272,11 @@ import tpl from "./user-card.html.js";
 
 ### 在瀏覽器執行（不用 bundler）
 
-編譯後的 JS 是標準 ES module，只有一個裸模組名 `ts-dom` 需要對應，用 import map 即可：
+編譯後的 JS 是標準 ES module，只有一個裸模組名 `nativele` 需要對應，用 import map 即可：
 
 ```html
 <script type="importmap">
-  { "imports": { "ts-dom": "/node_modules/ts-dom/dist/index.mjs" } }
+  { "imports": { "nativele": "/node_modules/nativele/dist/index.mjs" } }
 </script>
 <user-card></user-card>
 <script type="module" src="/out/main.js"></script>
@@ -284,18 +286,18 @@ import tpl from "./user-card.html.js";
 
 ### 搭配 Vite（選用）
 
-用 bundler 時不需要 import map，`ts-dom/vite` 外掛只是方便：建置時自動產生 `.html.ts`、dev 時監看 `.html` 重新產生、可選的 ARIA 警告。
+用 bundler 時不需要 import map，`nativele/vite` 外掛只是方便：建置時自動產生 `.html.ts`、dev 時監看 `.html` 重新產生、可選的 ARIA 警告。
 
 ```ts
 import { defineConfig } from "vite-plus"; // 或 "vite"
-import { tsDom } from "ts-dom/vite";
+import { nativele } from "nativele/vite";
 
 export default defineConfig({
-  plugins: [tsDom()], // 選項：dirs（預設 ["src"]）、runtime、whitespace、include、exclude、a11y
+  plugins: [nativele()], // 選項：dirs（預設 ["src"]）、runtime、whitespace、include、exclude、a11y
 });
 ```
 
-安裝時建議先裝 `vite-plus`，再裝 `ts-dom`（npm 同一次安裝時可能不會把 `vite` 提升到頂層）。
+安裝時建議先裝 `vite-plus`，再裝 `nativele`（npm 同一次安裝時可能不會把 `vite` 提升到頂層）。
 
 ### Lint（選用）
 
@@ -303,11 +305,11 @@ export default defineConfig({
 // vite.config.ts 的 lint 設定（vp lint / oxlint）
 lint: {
   ignorePatterns: ["node_modules", "dist", "**/*.html.ts"],
-  jsPlugins: [{ name: "ts-dom", specifier: "ts-dom/oxlint" }],
+  jsPlugins: [{ name: "nativele", specifier: "nativele/oxlint" }],
   rules: {
-    "ts-dom/unused-markup": "error",
-    "ts-dom/a11y": ["warn", { ignore: [] }], // 選用：ARIA 檢查，見「ARIA / 無障礙檢查」
-    "ts-dom/data-flow": ["warn", { ignore: [] }], // 選用：避免 prop 與事件逐層傳遞，見「資料流」
+    "nativele/unused-markup": "error",
+    "nativele/a11y": ["warn", { ignore: [] }], // 選用：ARIA 檢查，見「ARIA / 無障礙檢查」
+    "nativele/data-flow": ["warn", { ignore: [] }], // 選用：避免 prop 與事件逐層傳遞，見「資料流」
   },
 },
 ```
@@ -315,11 +317,11 @@ lint: {
 不用 oxlint 時，同樣的檢查可用 CLI：
 
 ```sh
-npx ts-dom lint [dirs...]   # 未使用標記（錯誤）與資料流建議（警告）
-npx ts-dom lint --a11y      # 另外檢查 ARIA / 無障礙（警告）
-npx ts-dom lint --strict    # 警告也使結束碼為 1（錯誤一定會）
-npx ts-dom lint --json      # 輸出 JSON：{ "issues": [{ file, line, col, severity, rule, message }] }
-npx ts-dom rules            # 列出所有規則代號與說明
+npx nativele lint [dirs...]   # 未使用標記（錯誤）與資料流建議（警告）
+npx nativele lint --a11y      # 另外檢查 ARIA / 無障礙（警告）
+npx nativele lint --strict    # 警告也使結束碼為 1（錯誤一定會）
+npx nativele lint --json      # 輸出 JSON：{ "issues": [{ file, line, col, severity, rule, message }] }
+npx nativele rules            # 列出所有規則代號與說明
 ```
 
 每則訊息的格式都一樣，說明**哪裡錯、為什麼、怎麼修**，並附上 HTML 裡的行與欄：
@@ -331,16 +333,16 @@ a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid
 
 結束碼：0 = 沒有問題，1 = 有錯誤（或使用 `--strict` 時有警告）。oxlint 外掛的訊息以 `./x.html.js:行:欄 [規則代號] 訊息` 開頭，回報在 `import` 那一行。
 
-建議的檢查流程：`ts-dom gen && tsc && ts-dom lint`。
+建議的檢查流程：`nativele gen && tsc && nativele lint`。
 
 ## 型別如何產生
 
-每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `ts-dom-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含這個範本解析後的標記（以資料表示，執行期用 DOM 呼叫轉成節點，瀏覽器不需要解析 HTML 字串）與結構描述，所以 `tsc` 直接就能編譯與檢查。
+每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `nativele-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含這個範本解析後的標記（以資料表示，執行期用 DOM 呼叫轉成節點，瀏覽器不需要解析 HTML 字串）與結構描述，所以 `tsc` 直接就能編譯與檢查。
 
 ```ts
 // user-card.html.ts（自動產生）
-import { template } from "ts-dom";
-import type { El } from "ts-dom";
+import { template } from "nativele";
+import type { El } from "nativele";
 export default template<{
   refs: { "toggle": El<"button"> };
   lists: { "tags": { refs: {}; text: "label"; ifs: "hot" } };
@@ -400,7 +402,7 @@ class Iso extends Component(tpl, { shadow: true }) {}   // 選用：Shadow DOM
 
 ### Light（預設）與 Shadow
 
-ts-dom 不做樣式管理，所以預設渲染到元素本身（Light DOM）：DOM 裡看到的就是你寫的結構，CSS 是全域的，表單與 ARIA 的 id 參照都照常運作。`shadow: true` 則使用 Shadow DOM。
+nativele 不做樣式管理，所以預設渲染到元素本身（Light DOM）：DOM 裡看到的就是你寫的結構，CSS 是全域的，表單與 ARIA 的 id 參照都照常運作。`shadow: true` 則使用 Shadow DOM。
 
 | | Light（預設） | `shadow: true` |
 |---|---|---|
@@ -501,7 +503,7 @@ removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((
 - 方法收到 `(event, hit)`。`hit.el` 是帶有 `data-on-*` 的元素；事件發生在清單項目內時，`hit.key` 是該項目的 key，`hit.item` 是最近一次傳給 `update` 的資料；放在項目內的子元件發出的事件也一樣。`hit.item` 預設是 `unknown`，要有型別就在處理方法上標註，例如 `hit: EventHit<Todo>`。需要額外參數就放 `data-*` 屬性，在方法中讀 `hit.el.dataset`。
 - **事件委派**：每種事件只在元件根節點掛一個監聽器，清單再長也不會增加監聽器數量，項目增減不需要重新綁定。不冒泡的事件（`focus`、`blur`、`mouseenter` 等）改用捕獲階段，只處理 target 本身；冒泡事件會依序呼叫由內而外的處理方法，`stopPropagation()` 會停止。
 - **只認元件自己範本裡的元素**：使用者放進 slot 的內容就算寫了 `data-on-click` 也不會觸發。
-- 只能寫方法名稱，`add(1)`、`a.b` 會在 codegen 時報錯；方法名稱不可與 DOM 內建方法或 ts-dom 成員衝突（例如 `remove`、`click`、`focus`、`set`、`render`），否則會覆蓋它們，codegen 會報錯並建議改名。
+- 只能寫方法名稱，`add(1)`、`a.b` 會在 codegen 時報錯；方法名稱不可與 DOM 內建方法或 nativele 成員衝突（例如 `remove`、`click`、`focus`、`set`、`render`），否則會覆蓋它們，codegen 會報錯並建議改名。
 - **tsc 檢查方法存在**：`define(name, Class)` 會檢查 HTML 引用的方法都是類別的 public 成員，缺少時報錯並列出名稱（`missingHandlers: "名稱"`）。連接到頁面時也會再檢查一次，丟出明確的執行期錯誤。
 - 事件名稱要小寫（HTML 屬性不分大小寫）；`DOMContentLoaded` 這類大小寫混合的事件請改用 `this.on()`。
 
@@ -527,10 +529,10 @@ onName(e: Event) {                         // 事件往上：只送到這個標�
 }
 ```
 
-組合需要三件事，ts-dom 都處理好了：
+組合需要三件事，nativele 都處理好了：
 
-- **自動載入子元件**：範本用到的標籤（名稱含連字號），若在掃描目錄內有 `define("tag", Class)`，`ts-dom gen` 會在產生的 `x.html.ts` 裡自動加上 `import "./child.js"`。HTML 是唯一的依賴來源，不需要自己 `import` 子元件（只用 `import type` 引用型別並不會註冊元素，這是很容易踩到的坑）。目錄之外或第三方的元件，仍需自己 import。
-- **子元件的型別**：`ts-dom gen` 掃描 `define("tag", Class)`（類別要 `export`），產生 `ts-dom-tags.ts`，把元件登錄到 `HTMLElementTagNameMap`。於是範本裡 `<form-field data-ref="name">` 的 `refs.name` 就是 `FormField`：props 的名稱與型別、方法都由 tsc 檢查。這個檔案已加入 `.gitignore`，與 `.html.ts` 一樣由 `gen` 產生。
+- **自動載入子元件**：範本用到的標籤（名稱含連字號），若在掃描目錄內有 `define("tag", Class)`，`nativele gen` 會在產生的 `x.html.ts` 裡自動加上 `import "./child.js"`。HTML 是唯一的依賴來源，不需要自己 `import` 子元件（只用 `import type` 引用型別並不會註冊元素，這是很容易踩到的坑）。目錄之外或第三方的元件，仍需自己 import。
+- **子元件的型別**：`nativele gen` 掃描 `define("tag", Class)`（類別要 `export`），產生 `nativele-tags.ts`，把元件登錄到 `HTMLElementTagNameMap`。於是範本裡 `<form-field data-ref="name">` 的 `refs.name` 就是 `FormField`：props 的名稱與型別、方法都由 tsc 檢查。這個檔案已加入 `.gitignore`，與 `.html.ts` 一樣由 `gen` 產生。
 - **slot 可以跨層**：父層放進子元件 slot 的內容，其 `{{ }}` 屬於父層，由父層更新；`data-on-*` 也由父層處理，子元件不會誤接。
 
 沒有提供「範本片段 include」：那會變成模板語言的功能。要共用一段結構，請把它做成元件。
@@ -571,11 +573,11 @@ class FormField extends Component(tpl, {
 | 在元件內用 `set()` 修改 prop | `set` 的型別不含 props；執行期丟出明確錯誤 |
 | `emit` 未宣告的事件、資料型別錯誤、該帶資料卻沒帶 | tsc 報錯；執行期未宣告的事件丟出錯誤 |
 | `state` / `props` / `derive` 同名 | tsc 報錯（`conflictingKeys`）；`Component()` 呼叫時丟出錯誤 |
-| prop 名稱與 `HTMLElement` 或 ts-dom 成員同名（`title`、`hidden`、`render`…） | tsc 報錯（`reservedPropNames`）；執行期丟出錯誤 |
+| prop 名稱與 `HTMLElement` 或 nativele 成員同名（`title`、`hidden`、`render`…） | tsc 報錯（`reservedPropNames`）；執行期丟出錯誤 |
 | `emits` 與原生事件同名（`click`、`input`…） | tsc 報錯（`nativeEventNames`）；執行期丟出錯誤 |
 | 父層給子元件的 prop 名稱或型別錯誤 | tsc 報錯（由 `HTMLElementTagNameMap` 提供型別） |
 
-### 避免層層傳遞（lint：`ts-dom/data-flow`）
+### 避免層層傳遞（lint：`nativele/data-flow`）
 
 Vue 常見的問題是逐層重新 emit、逐層往下傳 prop，靠習慣維持。這裡除了「事件預設不冒泡」之外，還有 lint 提示（只是建議，不是錯誤）：
 
@@ -605,7 +607,7 @@ export const session = createStore({ user: "Ada" });
 connected() { this.bind(session, (s) => (this.text.user = s.user)); }
 ```
 
-開啟方式與其他 lint 相同：`"ts-dom/data-flow": ["warn", { ignore: [] }]`，或 CLI `npx ts-dom lint`（會一併顯示資料流警告，加 `--strict` 則使結束碼為 1）。
+開啟方式與其他 lint 相同：`"nativele/data-flow": ["warn", { ignore: [] }]`，或 CLI `npx nativele lint`（會一併顯示資料流警告，加 `--strict` 則使結束碼為 1）。
 
 ### 表單輸入的小提醒
 
@@ -704,9 +706,9 @@ this.lists.tags.replace(
 
 ## Trusted Types、翻譯與圖示
 
-- Trusted Types：啟用 `require-trusted-types-for 'script'` 的頁面不需要設定任何 policy 就能用，因為 `ts-dom gen` 把標記寫成資料，執行期只用 DOM 呼叫建立。你自己的程式碼也要避免 `innerHTML`。
-- 翻譯：ts-dom 不內建 i18n。把翻譯後的字串寫進文字洞，例如 `this.text.title = t("title")`，屬性則在 `render()` 裡處理；HTML 要不要完全不放文字由你決定。
-- 圖示：ts-dom 不管理圖示。把圖示做成你自己的自訂元素，用 `createElementNS` 從你選的來源建立 SVG，在模板裡當子元件使用：
+- Trusted Types：啟用 `require-trusted-types-for 'script'` 的頁面不需要設定任何 policy 就能用，因為 `nativele gen` 把標記寫成資料，執行期只用 DOM 呼叫建立。你自己的程式碼也要避免 `innerHTML`。
+- 翻譯：nativele 不內建 i18n。把翻譯後的字串寫進文字洞，例如 `this.text.title = t("title")`，屬性則在 `render()` 裡處理；HTML 要不要完全不放文字由你決定。
+- 圖示：nativele 不管理圖示。把圖示做成你自己的自訂元素，用 `createElementNS` 從你選的來源建立 SVG，在模板裡當子元件使用：
 
 ```html
 <app-icon name="send" class="size-4"></app-icon>
@@ -716,12 +718,12 @@ this.lists.tags.replace(
 
 ## 檢查
 
-四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
+四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx nativele rules` 列出全部規則。
 
-1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
+1. **codegen 診斷**（`nativele gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 nativele 成員同名），以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
 2. **tsc**：TypeScript 使用了 HTML 沒有宣告的名稱就報錯（`this.refs.nope`、`this.show("nope", true)`）；`state`、`props`、`derive`、`emits` 與 HTML 之間的所有約束（見「資料流」）；子元件 prop 的名稱與型別；`define()` 檢查 `data-on-*` 的方法存在。
 3. **執行期**：`Component()` 與元件在定義、連接與使用時，對同樣的問題丟出帶 `[規則代號]` 與修正方式的錯誤。
-4. **lint**（`ts-dom/unused-markup`、`ts-dom/data-flow`、`ts-dom/a11y`）：HTML 宣告了卻沒被使用的標記（錯誤，附 HTML 位置）、資料流建議與子元件契約（警告）、ARIA（警告）。
+4. **lint**（`nativele/unused-markup`、`nativele/data-flow`、`nativele/a11y`）：HTML 宣告了卻沒被使用的標記（錯誤，附 HTML 位置）、資料流建議與子元件契約（警告）、ARIA（警告）。
 
 `unused-markup` 的規則：
 
@@ -752,15 +754,15 @@ class Card extends Component(cardTpl) {}   // → 回報 card.html 的 title 未
 
 ```ts
 // 1. lint：編輯器與 vp lint 都會顯示，警告回報在 import 那一行（訊息內含 html 的行列號）
-lint: { rules: { "ts-dom/a11y": ["warn", { ignore: ["img-alt"] }] } }
+lint: { rules: { "nativele/a11y": ["warn", { ignore: ["img-alt"] }] } }
 
 // 2. 建置：dev / build 時在終端機顯示
-plugins: [tsDom({ a11y: true })]            // 或 { a11y: { ignore: ["img-alt"] } }
+plugins: [nativele({ a11y: true })]            // 或 { a11y: { ignore: ["img-alt"] } }
 ```
 
 ```sh
 # 3. CLI
-npx ts-dom lint --a11y [--strict]
+npx nativele lint --a11y [--strict]
 ```
 
 `ignore` 填規則代號，可關閉個別檢查：
@@ -806,13 +808,13 @@ src/lib/
   store.ts          createStore
   template.ts       Template / Schema 型別
   codegen.ts        parse5 解析、診斷、產生 .html.ts
-  vite-plugin.ts    選用的 Vite 外掛（ts-dom/vite）
+  vite-plugin.ts    選用的 Vite 外掛（nativele/vite）
   lint.ts           未使用標記與資料流檢查
-  reserved.ts       保留名稱（與 DOM、ts-dom 成員衝突）
+  reserved.ts       保留名稱（與 DOM、nativele 成員衝突）
   llms.txt          給 AI agent 的精簡參考（隨套件發佈）
   a11y.ts           ARIA / 無障礙檢查
-  oxlint-plugin.ts  oxlint JS 外掛（ts-dom/oxlint）
-src/cli.ts          ts-dom gen / lint
+  oxlint-plugin.ts  oxlint JS 外掛（nativele/oxlint）
+src/cli.ts          nativele gen / lint
 examples/           user-card 與待辦清單（todo）範例，demo 入口
 test/               單元測試（happy-dom）
 browser/            真實 Chrome 測試與 fixture
@@ -832,7 +834,7 @@ browser/            真實 Chrome 測試與 fixture
 | `npm run check` | `gen` 後執行 `tsc` |
 | `npm test` | 單元測試（happy-dom） |
 | `npm run test:browser` | 在真實 Chrome 中執行的測試（見下） |
-| `npm run lint` | `vp lint`，含 `ts-dom/unused-markup` |
+| `npm run lint` | `vp lint`，含 `nativele/unused-markup` |
 | `npm run lint:html` | 同一套檢查的 CLI 版本 |
 
 repo 內的範例以 `vite.config.ts` 的 alias 直接指向 `src/lib`，不需先打包。
@@ -844,7 +846,7 @@ repo 內的範例以 `vite.config.ts` 的 alias 直接指向 `src/lib`，不需�
 | 環境變數 | 說明 |
 |---|---|
 | `CHROME_BIN` | Chrome 路徑，預設 `/usr/bin/google-chrome` |
-| `TSDOM_CHROME_HOME` | Chrome 使用的 HOME，預設 `/tmp/chome`（WSL 或唯讀家目錄下避免 crashpad 寫入失敗） |
+| `NATIVELE_CHROME_HOME` | Chrome 使用的 HOME，預設 `/tmp/chome`（WSL 或唯讀家目錄下避免 crashpad 寫入失敗） |
 
 測試固定使用 `--no-sandbox --no-zygote`，適合 WSL 與容器環境；一般桌面環境也可執行。
 
@@ -866,7 +868,7 @@ repo 內的範例以 `vite.config.ts` 的 alias 直接指向 `src/lib`，不需�
 
 ## 限制
 
-- 在瀏覽器直接執行（不用 bundler）時，需自行提供 import map 對應 `ts-dom`，且相對匯入需寫 `.js` 副檔名（NodeNext 慣例）。
+- 在瀏覽器直接執行（不用 bundler）時，需自行提供 import map 對應 `nativele`，且相對匯入需寫 `.js` 副檔名（NodeNext 慣例）。
 - `data-on-*` 的事件名稱要小寫；不冒泡的事件只處理 target 本身。
 - 子元件的自動 import 與標籤型別只掃描 `gen` 指定的目錄；第三方或目錄外的元件要自己 import，也要自己宣告 `HTMLElementTagNameMap`。`define` 的類別沒有 `export` 時不會有標籤型別。
 - 事件處理方法收到的 `CustomEvent` 需要用 `EmitEvent<子元件, "事件名">` 轉型，HTML 屬性無法帶型別。

@@ -48,6 +48,6 @@ export function launchChrome(): Promise<Browser> {
     headless: true,
     // WSL or sandboxed environments: point HOME at a writable place and pass --no-zygote, otherwise crashpad fails to write and Chrome crashes
     args: ["--no-sandbox", "--no-zygote", "--disable-gpu", "--disable-dev-shm-usage", "--disable-crash-reporter"],
-    env: { ...process.env, HOME: process.env.TSDOM_CHROME_HOME ?? "/tmp/chome" } as Record<string, string>,
+    env: { ...process.env, HOME: process.env.NATIVELE_CHROME_HOME ?? "/tmp/chome" } as Record<string, string>,
   });
 }

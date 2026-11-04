@@ -62,7 +62,7 @@ function templateRule(
 const ignored = (c: Context) => c.options?.[0]?.ignore ?? [];
 
 export default {
-  meta: { name: "ts-dom" },
+  meta: { name: "nativele" },
   rules: {
     /** The HTML declares markup that this file never uses. Always on when enabled; reported as errors. */
     "unused-markup": templateRule("Markup declared in the HTML (data-ref, data-if, data-each, {{ }}, data-on-*) must be used by the component class", (html, c, spec) =>

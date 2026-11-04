@@ -108,7 +108,7 @@ describe("Signup form e2e (composition, props down, events up)", () => {
   });
   it("each component's <style> is injected only once", async () => {
     for (const tag of ["signup-form", "form-field"]) {
-      expect(await page.$$eval(`style[data-ts-dom='${tag}']`, (e) => e.length)).toBe(1);
+      expect(await page.$$eval(`style[data-nativele='${tag}']`, (e) => e.length)).toBe(1);
     }
   });
 });
