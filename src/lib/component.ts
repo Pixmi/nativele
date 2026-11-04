@@ -128,7 +128,10 @@ export type EmitEvent<I, N extends string> = I extends { readonly "~emits"?: inf
     : never
   : never;
 
-const NON_BUBBLING = new Set(["focus", "blur", "mouseenter", "mouseleave", "pointerenter", "pointerleave", "load", "error", "scroll", "toggle"]);
+const NON_BUBBLING = new Set([
+  "focus", "blur", "mouseenter", "mouseleave", "pointerenter", "pointerleave", "load", "error", "scroll", "scrollend", "toggle", "beforetoggle", "cancel", "close", "invalid",
+  "abort", "canplay", "canplaythrough", "durationchange", "emptied", "ended", "loadeddata", "loadedmetadata", "loadstart", "pause", "play", "playing", "progress", "ratechange", "seeked", "seeking", "stalled", "suspend", "timeupdate", "volumechange", "waiting",
+]);
 
 export function Component<S extends Schema>(
   tpl: Template<S>,

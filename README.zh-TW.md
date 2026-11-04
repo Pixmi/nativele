@@ -706,6 +706,10 @@ this.lists.tags.replace(
 - `data-each` 不能巢狀，要分成兩套模板：把內層清單放進自己的 `.html`（有自己 `data-each` 的子元件），在外層項目裡使用該元件的標籤。
 - `<slot>` 不能放在項目內。
 
+### 清單更新的順序
+
+`replace()` 與 `upsert()` 會先把新項目的元素放進文件，再呼叫 `update`，所以放在項目內的子元件會在父元件設定屬性之前就已經連接。每列自己的狀態請等子元件第一次拿到資料時再建立（例如在屬性的 setter 裡），`connected()` 裡的渲染要先確認需要的資料已經存在。
+
 ## Trusted Types、翻譯與圖示
 
 - Trusted Types：啟用 `require-trusted-types-for 'script'` 的頁面不需要設定任何 policy 就能用，因為 `ts-dom gen` 把標記寫成資料，執行期只用 DOM 呼叫建立。你自己的程式碼也要避免 `innerHTML`。
