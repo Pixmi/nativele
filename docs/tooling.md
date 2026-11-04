@@ -138,6 +138,17 @@ Four complementary checks. **Every message has a stable rule id and explains wha
 
 **One command for all of them: `npx ts-dom check [dirs...]`.** It reports template diagnostics, regenerates the generated files (with `--no-write` it reports stale ones instead), runs the project's own `tsc` (TypeScript 5, 6 or 7; `--project=` picks the tsconfig), and runs the lint rules (`--a11y` adds the accessibility checks). TypeScript errors that come from the template contract point at the template, not at the `Component(...)` call: a `{{ title }}` with nothing named `title` is reported at its line and column in the `.html` as `missing-binding`, and a missing handler as `missing-handler`; item component problems get their own rule ids, and the errors that only follow from a broken class are left out. `--json` prints the issues as data, and the exit code is 1 when there is an error (with `--strict`, a warning too).
 
+Which command writes files:
+
+| Command | Writes | Runs |
+|---|---|---|
+| `ts-dom gen` | the generated `x.html.ts` files and `ts-dom-tags.ts` | codegen only |
+| `ts-dom gen --check` | nothing | codegen only: lists missing, outdated or orphaned generated files |
+| `ts-dom check` | the generated files (they are derived and not committed, so this is what a developer or an agent wants after a change) | codegen, `tsc`, lint |
+| `ts-dom check --no-write` | nothing: stale generated files are reported instead of refreshed, and `tsc` runs on the files as they are | codegen, `tsc`, lint |
+
+In a CI job that must leave the working tree untouched, run `ts-dom check --no-write` (or `ts-dom gen --check` when you only want to know whether the generated files are current); a job that regenerates first, as most do, can run `ts-dom check`.
+
 1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, an incomplete or invalid `data-key` / `data-prop`, a `data-key` list whose item is not one custom element, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
 2. **tsc**: an error when TypeScript uses a name the HTML does not declare (`this.refs.nope`, `this.show("nope", true)`); all constraints between `state`, `props`, `derive`, `emits` and the HTML (see [Data Flow](components.md#data-flow-props-down-events-up)); child component prop names and types; `define()` checks that the methods for `data-on-*` exist.
 3. **Runtime**: `Component()` and components, at definition, connection, and use, throw errors that carry a `[rule id]` and a fix for the same problems.

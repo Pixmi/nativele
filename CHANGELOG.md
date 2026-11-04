@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Unreleased
 
+- The README opens with a banner and the line "Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML."; the package description, `llms.txt` and the repository description use the same wording, and describe the library as one for building web components rather than a UI library (it ships no ready-made components).
+- The setup guide, the README and `ts-dom --help` say which commands write files: `ts-dom check` rewrites the generated files first, `ts-dom check --no-write` and `ts-dom gen --check` write nothing.
 - New lint rule `unguarded-input-value` (in the `data-flow` group, and `ts-dom/unguarded-input-value` on its own): a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without comparing it first, which moves the caret while the user types.
 - The README is now the introduction (the short version, the rules for agents, a quick start with two examples, the example apps), and the full guide lives in `docs/`: templates, components and data flow, lists, setup and checks, performance, design, and developing Nativele. The guide is in English only; `README.zh-TW.md` mirrors the README. The components guide gains a table of the common DOM operations in `render` (text, `data-if` against `hidden`, attributes, classes, form values, lists).
 

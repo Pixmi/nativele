@@ -1,6 +1,6 @@
 # Nativele
 
-> A TypeScript-driven, HTML-first UI library built for type safety and AI agents. Bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
+> Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML. A lightweight library for building web components: bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
 
 Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.ts`, runs tsc and lint, points errors at the template). Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
 
