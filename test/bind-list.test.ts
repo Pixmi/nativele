@@ -15,6 +15,10 @@ export class BindRow extends Component(rowTpl, {
   emits: { toggled: event<void>() },
 }) {
   renders = 0;
+  titleWhenConnected: string | undefined;
+  override connected(): void {
+    this.titleWhenConnected ??= this.props.todo?.title;
+  }
   override render(): void {
     this.renders++;
   }
@@ -53,6 +57,13 @@ describe("list items assignment (data-key and data-prop)", () => {
     expect(rows(list)[0]).toBe(rowB);
     expect(rowA?.isConnected).toBe(false);
     expect(list.lists.todos.items).toHaveLength(2);
+  });
+
+  it("sets the prop of a new item before it is connected, so the item component starts with its item", () => {
+    const list = mount();
+    list.lists.todos.items = [{ id: 1, title: "a" }, { id: 2, title: "b" }];
+    expect(rows(list).map((r) => r.titleWhenConnected)).toEqual(["a", "b"]);
+    expect(rows(list).map((r) => r.renders)).toEqual([1, 1]);
   });
 
   it("assigns only the items that are not the same object as before", () => {

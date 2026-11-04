@@ -68,7 +68,8 @@
     "test:browser": "vp test run browser/",
     "verify:pack": "vp pack --publint --attw",
     "smoke": "bash scripts/consumer-smoke.sh",
-    "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh"
+    "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh",
+    "bench": "node scripts/bench.ts"
   },
   "dependencies": {
     "parse5": "^8.1.0"
