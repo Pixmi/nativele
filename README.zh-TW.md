@@ -31,11 +31,33 @@ define("user-card", UserCard);
 
 HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法，`tsc` 都會報錯。
 
+## 精簡版
+
+六件事涵蓋大多數元件：
+
+1. **HTML 只放名稱**：`{{ name }}`（文字）、`data-ref="x"`（需要用到的元素）、`data-if="x"`（顯示與否）、`<template data-each="x">`（清單）、`data-on-click="method"`（事件）、`<slot>`。沒有表達式，需要計算就在 TypeScript 做。
+2. **`.html` 有改動就先跑 `npx ts-dom gen` 再跑 `tsc`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`；在那之前 `tsc` 只會告訴你找不到模組。
+3. **資料放在類別裡**：`state`（自己的）、`props`（父元件給的）、`derive`（算出來的）。state 只用 `this.set()` 改；同名的 `{{ }}` 與 `data-if` 會自己更新。
+4. **其他都寫在 `render(view, changed)`**：清單、屬性、焦點。重建清單前先檢查 `changed.has("items")`。
+5. **props 往下、事件往上**：父元件設定 props；子元件呼叫 `this.emit("name", detail)`，父元件在子元件的標籤上用 `data-on-name` 處理。
+6. **處理方法是公開方法** `(event, hit)`；在清單項目內 `hit.key` 就是該項目的 key。
+
+## 給 AI agent 的規則
+
+把這些貼進專案的 agent 指引檔（`AGENTS.md`、`CLAUDE.md` 等）：
+
+- 元件的 `.html` 與 `.ts` 一起寫；不要編輯 `x.html.ts` 與 `ts-dom-tags.ts`，它們是 `ts-dom gen` 產生的。
+- 改了任何 `.html` 之後，執行 `npx ts-dom gen && npx tsc`，然後把型別回報的每個錯誤（`state` 少了某個名稱、少了處理方法）修好，不要用型別斷言蓋掉。
+- 範本一律以 `./x.html.js` 匯入。
+- HTML 裡不放表達式：計算值放進 `derive`，state 只用 `this.set()` 改。
+- `ts-dom gen` 與 `ts-dom lint` 的每則診斷結尾都有 `Fix:` 提示，照做。`npx ts-dom rules` 列出所有規則編號，`npx ts-dom lint --a11y` 另外檢查無障礙。
+- `data-each` 清單不能巢狀：把內層清單放進自己的 `.html`，當成子元件。
+
 ## 快速開始
 
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
-npx ts-dom gen      # 為每個 x.html 產生 x.html.ts（含型別）
+npx ts-dom gen      # 為每個 x.html 產生 x.html.ts（含型別）；每次改了 .html 都要再跑一次
 npx tsc             # 型別檢查並編譯；不需要 Vite 或其他 bundler
 ```
 

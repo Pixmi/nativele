@@ -31,11 +31,33 @@ define("user-card", UserCard);
 
 If the HTML uses a name that `state` does not have, or `data-on-click` points to a method that does not exist, `tsc` reports an error.
 
+## The Short Version
+
+Six things cover most components:
+
+1. **HTML only names things**: `{{ name }}` (text), `data-ref="x"` (an element you need), `data-if="x"` (shown or not), `<template data-each="x">` (a list), `data-on-click="method"` (an event), `<slot>`. There are no expressions; compute in TypeScript.
+2. **Run `npx ts-dom gen` before `tsc`** whenever a `.html` changes. It writes the typed `x.html.ts` that `import tpl from "./x.html.js"` needs; until then `tsc` can only say the module is missing.
+3. **Data lives in the class**: `state` (yours), `props` (the parent's), `derive` (computed). Change state only with `this.set()`; `{{ }}` and `data-if` with the same name update by themselves.
+4. **Everything else goes in `render(view, changed)`**: lists, attributes, focus. Check `changed.has("items")` before rebuilding a list.
+5. **Props go down, events go up**: the parent sets props; the child calls `this.emit("name", detail)` and the parent handles it with `data-on-name` on the child's tag.
+6. **A handler is a public method** `(event, hit)`; inside a list item `hit.key` is the item's key.
+
+## Rules for AI Agents
+
+Paste these into your project's agent instructions (`AGENTS.md`, `CLAUDE.md` or similar):
+
+- Write the `.html` and the `.ts` of a component together; never edit `x.html.ts` or `ts-dom-tags.ts`, which `ts-dom gen` writes.
+- After changing any `.html`, run `npx ts-dom gen && npx tsc`, then fix every error the types report (a missing name in `state`, a missing handler method) instead of casting it away.
+- Import templates as `./x.html.js`.
+- No expressions in HTML: put computed values in `derive`, and change state only with `this.set()`.
+- Every diagnostic from `ts-dom gen` and `ts-dom lint` ends with a `Fix:` hint; follow it. `npx ts-dom rules` lists all rule ids, and `npx ts-dom lint --a11y` also checks accessibility.
+- A `data-each` list cannot be nested: put the inner list in its own `.html` as a child component.
+
 ## Quick Start
 
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
-npx ts-dom gen      # generate x.html.ts (fully typed) for every x.html
+npx ts-dom gen      # generate x.html.ts (fully typed) for every x.html; run it again after every .html change
 npx tsc             # type-check and compile; no Vite or other bundler needed
 ```
 
