@@ -83,6 +83,25 @@ describe("list items assignment (data-key and data-prop)", () => {
     expect(() => (list.lists.plain.items = [])).toThrow(/list-not-bound/);
   });
 
+  it("rejects a value that is not an array, an item that is not an object, and a key that is not a string or number", () => {
+    const list = mount();
+    const bad = (value: unknown): (() => void) => () => {
+      (list.lists.todos as unknown as { items: unknown }).items = value;
+    };
+    expect(bad(undefined)).toThrow(/invalid-items.*undefined/);
+    expect(bad(null)).toThrow(/invalid-items.*null/);
+    expect(bad("abc")).toThrow(/invalid-items.*string/);
+    expect(bad(["x"])).toThrow(/invalid-item\b.*string/);
+    expect(bad([null])).toThrow(/invalid-item\b.*null/);
+    expect(bad([{ id: Symbol("k"), title: "s" }])).toThrow(/missing-key.*symbol/);
+    expect(bad([{ id: undefined, title: "u" }])).toThrow(/missing-key.*missing/);
+    const rejected = (): void => {
+      // @ts-expect-error a key must be a string or a number
+      list.lists.todos.items = [{ id: Symbol("k"), title: "s" }];
+    };
+    expect(rejected).toBeTypeOf("function");
+  });
+
   it("reading items follows the elements, even after remove() or replace()", () => {
     const list = mount();
     const a = { id: 1, title: "a" };

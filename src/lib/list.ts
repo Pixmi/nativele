@@ -17,7 +17,7 @@ type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
       : { dataPropNotOnItemComponent: P }
     : { [field: string]: unknown }
   : never;
-type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: PropertyKey } : unknown;
+type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: string | number } : unknown;
 
 /** What `items` takes for a list: the type of the item component's `data-prop` property, with the `data-key` field. */
 export type ListItem<L> = ItemOf<L> & KeyField<L>;
@@ -64,7 +64,7 @@ export class List<L extends ListSchema = ListSchema> {
 
   /**
    * The items shown, in order. Assigning shows them: an element is kept for each key that stays, created for a new key and removed for a key that is gone, and the `data-prop` property receives each item that is not the same object as last time.
-   * @throws When the template has no `data-key` and `data-prop`, when an item has no `data-key` field, or when two items have the same key
+   * @throws When the template has no `data-key` and `data-prop`, when the value is not an array of objects, when an item has no string or number `data-key` field, or when two items have the same key
    */
   get items(): readonly ListItem<L>[] {
     return [...this.#items.values()]
@@ -76,14 +76,20 @@ export class List<L extends ListSchema = ListSchema> {
     if (!this.binding) {
       throw new Error("[list-not-bound] this list has no data-key and data-prop, so its items cannot be assigned. Fix: add them to the <template data-each>, e.g. data-key=\"id\" data-prop=\"item\", or call replace().");
     }
+    if (!Array.isArray(items)) {
+      throw new Error(`[invalid-items] items must be an array of objects, but got ${items === null ? "null" : typeof items}. Fix: assign an array, for example items = view.todos ?? [].`);
+    }
     this.replace(items, this.#keyOf, this.#assign, { skipUnchanged: true });
   }
 
   readonly #keyOf = (item: unknown): PropertyKey => {
     const field = this.binding?.key as string;
-    const key = (item as Record<string, unknown> | null | undefined)?.[field];
-    if (typeof key !== "string" && typeof key !== "number" && typeof key !== "symbol") {
-      throw new Error(`[missing-key] an item has no usable "${field}" field (data-key). Fix: give every item a string or number ${field}, or change data-key.`);
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`[invalid-item] an item is ${item === null ? "null" : typeof item}, but items must be objects with a "${field}" field (data-key). Fix: pass objects, or fill a list of plain values with replace().`);
+    }
+    const key = (item as Record<string, unknown>)[field];
+    if (typeof key !== "string" && typeof key !== "number") {
+      throw new Error(`[missing-key] an item has no usable "${field}" field (data-key): it is ${key === undefined ? "missing" : typeof key}. Fix: give every item a string or number ${field}, or change data-key.`);
     }
     return key;
   };
