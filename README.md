@@ -1,10 +1,12 @@
 # Nativele
 
-A TypeScript-driven, HTML-first UI library.
+<p align="center"><img src="https://raw.githubusercontent.com/Pixmi/nativele/main/docs/assets/banner.png" alt="Nativele: designed for AI agents, driven by TypeScript, defined in vanilla HTML" width="100%"></p>
+
+**Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML.**
 
 Nativele publishes this library as `@nativele/ts-dom` (import it from `@nativele/ts-dom`); its command line tool is `ts-dom`.
 
-A lightweight UI library: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
+A lightweight library for building web components: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
 
 **Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Rules for AI Agents](#rules-for-ai-agents) is a list you can paste into a project's agent instructions.
 
