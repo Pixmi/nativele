@@ -90,7 +90,7 @@ describe("codegen diagnostics", () => {
     expect(m).toContain(`text: "a"`);
     expect(m).toContain(`"l": { refs: {  }; text: "b"; ifs: never }`);
     expect(m).toContain(`export default template<`);
-    expect(m).toContain(JSON.stringify(`<p>{{ a }}</p><template data-each="l"><i>{{ b }}</i></template>`));
+    expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
   });
   it("does not import El when there is no ref (avoids noUnusedLocals errors)", () => {
     expect(generateModule(`<p>{{ a }}</p>`)).not.toContain("El");

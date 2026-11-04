@@ -34,7 +34,7 @@ export interface ReplaceOptions {
 }
 
 /**
- * A one-dimensional keyed list. It only compares keys, never subtrees;
+ * A one-dimensional keyed list. Reordering uses `moveBefore` where the browser has it, so a moved item (a component, a playing video, a focused input) is not disconnected. It only compares keys, never subtrees;
  * the content of an item is written explicitly by the user's update callback.
  */
 export class List<L extends ListSchema = ListSchema> {
@@ -135,7 +135,8 @@ export class List<L extends ListSchema = ListSchema> {
         this.#items.set(k, entry);
       }
       if (entry.el.nextSibling !== after || entry.el.parentNode !== parent) {
-        parent?.insertBefore(entry.el, after);
+        if (entry.el.parentNode === parent && parent?.moveBefore) parent.moveBefore(entry.el, after);
+        else parent?.insertBefore(entry.el, after);
       }
       after = entry.el;
       this.#run(entry, k, it, update, opts.skipUnchanged);

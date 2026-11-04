@@ -331,7 +331,7 @@ a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid
 
 ## 型別如何產生
 
-每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `ts-dom-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含範本字串與這個範本的結構描述，所以 `tsc` 直接就能編譯與檢查。
+每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `ts-dom-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含這個範本解析後的標記（以資料表示，執行期用 DOM 呼叫轉成節點，瀏覽器不需要解析 HTML 字串）與結構描述，所以 `tsc` 直接就能編譯與檢查。
 
 ```ts
 // user-card.html.ts（自動產生）
@@ -343,7 +343,7 @@ export default template<{
   ifs: "admin";
   slots: "extra";
   text: "name";
-}>("<h2>Hello, {{ name }}!</h2> ...");
+}>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
 整頁文件（以 `<!doctype>` 或 `<html>` 開頭，例如 `index.html`）是頁面入口，不是範本，不會被處理。
@@ -680,6 +680,18 @@ this.lists.tags.replace(
 - `data-if` 不能放在項目的根元素上，請多包一層。
 - `data-each` 不能巢狀。
 - `<slot>` 不能放在項目內。
+
+## Trusted Types、翻譯與圖示
+
+- Trusted Types：啟用 `require-trusted-types-for 'script'` 的頁面不需要設定任何 policy 就能用，因為 `ts-dom gen` 把標記寫成資料，執行期只用 DOM 呼叫建立。你自己的程式碼也要避免 `innerHTML`。
+- 翻譯：ts-dom 不內建 i18n。把翻譯後的字串寫進文字洞，例如 `this.text.title = t("title")`，屬性則在 `render()` 裡處理；HTML 要不要完全不放文字由你決定。
+- 圖示：ts-dom 不管理圖示。把圖示做成你自己的自訂元素，用 `createElementNS` 從你選的來源建立 SVG，在模板裡當子元件使用：
+
+```html
+<app-icon name="send" class="size-4"></app-icon>
+```
+
+- 重新排序：清單（`data-each`）在瀏覽器支援時用 `moveBefore` 搬動項目，所有元件都接受這種搬動而不會被斷開再連上，所以被搬動的項目保有焦點、捲動位置與訂閱。
 
 ## 檢查
 

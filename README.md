@@ -331,7 +331,7 @@ Recommended check workflow: `ts-dom gen && tsc && ts-dom lint`.
 
 ## How Types Are Generated
 
-Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see "Composition"). It is a real TS module that contains both the template string and the schema of this template, so `tsc` can compile and check it directly.
+Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see "Composition"). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
 
 ```ts
 // user-card.html.ts (auto-generated)
@@ -343,7 +343,7 @@ export default template<{
   ifs: "admin";
   slots: "extra";
   text: "name";
-}>("<h2>Hello, {{ name }}!</h2> ...");
+}>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
 Whole-page documents (starting with `<!doctype>` or `<html>`, such as `index.html`) are page entry points, not templates, and are not processed.
@@ -680,6 +680,18 @@ Notes:
 - `data-if` cannot be placed on an item's root element; wrap it in one more layer.
 - `data-each` cannot be nested.
 - `<slot>` cannot be placed inside an item.
+
+## Trusted Types, Translations and Icons
+
+- Trusted Types: pages that enforce `require-trusted-types-for 'script'` work with no policy, because `ts-dom gen` writes the markup as data and the runtime builds it with DOM calls. Your own code must avoid `innerHTML` too.
+- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way.
+- Icons: ts-dom does not manage icons. Make an icon a custom element of your own that builds its SVG with `createElementNS` from whatever source you use, and place it in a template as a child component:
+
+```html
+<app-icon name="send" class="size-4"></app-icon>
+```
+
+- Reordering: a keyed list (`data-each`) moves its items with `moveBefore` where the browser has it, and every component accepts the move without being disconnected, so a moved item keeps its focus, scroll position and subscriptions.
 
 ## Checks
 
