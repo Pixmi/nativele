@@ -6,7 +6,7 @@ Nativele publishes this library as `@nativele/ts-dom` (import it from `@nativele
 
 A lightweight UI library: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
 
-**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom gen && tsc`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Rules for AI Agents](#rules-for-ai-agents) is a list you can paste into a project's agent instructions.
+**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Rules for AI Agents](#rules-for-ai-agents) is a list you can paste into a project's agent instructions.
 
 English | [繁體中文](README.zh-TW.md)
 
@@ -49,7 +49,7 @@ Six things cover most components:
 Paste these into your project's agent instructions (`AGENTS.md`, `CLAUDE.md` or similar):
 
 - Write the `.html` and the `.ts` of a component together; never edit `x.html.ts` or `ts-dom-tags.ts`, which `ts-dom gen` writes.
-- After changing any `.html`, run `npx ts-dom gen && npx tsc`, then fix every error the types report (a missing name in `state`, a missing handler method) instead of casting it away.
+- After changing any `.html` or component, run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files, runs `tsc`, maps the template contract errors back to the template line and column, and runs the lint rules. Fix every issue it reports, following its `Fix:` hint, instead of casting a type error away.
 - Import templates as `./x.html.js`.
 - No expressions in HTML: put computed values in `derive`, and change state only with `this.set()`.
 - Every diagnostic from `ts-dom gen` and `ts-dom lint` ends with a `Fix:` hint; follow it. `npx ts-dom rules` lists all rule ids, and `npx ts-dom lint --a11y` also checks accessibility.
@@ -149,7 +149,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
@@ -313,7 +313,7 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -380,6 +380,8 @@ Whitespace in text is kept as written. To collapse each run of whitespace into o
 
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
 
+`npx ts-dom gen --check` writes nothing: it lists generated files that are missing, outdated (their template or a `define()` changed) or orphaned (their template was deleted), and exits with code 1 if there are any (`--json` for machine-readable output). Use it in CI if your project commits the generated files, or to confirm they are fresh before reading type errors.
+
 In your code, import templates with a `.js` suffix (standard NodeNext style; TS maps it to the generated `x.html.ts`):
 
 ```ts
@@ -432,6 +434,10 @@ lint: {
 },
 ```
 
+Each rule id is also a rule of its own, so a project can enable rules one by one and give each its own severity, for example `"ts-dom/unused-ref": "warn"` or `"ts-dom/missing-handler": "error"` instead of the whole `ts-dom/unused-markup` group. `ts-dom rules` lists the ids.
+
+**In the editor.** Install the Oxc extension for VS Code (it runs `oxlint --lsp`) and keep the plugin in your oxlint config: the findings show on the template's import line as you type, and `missing-handler` offers a quick fix that adds the method to the component class. From the command line, `oxlint --fix-suggestions` applies the same fix. A fix can only change the file being linted, so problems that live in the HTML (an unused `data-ref`, broken markup) are reported but not fixed there; for markup structure and layout use a formatter such as oxfmt.
+
 Without oxlint, the same checks are available through the CLI:
 
 ```sh
@@ -440,6 +446,8 @@ npx ts-dom lint --a11y      # additionally check ARIA / accessibility (warnings)
 npx ts-dom lint --strict    # warnings also make the exit code 1 (errors always do)
 npx ts-dom lint --json      # output JSON: { "issues": [{ file, line, col, severity, rule, message }] }
 npx ts-dom rules            # list all rule ids and descriptions
+npx ts-dom rules --explain=unused-ref   # why the rule exists, a wrong example and the fix
+npx ts-dom rules --json     # every rule as data: { id, group, description, why, bad, good }
 ```
 
 Every message has the same format. It explains **what is wrong, why, and how to fix it**, and includes the line and column in the HTML:
@@ -451,7 +459,7 @@ a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid
 
 Exit codes: 0 = no problems, 1 = there are errors (or warnings when `--strict` is used). Messages from the oxlint plugin start with `./x.html.js:line:column [rule id] message` and are reported on the `import` line.
 
-Recommended check workflow: `ts-dom gen && tsc && ts-dom lint`.
+Recommended check workflow: `ts-dom check` (it runs `gen`, `tsc` and `lint` in one pass; see "Checks").
 
 ## How Types Are Generated
 
@@ -603,6 +611,8 @@ Design trade-offs:
 - **No fine-grained updates**: on every change, `render` re-runs as a whole, and its cost depends on what you write in it. For large lists, use `changed` to skip unnecessary redraws and enable `skipUnchanged` on `replace` (see "Lists").
 - `set` may be called inside `render`; it is processed in another round after the current one ends. If it has not stabilized after 50 consecutive rounds, a "suspected infinite loop" error is thrown.
 - When `state` is not used, the original `refs`, `text`, `show`, `bind`, and `createStore` work as before, fully backward compatible.
+
+**Read-only all the way down**: `state`, `props`, the `view` passed to `render` and the argument of each `derive` function are typed `DeepReadonly`: arrays and objects inside them cannot be changed in place. `this.state.items[0].done = true` or `this.state.items.push(x)` is a `tsc` error, because an object changed in place keeps its identity and the list and child props, which compare by reference, would not update. Pass new objects instead: `this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`. When you annotate `render`'s `view` or a helper that takes the state, use read-only types (`readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`).
 
 ## Events: data-on-*
 
@@ -885,7 +895,22 @@ Assigning `items` sets the `data-prop` property of a new item before its element
 
 ## Checks
 
+Each tool checks what it can see, and none repeats another:
+
+| Tool | What it checks |
+|---|---|
+| A formatter such as oxfmt (`oxfmt --check`, or `vp fmt --check`) | Whether the template markup is well formed (a misnested closing tag such as `<p><div></p></div>` is a syntax error there, while the HTML parser the library uses would silently repair it into a different tree) and laid out consistently. It knows nothing of `{{ }}` or `data-*` names. Generate with whitespace `collapse` when you use one, or reformatting can change the spacing on the page. |
+| `ts-dom gen` | The template rules: holes, `data-each`, `data-if`, `data-on-*`, forbidden markup. |
+| `tsc` | That every name in the HTML exists in the component with the right type, and that lists, props and events fit. |
+| `ts-dom lint` / the oxlint plugin | What the HTML declares but the class never uses, data flow between components, accessibility. |
+| `ts-dom doctor` | The project set-up that the other tools depend on. |
+| `ts-dom check` | Runs `gen`, `tsc` and `lint` in one pass and points the template contract errors at the template. |
+
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
+
+**When the set-up itself may be wrong: `npx ts-dom doctor [dirs...]`.** It checks what a project needs before any of the checks can work: a tsconfig with `strict`, the DOM lib, a module resolution that maps `./x.html.js` to the generated file and an `include` that covers the template folders; the runtime package being installed; templates imported as `./x.html.js` (not `./x.html`); generated files that are stale; the Vite plugin and the oxlint plugin being configured; and, when a formatter such as oxfmt or Prettier is set up, templates generated with whitespace `collapse`. Every issue has a stable rule id and a `Fix:` hint, and `--json` prints them as data.
+
+**One command for all of them: `npx ts-dom check [dirs...]`.** It reports template diagnostics, regenerates the generated files (with `--no-write` it reports stale ones instead), runs the project's own `tsc` (TypeScript 5, 6 or 7; `--project=` picks the tsconfig), and runs the lint rules (`--a11y` adds the accessibility checks). TypeScript errors that come from the template contract point at the template, not at the `Component(...)` call: a `{{ title }}` with nothing named `title` is reported at its line and column in the `.html` as `missing-binding`, and a missing handler as `missing-handler`; item component problems get their own rule ids, and the errors that only follow from a broken class are left out. `--json` prints the issues as data, and the exit code is 1 when there is an error (with `--strict`, a warning too).
 
 1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, an incomplete or invalid `data-key` / `data-prop`, a `data-key` list whose item is not one custom element, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
 2. **tsc**: an error when TypeScript uses a name the HTML does not declare (`this.refs.nope`, `this.show("nope", true)`); all constraints between `state`, `props`, `derive`, `emits` and the HTML (see "Data Flow"); child component prop names and types; `define()` checks that the methods for `data-on-*` exist.

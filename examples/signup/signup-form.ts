@@ -1,5 +1,5 @@
 import { Component, define } from "@nativele/ts-dom";
-import type { EmitEvent, EventHit } from "@nativele/ts-dom";
+import type { DeepReadonly, EmitEvent, EventHit } from "@nativele/ts-dom";
 import type { FormField } from "./form-field.js";
 import tpl from "./signup-form.html.js";
 
@@ -15,8 +15,8 @@ interface State {
   entries: Entry[];
 }
 
-const nameError = (s: Readonly<State>) => (s.name.trim() === "" ? "Please enter your name" : "");
-const emailError = (s: Readonly<State>) => (/^\S+@\S+\.\S+$/.test(s.email) ? "" : "Please enter a valid email");
+const nameError = (s: DeepReadonly<State>) => (s.name.trim() === "" ? "Please enter your name" : "");
+const emailError = (s: DeepReadonly<State>) => (/^\S+@\S+\.\S+$/.test(s.email) ? "" : "Please enter a valid email");
 
 /**
  * The parent owns the form data (state) and passes values and error messages down to form-field (props);
@@ -61,7 +61,7 @@ export class SignupForm extends Component(tpl, {
     return nameError(this.state) === "" && emailError(this.state) === "" && this.state.agree;
   }
 
-  override render(v: State & { nameError: string; emailError: string; canSubmit: boolean }, changed: ReadonlySet<string>): void {
+  override render(v: DeepReadonly<State> & { nameError: string; emailError: string; canSubmit: boolean }, changed: ReadonlySet<string>): void {
     // Data flows down: the children's props are fully typed, so a wrong name or type is a tsc error
     this.refs.name.value = v.name;
     this.refs.name.error = v.nameError;

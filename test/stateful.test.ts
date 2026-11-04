@@ -13,7 +13,7 @@ class Counter extends Component(tpl, { state: init(), derive: { double: (s) => s
   renders: ReadonlySet<string>[] = [];
   focusCount = 0;
   loop = false;
-  override render(v: { rows: Row[]; count: number }, changed: ReadonlySet<string>): void {
+  override render(v: { rows: readonly Row[]; count: number }, changed: ReadonlySet<string>): void {
     this.renders.push(changed);
     this.lists.rows.replace(v.rows, (r) => r.id, (r, { text }) => (text.n = r.n));
     if (this.loop) this.set({ count: v.count + 1 });
@@ -221,3 +221,44 @@ export function typeOnly() {
   })();
   void probe;
 }
+
+describe("state, props and derived values are read-only all the way down", () => {
+  it("changing an object inside state is a tsc error; replacing it with a new object is not", () => {
+    const c = document.createElement("t-counter") as Counter;
+    const typeChecks = (): void => {
+      // @ts-expect-error an object inside state cannot be changed in place
+      c.state.rows[0]!.n = "x";
+      // @ts-expect-error nor can an array inside state
+      c.state.rows.push({ id: 1, n: "a" });
+      c.set((s) => ({ rows: s.rows.map((r) => (r.id === 1 ? { ...r, n: "x" } : r)) }));
+      c.set({ rows: [...c.state.rows, { id: 2, n: "b" }] });
+    };
+    expect(typeChecks).toBeTypeOf("function");
+  });
+});
+
+class Account {
+  #secret = 1;
+  constructor(readonly name: string) {}
+  get secret(): number {
+    return this.#secret;
+  }
+}
+const takeAccount = (a: Account) => a.name;
+
+describe("DeepReadonly keeps class instances usable", () => {
+  it("a class with private members stays its own type; plain objects and arrays inside it are still read-only", async () => {
+    const { Component } = await import("../src/lib/index.ts");
+    const { default: tplNoHoles } = await import("./host.html.js");
+    class Holder extends Component(tplNoHoles, { state: { account: new Account("a"), list: [{ n: 1 }] } }) {
+      use(): string {
+        return takeAccount(this.state.account);
+      }
+      wrong(): void {
+        // @ts-expect-error a plain object inside an array in state stays read-only
+        this.state.list[0]!.n = 2;
+      }
+    }
+    expect(Holder).toBeTypeOf("function");
+  });
+});

@@ -8,7 +8,7 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 輕量的 UI 函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。它為型別安全與 AI agent 協作而設計：`tsc` 會檢查 HTML 用到的每個名稱，每則診斷都說明怎麼修。複雜的介面以原生自訂元素組合而成。
 
-**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom gen && tsc`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[給 AI agent 的規則](#給-ai-agent-的規則) 則是可以直接貼進專案 agent 指引檔的清單。
+**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom check`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[給 AI agent 的規則](#給-ai-agent-的規則) 則是可以直接貼進專案 agent 指引檔的清單。
 
 ```html
 <!-- user-card.html：HTML 只描述結構、資料要放的位置、事件要找哪個方法 -->
@@ -49,7 +49,7 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 把這些貼進專案的 agent 指引檔（`AGENTS.md`、`CLAUDE.md` 等）：
 
 - 元件的 `.html` 與 `.ts` 一起寫；不要編輯 `x.html.ts` 與 `ts-dom-tags.ts`，它們是 `ts-dom gen` 產生的。
-- 改了任何 `.html` 之後，執行 `npx ts-dom gen && npx tsc`，然後把型別回報的每個錯誤（`state` 少了某個名稱、少了處理方法）修好，不要用型別斷言蓋掉。
+- 改了任何 `.html` 或元件之後，執行 `npx ts-dom check`（加 `--json` 以資料形式讀取結果）。它會重新產生產生檔、執行 `tsc`、把範本契約的錯誤對應回範本的行列，並跑 lint 規則。照每則的 `Fix:` 提示修好所有回報的問題，不要用型別斷言蓋掉型別錯誤。
 - 範本一律以 `./x.html.js` 匯入。
 - HTML 裡不放表達式：計算值放進 `derive`，state 只用 `this.set()` 改。
 - `ts-dom gen` 與 `ts-dom lint` 的每則診斷結尾都有 `Fix:` 提示，照做。`npx ts-dom rules` 列出所有規則編號，`npx ts-dom lint --a11y` 另外檢查無障礙。
@@ -149,7 +149,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
@@ -313,7 +313,7 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -382,6 +382,8 @@ npx tsc               # 型別檢查並編譯到 out/
 
 開發時可用 `npx ts-dom gen --watch` 持續監看 `.html`，搭配 `tsc --watch`。
 
+`npx ts-dom gen --check` 不寫任何檔案：它列出缺少、過期（範本或 `define()` 改過）或孤立（範本已刪除）的產生檔，有任何一個就以結束碼 1 結束（`--json` 輸出機器可讀格式）。專案若有提交產生檔，可以在 CI 使用；也可以在看型別錯誤之前，先確認產生檔是新的。
+
 在程式中以 `.js` 結尾匯入範本（標準 NodeNext 寫法，TS 會對應到產生的 `x.html.ts`）：
 
 ```ts
@@ -434,6 +436,10 @@ lint: {
 },
 ```
 
+每個規則代號也各自是一條規則，所以專案可以逐條啟用、各自設定嚴重程度，例如用 `"ts-dom/unused-ref": "warn"` 或 `"ts-dom/missing-handler": "error"`，而不是整組 `ts-dom/unused-markup`。`ts-dom rules` 會列出所有代號。
+
+**在編輯器裡。** 在 VS Code 安裝 Oxc 擴充（它執行 `oxlint --lsp`），並在 oxlint 設定裡保留這個外掛：輸入時問題就會顯示在範本的 import 那一行，`missing-handler` 會提供快速修正，把方法加進元件類別。命令列可用 `oxlint --fix-suggestions` 套用同樣的修正。修正只能改動正在檢查的檔案，所以出在 HTML 裡的問題（沒用到的 `data-ref`、壞掉的標記）只會回報、不會在那裡修正；標記結構與排版請交給 oxfmt 這類格式化工具。
+
 不用 oxlint 時，同樣的檢查可用 CLI：
 
 ```sh
@@ -442,6 +448,8 @@ npx ts-dom lint --a11y      # 另外檢查 ARIA / 無障礙（警告）
 npx ts-dom lint --strict    # 警告也使結束碼為 1（錯誤一定會）
 npx ts-dom lint --json      # 輸出 JSON：{ "issues": [{ file, line, col, severity, rule, message }] }
 npx ts-dom rules            # 列出所有規則代號與說明
+npx ts-dom rules --explain=unused-ref   # 規則存在的理由、錯誤範例與修正
+npx ts-dom rules --json     # 以資料列出所有規則：{ id, group, description, why, bad, good }
 ```
 
 每則訊息的格式都一樣，說明**哪裡錯、為什麼、怎麼修**，並附上 HTML 裡的行與欄：
@@ -453,7 +461,7 @@ a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid
 
 結束碼：0 = 沒有問題，1 = 有錯誤（或使用 `--strict` 時有警告）。oxlint 外掛的訊息以 `./x.html.js:行:欄 [規則代號] 訊息` 開頭，回報在 `import` 那一行。
 
-建議的檢查流程：`ts-dom gen && tsc && ts-dom lint`。
+建議的檢查流程：`ts-dom check`（一次跑完 `gen`、`tsc` 與 `lint`，見「檢查」）。
 
 ## 型別如何產生
 
@@ -605,6 +613,8 @@ class Counter extends Component(tpl, {
 - **沒有細粒度更新**：每次有變動就整體重跑一次 `render`，成本取決於你在裡面寫了什麼。大清單請用 `changed` 略過不必要的重繪，並對 `replace` 開 `skipUnchanged`（見「清單」）。
 - `render` 內可以呼叫 `set`，會在當次結束後再處理一輪；連續 50 輪還沒穩定會丟出「疑似無限迴圈」錯誤。
 - 不使用 `state` 時，原本的 `refs`、`text`、`show`、`bind`、`createStore` 照常可用，完全向下相容。
+
+**一路唯讀到底**：`state`、`props`、傳給 `render` 的 `view` 以及每個 `derive` 函式的參數，型別都是 `DeepReadonly`：裡面的陣列與物件都不能就地修改。`this.state.items[0].done = true` 或 `this.state.items.push(x)` 都是 `tsc` 錯誤，因為就地修改的物件保有原本的參考，以參考比較的清單與子元件 props 不會更新。請改成傳入新物件：`this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`。替 `render` 的 `view` 或接收 state 的輔助函式標註型別時，請用唯讀型別（`readonly Item[]`，或從 `@nativele/ts-dom` 匯入的 `DeepReadonly<State>`）。
 
 ## 事件：data-on-*
 
@@ -887,7 +897,22 @@ this.lists.tags.replace(
 
 ## 檢查
 
+每個工具只檢查自己看得到的部分，彼此不重複：
+
+| 工具 | 檢查什麼 |
+|---|---|
+| oxfmt 這類格式化工具（`oxfmt --check` 或 `vp fmt --check`） | 範本標記是否結構正確（例如 `<p><div></p></div>` 這種錯置的結束標籤，在那裡是語法錯誤；而本函式庫使用的 HTML 解析器會悄悄把它修正成另一棵樹），以及排版是否一致。它不認識 `{{ }}` 或 `data-*` 的名稱。使用時請以 `collapse` 空白模式產生，否則重新排版可能改變畫面上的空白。 |
+| `ts-dom gen` | 範本規則：洞、`data-each`、`data-if`、`data-on-*`、禁止的標記。 |
+| `tsc` | HTML 裡的每個名稱都存在於元件中且型別正確，清單、props 與事件都對得上。 |
+| `ts-dom lint` / oxlint 外掛 | HTML 宣告了但類別從未使用的東西、元件之間的資料流、無障礙。 |
+| `ts-dom doctor` | 其他工具所依賴的專案設定。 |
+| `ts-dom check` | 一次跑完 `gen`、`tsc` 與 `lint`，並把範本契約的錯誤指向範本。 |
+
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
+
+**懷疑是設定本身有問題時：`npx ts-dom doctor [dirs...]`。** 它檢查專案在任何檢查能運作之前需要的東西：tsconfig 要開 `strict`、含 DOM lib、模組解析能把 `./x.html.js` 對到產生檔、`include` 涵蓋範本資料夾；runtime 套件已安裝；範本以 `./x.html.js` 匯入（不是 `./x.html`）；產生檔是否過期；Vite 外掛與 oxlint 外掛是否設定；以及設定了 oxfmt 或 Prettier 這類格式化工具時，範本是否以 `collapse` 空白模式產生。每則都有穩定的規則代號與 `Fix:` 提示，`--json` 以資料形式輸出。
+
+**一個指令跑完全部：`npx ts-dom check [dirs...]`。** 它會回報範本診斷、重新產生產生檔（加 `--no-write` 則改為回報過期的產生檔）、執行專案自己的 `tsc`（TypeScript 5、6、7 皆可；`--project=` 指定 tsconfig），並跑 lint 規則（`--a11y` 加上無障礙檢查）。來自範本契約的 TypeScript 錯誤會指向範本，而不是 `Component(...)` 那一行：`{{ title }}` 找不到任何名為 `title` 的東西時，會以 `missing-binding` 回報在 `.html` 的行列；缺少的處理方法則是 `missing-handler`；項目元件的問題各有自己的規則代號；只是因為類別已經壞掉而連帶產生的錯誤會被略過。`--json` 以資料形式輸出，有錯誤時結束碼為 1（加 `--strict` 時警告也算）。
 
 1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-key` 與 `data-prop` 不完整或不合法、有 `data-key` 的清單其項目不是單一自訂元素、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），範本內的 `<html>`、`<head>`、`<body>`，以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
 2. **tsc**：TypeScript 使用了 HTML 沒有宣告的名稱就報錯（`this.refs.nope`、`this.show("nope", true)`）；`state`、`props`、`derive`、`emits` 與 HTML 之間的所有約束（見「資料流」）；子元件 prop 的名稱與型別；`define()` 檢查 `data-on-*` 的方法存在。

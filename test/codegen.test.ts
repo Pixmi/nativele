@@ -456,3 +456,62 @@ describe("include / exclude", () => {
     expect(existsSync(join(root, "b.html.ts"))).toBe(true);
   });
 });
+
+describe("gen --check: generated files out of step", () => {
+  it("reports missing, outdated and orphaned generated files, and the tag map", async () => {
+    const { mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "a.html"), `<p>{{ a }}</p>`);
+    writeFileSync(join(dir, "b.html"), `<p></p>`);
+    writeFileSync(join(dir, "kid.ts"), `export class Kid {}\ndefine("x-kid", Kid);`);
+    expect(staleGenerated(dir).map((s) => s.reason)).toEqual(["missing", "missing", "missing"]);
+    generateAll(dir);
+    expect(staleGenerated(dir)).toEqual([]);
+    writeFileSync(join(dir, "a.html"), `<p>{{ b }}</p>`);
+    unlinkSync(join(dir, "b.html"));
+    writeFileSync(join(dir, "kid.ts"), `export class Kid {}\ndefine("x-other", Kid);`);
+    expect(staleGenerated(dir).map((s) => [s.file.slice(dir.length + 1), s.reason])).toEqual([
+      ["a.html.ts", "outdated"],
+      ["b.html.ts", "orphan"],
+      ["ts-dom-tags.ts", "outdated"],
+    ]);
+  });
+});
+
+describe("gen --check and gen with errors and orphans", () => {
+  it("checkGenerated reports the errors that make gen fail, and gen removes an orphaned module", async () => {
+    const { existsSync, mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { checkGenerated, generateAll } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "ok.html"), `<p></p>`);
+    writeFileSync(join(dir, "gone.html"), `<p></p>`);
+    generateAll(dir);
+    unlinkSync(join(dir, "gone.html"));
+    generateAll(dir);
+    expect(existsSync(join(dir, "gone.html.ts"))).toBe(false);
+    writeFileSync(join(dir, "bad.html"), `<p>{{ a.b }}</p>`);
+    const result = checkGenerated(dir);
+    expect(result.errors.join("\n")).toContain("[invalid-hole]");
+  });
+});
+
+describe("the whitespace mode is kept from the generated files", () => {
+  it("gen without the option keeps collapse; gen --check agrees", async () => {
+    const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "a.html"), `<p>\n  a  b\n</p>`);
+    generateAll(dir, { whitespace: "collapse" });
+    const collapsed = readFileSync(join(dir, "a.html.ts"), "utf8");
+    expect(collapsed).toContain("// whitespace: collapse");
+    expect(staleGenerated(dir)).toEqual([]);
+    generateAll(dir);
+    expect(readFileSync(join(dir, "a.html.ts"), "utf8")).toBe(collapsed);
+    generateAll(dir, { whitespace: "preserve" });
+    expect(readFileSync(join(dir, "a.html.ts"), "utf8")).not.toContain("whitespace: collapse");
+  });
+});

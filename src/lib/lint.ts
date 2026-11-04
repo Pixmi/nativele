@@ -50,6 +50,8 @@ export interface ComponentClass {
   call: string;
   /** Text of the class body, braces included. */
   body: string;
+  /** Offset of the class body's closing brace in the code. */
+  end: number;
 }
 
 /** Find every `class X extends Component(<tpl> ...)` and return its call and class body. Empty when none is found. */
@@ -65,7 +67,7 @@ export function componentClasses(code: string, htmlSpec: string): ComponentClass
     const bodyStart = code.indexOf("{", callEnd);
     if (bodyStart < 0) continue;
     const bodyEnd = matchClose(code, bodyStart, "{", "}");
-    if (bodyEnd > 0) out.push({ call: code.slice(call, callEnd + 1), body: code.slice(bodyStart, bodyEnd + 1) });
+    if (bodyEnd > 0) out.push({ call: code.slice(call, callEnd + 1), body: code.slice(bodyStart, bodyEnd + 1), end: bodyEnd });
   }
   return out;
 }

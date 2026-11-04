@@ -10,11 +10,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.4.6
+
+Released together with 0.4.1 to 0.4.5, which were not published on their own.
+
+- `ts-dom rules --explain=<id>` explains any rule id: why it exists (tied to the principle it protects), a wrong example and the fix. `ts-dom rules --json` prints every rule as data. Every rule id has an explanation; a test keeps them in step.
+- The README's Checks section says which tool checks what: a formatter such as oxfmt for well-formed markup and layout (it reports misnested tags that the library's parser would silently repair), `ts-dom gen` for the template rules, `tsc` for names and types, lint for usage, data flow and accessibility, `ts-dom doctor` for the set-up, and `ts-dom check` for all of them at once.
+
+## 0.4.5
+
+Not published on its own; it ships with 0.4.6.
+
+- Every rule id of `unused-markup`, `data-flow` and `a11y` is also a lint rule of its own (`ts-dom/unused-ref`, `ts-dom/missing-handler`, ...), so a project can enable rules one by one with their own severity. The three group rules stay.
+- `missing-handler` offers a suggestion that adds the method to the component class.
+- In the editor, the Oxc extension for VS Code (`oxlint --lsp`) shows the findings and offers the quick fix; `oxlint --fix-suggestions` applies it from the command line. Both are covered by tests that run the oxlint shipped with Vite+.
+- Each template is analyzed once per file text and template text, however many rules ask for it.
+
+## 0.4.4
+
+Not published on its own; it ships with 0.4.6.
+
+- `ts-dom doctor [dirs...]` checks the project set-up: a tsconfig with `strict`, the DOM lib, a module resolution other than `classic` and an `include` covering the template folders (read through `extends`: relative paths, packages and arrays; a solution-style tsconfig through its references); the runtime package being resolvable; templates imported as `./x.html` instead of `./x.html.js`; stale generated files; the Vite and oxlint plugins being configured; and a formatter (oxfmt, Prettier) set up while templates keep their whitespace. Page entries and `dist` are not counted as templates, and a folder that does not exist is reported. Stable rule ids, a `Fix:` per issue, `--json`, exit code 1 on errors.
+
+## 0.4.3
+
+Not published on its own; it ships with 0.4.6.
+
+- `ts-dom check [dirs...]` runs everything in one pass for agents and CI: template diagnostics, generated files (regenerated, or reported as stale with `--no-write`), the project's own `tsc` (TypeScript 5, 6 or 7), and the lint rules (`--a11y` adds accessibility). TypeScript errors from the template contract point at the template line and column (`missing-binding`, `missing-handler`), item component problems get their own rule ids, and errors that only follow from a broken class (the ones naming that class) are left out. A tag defined twice is reported, and a tsc that does not run to completion (no tsconfig, a bad option) is reported as `tsc-failed` instead of passing silently. A solution-style tsconfig (`"files": []` with `references`) is checked through its referenced projects, a folder that does not exist is reported as `dir-not-found`, and every plain tsc error carries a `Fix:` hint. `--json` prints the issues as data; `--strict` fails on warnings.
+- The README, the rules for AI agents and `llms.txt` use `ts-dom check` as the command to run after a change.
+
+## 0.4.2
+
+Not published on its own; it ships with 0.4.6.
+
+- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template) and the errors that would make `ts-dom gen` fail, with exit code 1 if there are any; `--json` prints them as data. `ts-dom gen` removes an orphaned generated module. A module generated with whitespace `collapse` records it, and a later `gen`, `gen --check`, `check` or `doctor` without the option keeps that mode (`--whitespace=preserve` switches back).
+
+## 0.4.1
+
+Not published on its own; it ships with 0.4.6.
 
 - `npm run bench` measures lists of 1,000 to 10,000 items in real Chrome (create, update 10%, reverse, remove half, append) for component items, plain elements and a direct DOM baseline; the README's Performance section shows the results and when to choose which.
 - Assigning `items` sets the prop of a new item before its element goes into the document, so the item component is connected with its item already set and renders once instead of first rendering without it. `replace()` and `upsert()` keep inserting first.
 - README: a fourth example, a list of components (add, remove, sort, toggle, events up from the item), the one-line rule for choosing between `items =` and `replace()`, and how moving an item affects `connected()` and subscriptions with and without `moveBefore`. The introduction and the package description say what the library is built for: type safety and AI coding agents, which can correct their own mistakes from `tsc` errors and the `Fix:` hints of every diagnostic.
+- `state`, `props`, the `view` passed to `render` and the argument of `derive` functions are typed `DeepReadonly` (class instances with private members keep their own type) (exported, with `PropAccessors`): changing an array or object inside them in place is a `tsc` error, since the list and child props compare by reference and would not update. `set()` accepts read-only values. A parent can still assign a child's props.
+
+### Breaking changes
+
+- Code that annotates `render`'s `view`, or a helper that takes the state, with mutable array types (`Item[]`) must use read-only ones (`readonly Item[]` or `DeepReadonly<State>`), and code that changes state objects in place no longer compiles.
 
 ## 0.4.0
 

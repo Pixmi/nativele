@@ -29,7 +29,33 @@ type DetailOf<D> = D extends EventDecl<infer T> ? T : never;
 type EmitArgs<D> = [DetailOf<D>] extends [void] ? [detail?: undefined] : [detail: DetailOf<D>];
 
 /** The data passed to render(): state, props and derived values merged. */
-export type View<D, R> = Readonly<D> & Readonly<R>;
+/**
+ * Read-only all the way down: arrays, objects, Maps and Sets inside it cannot be changed through it.
+ * State, props and derived values are typed this way, so changing an object in place instead of passing a new one is a tsc error.
+ */
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends Node | Date | RegExp | Promise<unknown>
+    ? T
+    : T extends ReadonlyMap<infer K, infer V>
+      ? ReadonlyMap<K, DeepReadonly<V>>
+      : T extends ReadonlySet<infer V>
+        ? ReadonlySet<DeepReadonly<V>>
+        : T extends readonly unknown[]
+          ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+          : T extends object
+            ? IsPlainObject<T> extends true
+              ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+              : T
+            : T;
+
+// A copy of only the public members is assignable back to a plain object type, but not to a class with private or protected members: such a class instance keeps its own type, so it can still be passed where the class is expected.
+type IsPlainObject<T> = { [K in keyof T]: T[K] } extends T ? true : false;
+
+/** Props as the element exposes them: the parent assigns them, but cannot change the objects inside through them. */
+export type PropAccessors<P> = { -readonly [K in keyof P]: DeepReadonly<P[K]> };
+
+export type View<D, R> = DeepReadonly<D> & DeepReadonly<R>;
 
 export interface DataOptions<St extends object, P extends object, R, E extends Record<string, EventDecl<unknown>>> extends ComponentOptions {
   /** Data owned by the component and changed only through set(). Fields named like a {{ hole }} or data-if in the HTML bind automatically. */
@@ -44,7 +70,7 @@ export interface DataOptions<St extends object, P extends object, R, E extends R
    * Derived values: computed from state and props, usable directly by {{ holes }}, data-if and render().
    * Recomputed after every data change (there is no dependency tracking).
    */
-  derive?: { [K in keyof R]: (s: Readonly<St & P>) => R[K] };
+  derive?: { [K in keyof R]: (s: DeepReadonly<St & P>) => R[K] };
   /** The events this component emits. */
   emits?: E;
 }
@@ -100,14 +126,14 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
 /** Members added when the `state` / `props` / `derive` / `emits` options are used. */
 export interface StatefulInstance<S extends Schema, St extends object, P extends object, R, E extends Record<string, EventDecl<unknown>>> extends ComponentInstance<S> {
   /** The component's own data (read-only). Use set() to change it. */
-  readonly state: Readonly<St>;
+  readonly state: DeepReadonly<St>;
   /** Data provided by the parent (read-only). Do not assign it inside the component; use emit() to notify the parent. */
-  readonly props: Readonly<P>;
+  readonly props: DeepReadonly<P>;
   /**
    * The only way to change state: shallow-merges the patch, and does nothing when no field actually changed.
    * When something changed it synchronously updates the same-named {{ holes }} and data-if, then calls render(). It cannot change props.
    */
-  set(patch: Partial<St> | ((s: Readonly<St>) => Partial<St>)): void;
+  set(patch: Partial<DeepReadonly<St>> | ((s: DeepReadonly<St>) => Partial<DeepReadonly<St>>)): void;
   /** Coalesce several set() calls and prop changes: the view is updated and render() is called once, after fn returns. */
   batch(fn: () => void): void;
   /**
@@ -156,7 +182,7 @@ export function Component<
 >(
   tpl: Template<S>,
   opts: DataOptions<St, P, R, E>,
-): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & P : Problems<S, St, P, R, E>;
+): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E>;
 export function Component(
   tpl: Template<Schema>,
   opts: ComponentOptions & {
