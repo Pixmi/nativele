@@ -15,7 +15,7 @@ type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
     ? P extends keyof HTMLElementTagNameMap[T]
       ? NonNullable<HTMLElementTagNameMap[T][P]>
       : { dataPropNotOnItemComponent: P }
-    : unknown
+    : { [field: string]: unknown }
   : never;
 type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: PropertyKey } : unknown;
 
