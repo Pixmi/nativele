@@ -224,17 +224,33 @@ describe("Vite plugin", () => {
     page.plugin.buildStart.call(page.ctx);
     expect(existsSync(`${page.dir}/src/index.html.ts`)).toBe(false);
   });
-  it("dev: a watched .html change regenerates the module", async () => {
+  it("dev: a changed .html is regenerated, the old module forgotten and the page reloaded once, even when the path is relative", async () => {
     const { readFileSync, writeFileSync } = await import("node:fs");
+    const { relative } = await import("node:path");
     const t = await setup({ "x.html": `<p>{{ a }}</p>` });
     t.plugin.buildStart.call(t.ctx);
-    const handlers: Record<string, (f: string) => void> = {};
     t.plugin.configureServer({
-      watcher: { add: () => {}, on: (ev, fn) => (handlers[ev] = fn) },
+      watcher: { add: () => {}, on: () => {} },
       config: { logger: { error: () => {}, warn: () => {} } },
     });
+    const sent: unknown[] = [];
+    const forgotten: string[] = [];
+    const server = {
+      moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: (m: unknown) => forgotten.push(String(m)) },
+      ws: { send: (payload: unknown) => sent.push(payload) },
+    };
     writeFileSync(`${t.dir}/src/x.html`, `<p>{{ b }}</p>`);
-    handlers.change?.(`${t.dir}/src/x.html`);
+    const result = t.plugin.handleHotUpdate({ file: relative(process.cwd(), `${t.dir}/src/x.html`), server });
     expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`text: "b"`);
+    expect(forgotten).toEqual([`${t.dir}/src/x.html.ts`]);
+    expect(sent).toEqual([{ type: "full-reload" }]);
+    expect(result).toEqual([]);
+    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html.ts`, server })).toEqual([]);
+    expect(sent).toHaveLength(1);
+    const unused = { ...server, moduleGraph: { ...server.moduleGraph, getModulesByFile: () => undefined } };
+    writeFileSync(`${t.dir}/src/x.html`, `<p>{{ c }}</p>`);
+    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: unused })).toEqual([]);
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`text: "c"`);
+    expect(sent).toHaveLength(1);
   });
 });

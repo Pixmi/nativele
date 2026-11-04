@@ -321,7 +321,9 @@ export default defineConfig({
 });
 ```
 
-安裝時建議先裝 `vite-plus`，再裝 `ts-dom`（npm 同一次安裝時可能不會把 `vite` 提升到頂層）。
+dev server 執行期間，編輯範本會重新產生它的 `x.html.ts` 並重新載入頁面一次。這裡是重新載入而不是熱替換元件，因為同一個自訂元素標籤只能定義一次，新的類別無法取代正在執行的那個。
+
+安裝時建議先裝 `vite-plus`，再裝 `@nativele/ts-dom`（npm 同一次安裝時可能不會把 `vite` 提升到頂層）。
 
 ### Lint（選用）
 
