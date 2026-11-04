@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.4.7
+
+- New lint rule `unguarded-input-value` (in the `data-flow` group, and `ts-dom/unguarded-input-value` on its own): a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without comparing it first, which moves the caret while the user types.
+- The README is now the introduction (the short version, the rules for agents, a quick start with two examples, the example apps), and the full guide lives in `docs/`: templates, components and data flow, lists, setup and checks, performance, design, and developing Nativele. The guide is in English only; `README.zh-TW.md` mirrors the README. The components guide gains a table of the common DOM operations in `render` (text, `data-if` against `hidden`, attributes, classes, form values, lists).
+
 ## 0.4.6
 
 Released together with 0.4.1 to 0.4.5, which were not published on their own.
