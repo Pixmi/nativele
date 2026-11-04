@@ -717,7 +717,7 @@ render(view, changed) {
 toggle(_e: Event, hit: EventHit) { /* hit.key 就是該項目的 id */ }
 ```
 
-指派 `items` 時：key 還在的項目保留原本的元素（瀏覽器支援時用 `moveBefore` 搬動，所以焦點與狀態不會丟）、新 key 建立元素、消失的 key 移除，並對「與上次不是同一個物件」的項目設定元素的 `todo` 屬性（請用不可變更新）。項目元件在自己的 `props` 宣告 `todo`，愛怎麼顯示都可以，用 `emit` 通知父元件，父元件在處理方法裡讀 `hit.key`。讀取 `items` 會回傳最近一次指派的內容。`tsc` 會檢查這個指派：每個項目要符合 `<todo-row>` 宣告的 `todo` 屬性型別並帶有 `data-key` 欄位（`id`），項目元件必須宣告 `data-prop` 指定的屬性；沒有 `data-key` 與 `data-prop` 的清單不接受指派。這要靠元件註冊在 `ts-dom-tags.ts`（掃描目錄內有匯出的 `define("todo-row", TodoRow)`）；不在其中的元件，只要項目帶有 `id` 欄位就接受。執行期則在指派的不是物件陣列、項目沒有字串或數字的 `id`、兩個項目 key 重複、或範本沒有 `data-key` 與 `data-prop` 時丟錯。
+指派 `items` 時：key 還在的項目保留原本的元素（瀏覽器支援時用 `moveBefore` 搬動，所以焦點與狀態不會丟）、新 key 建立元素、消失的 key 移除，並對「與上次不是同一個物件」的項目設定元素的 `todo` 屬性。請用不可變更新：就地修改已指派過的物件欄位再指派同一個物件，項目元件不會更新，因為 props 以參考比較；請改指派新物件，例如 `{ ...todo, done: true }`。項目元件在自己的 `props` 宣告 `todo`，愛怎麼顯示都可以，用 `emit` 通知父元件，父元件在處理方法裡讀 `hit.key`。讀取 `items` 會回傳最近一次指派的內容。`tsc` 會檢查這個指派：每個項目要符合 `<todo-row>` 宣告的 `todo` 屬性型別並帶有 `data-key` 欄位（`id`），項目元件必須宣告 `data-prop` 指定的屬性；沒有 `data-key` 與 `data-prop` 的清單不接受指派。這要靠元件註冊在 `ts-dom-tags.ts`（掃描目錄內有匯出的 `define("todo-row", TodoRow)`）；不在其中的元件，只要項目帶有 `id` 欄位就接受。執行期則在指派的不是物件陣列、項目沒有字串或數字的 `id`、兩個項目 key 重複、或範本沒有 `data-key` 與 `data-prop` 時丟錯。
 
 `data-each` 刻意不能巢狀：一個項目就是一個元件，項目裡的清單就是該元件自己的 `data-each`。這樣每套範本都只有一層，有自己的 `refs`、`text` 與事件處理。
 
