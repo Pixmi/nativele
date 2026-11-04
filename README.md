@@ -49,7 +49,7 @@ Six things cover most components:
 Paste these into your project's agent instructions (`AGENTS.md`, `CLAUDE.md` or similar):
 
 - Write the `.html` and the `.ts` of a component together; never edit `x.html.ts` or `ts-dom-tags.ts`, which `ts-dom gen` writes.
-- After changing any `.html` or component, run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files, runs `tsc`, maps the template contract errors back to the template line and column, and runs the lint rules. Fix every issue it reports, following its `Fix:` hint, instead of casting a type error away.
+- After changing any `.html` or component, run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files (use `--no-write` where the working tree must stay untouched), runs `tsc`, maps the template contract errors back to the template line and column, and runs the lint rules. Fix every issue it reports, following its `Fix:` hint, instead of casting a type error away.
 - Import templates as `./x.html.js`.
 - No expressions in HTML: put computed values in `derive`, and change state only with `this.set()`.
 - Every diagnostic from `ts-dom gen` and `ts-dom lint` ends with a `Fix:` hint; follow it. `npx ts-dom rules` lists all rule ids, and `npx ts-dom lint --a11y` also checks accessibility.

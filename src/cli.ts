@@ -25,8 +25,9 @@ Commands
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text (also for gen --check)
   check [dirs...]   One pass for agents and CI: template diagnostics, generated files, tsc errors mapped back
-                    to the templates, and the lint rules (default dir: src)
-        --no-write        do not regenerate; report stale generated files instead
+                    to the templates, and the lint rules (default dir: src). It rewrites the generated files first.
+        --no-write        write nothing: report stale generated files instead (for a CI job that must not
+                          change the working tree; gen --check only checks the generated files)
         --project=<path>  tsconfig for tsc (default: tsc's own lookup)
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)

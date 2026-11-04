@@ -49,7 +49,7 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 把這些貼進專案的 agent 指引檔（`AGENTS.md`、`CLAUDE.md` 等）：
 
 - 元件的 `.html` 與 `.ts` 一起寫；不要編輯 `x.html.ts` 與 `ts-dom-tags.ts`，它們是 `ts-dom gen` 產生的。
-- 改了任何 `.html` 或元件之後，執行 `npx ts-dom check`（加 `--json` 以資料形式讀取結果）。它會重新產生產生檔、執行 `tsc`、把範本契約的錯誤對應回範本的行列，並跑 lint 規則。照每則的 `Fix:` 提示修好所有回報的問題，不要用型別斷言蓋掉型別錯誤。
+- 改了任何 `.html` 或元件之後，執行 `npx ts-dom check`（加 `--json` 以資料形式讀取結果）。它會重新產生產生檔（工作目錄不能被修改時改用 `--no-write`）、執行 `tsc`、把範本契約的錯誤對應回範本的行列，並跑 lint 規則。照每則的 `Fix:` 提示修好所有回報的問題，不要用型別斷言蓋掉型別錯誤。
 - 範本一律以 `./x.html.js` 匯入。
 - HTML 裡不放表達式：計算值放進 `derive`，state 只用 `this.set()` 改。
 - `ts-dom gen` 與 `ts-dom lint` 的每則診斷結尾都有 `Fix:` 提示，照做。`npx ts-dom rules` 列出所有規則編號，`npx ts-dom lint --a11y` 另外檢查無障礙。
