@@ -858,7 +858,7 @@ Notes:
 
 ### Order of list updates
 
-`replace()` and `upsert()` put a new item's element into the document first and then call `update`, so a child component placed in an item is connected before the parent has set its properties. Build per-item state in the child when it first receives data (for example in a property setter), and guard a render in `connected()` with the data it needs.
+Assigning `items` sets the `data-prop` property of a new item before its element goes into the document, so the item component is connected with its item already set and its first render shows it. `replace()` and `upsert()` put a new item's element into the document first and then call `update`, so a child component placed in such an item is connected before the parent has set its properties; there, build per-item state when the child first receives data (for example in a property setter), and guard a render in `connected()` with the data it needs.
 
 ## Trusted Types, Translations and Icons
 
