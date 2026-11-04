@@ -1,4 +1,4 @@
-import { Component, define, event } from "nativele";
+import { Component, define, event } from "@nativele/ts-dom";
 import tpl from "./quantity-input.html.js";
 
 /** A child component: the parent owns the value (a prop); the child only asks for a change through an event. */

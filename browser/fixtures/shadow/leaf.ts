@@ -1,4 +1,4 @@
-import { Component, define, event } from "nativele";
+import { Component, define, event } from "@nativele/ts-dom";
 import tpl from "./leaf.html.js";
 
 // The same component in both modes, to compare Shadow DOM against Light DOM.

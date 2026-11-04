@@ -1,5 +1,5 @@
-import { Component, define } from "nativele";
-import type { EventHit } from "nativele";
+import { Component, define } from "@nativele/ts-dom";
+import type { EventHit } from "@nativele/ts-dom";
 import tpl from "./todo-app.html.js";
 
 export interface Todo {

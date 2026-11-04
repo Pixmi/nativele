@@ -3,4 +3,4 @@ node_modules
 dist
 demo-dist
 *.tgz
-nativele-tags.ts
+ts-dom-tags.ts
