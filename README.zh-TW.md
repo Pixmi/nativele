@@ -714,7 +714,7 @@ this.lists.tags.replace(
 
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
 
-1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名）。
+1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
 2. **tsc**：TypeScript 使用了 HTML 沒有宣告的名稱就報錯（`this.refs.nope`、`this.show("nope", true)`）；`state`、`props`、`derive`、`emits` 與 HTML 之間的所有約束（見「資料流」）；子元件 prop 的名稱與型別；`define()` 檢查 `data-on-*` 的方法存在。
 3. **執行期**：`Component()` 與元件在定義、連接與使用時，對同樣的問題丟出帶 `[規則代號]` 與修正方式的錯誤。
 4. **lint**（`ts-dom/unused-markup`、`ts-dom/data-flow`、`ts-dom/a11y`）：HTML 宣告了卻沒被使用的標記（錯誤，附 HTML 位置）、資料流建議與子元件契約（警告）、ARIA（警告）。

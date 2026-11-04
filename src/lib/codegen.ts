@@ -39,6 +39,9 @@ export const CODEGEN_RULES = {
   "nested-each": "data-each templates cannot be nested",
   "duplicate-each": "data-each names must be unique",
   "each-root-count": "a data-each template needs exactly one root element",
+  "forbidden-tag": "<script> cannot be in a template (it would run code)",
+  "forbidden-attribute": "on* event attributes and srcdoc cannot be in a template (they run code or are blocked by Trusted Types)",
+  "unsafe-url": "href / src / action / formaction cannot start with javascript:",
   "duplicate-define": "a custom element tag can be defined only once per scanned directory",
 } as const;
 
@@ -72,6 +75,7 @@ export interface Analysis {
   diagnostics: Diagnostic[];
 }
 
+const URL_ATTRS = /^(href|src|action|formaction|xlink:href)$/i;
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const newScope = (): Scope => ({ refs: new Map(), text: new Set(), ifs: new Set() });
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
@@ -141,6 +145,16 @@ export function analyze(html: string): Analysis {
             `Attribute ${at.name} contains {{ }}, which is only supported in text. Fix: add data-ref to the element and set the attribute from TypeScript (e.g. this.refs.x.setAttribute(...)).`,
             n,
           );
+        }
+      }
+      if (tag === "script" && n.namespaceURI === HTML_NS) {
+        report("forbidden-tag", "error", "<script> cannot be in a template. Fix: put the code in TypeScript and attach it with a data-on-* handler or a component.", n);
+      }
+      for (const at of n.attrs) {
+        if (/^on/i.test(at.name) || at.name === "srcdoc") {
+          report("forbidden-attribute", "error", `${at.name} cannot be in a template: it runs code or is blocked when Trusted Types is enforced. Fix: ${at.name === "srcdoc" ? "load the document with a component that sets it from TypeScript" : `use data-on-${at.name.slice(2).toLowerCase()}="method" and a public method`}.`, n);
+        } else if (URL_ATTRS.test(at.name) && /^\s*javascript:/i.test(at.value)) {
+          report("unsafe-url", "error", `${at.name}="${at.value}" starts with javascript:, which runs code. Fix: use a data-on-click handler, or a real URL.`, n);
         }
       }
       const handlers: string[] = [];
