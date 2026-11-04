@@ -874,7 +874,7 @@ repo 內的範例以 `vite.config.ts` 的 alias 直接指向 `src/lib`，不需�
 - `define("tag", Class)` 的掃描是文字比對（會略過字串與註解），不是完整的程式分析；HTML 層級的子元件契約檢查也一樣，只讀得到 `Component(tpl, { props, emits })` 這種字面寫法。
 - `props` 只有預設值為 string / number / boolean 時才能用 HTML 屬性傳入。
 - 自動綁定只涵蓋文字洞與 `data-if`，清單與屬性要在 `render` 寫。
-- 版本 0.1，API 仍可能改動（例如 `Update` 回呼簽章已改過兩次），版本策略見 [CHANGELOG.md](CHANGELOG.md)。
+- 版本 0.x，API 仍可能改動（例如 `Update` 回呼簽章已改過兩次），版本策略見 [CHANGELOG.md](CHANGELOG.md)。
 - 沒有 SSR 或 hydration。
 - 沒有屬性綁定（刻意不做，請用 `refs`）。
 - 未使用標記的 lint 以類別本體文字比對，對清單項目內的名稱較寬鬆（只看識別字）。
