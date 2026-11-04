@@ -869,7 +869,7 @@ These are deliberate trade-offs, not missing features:
 - The `CustomEvent` received by an event handler method must be cast with `EmitEvent<child component, "event name">`, because HTML attributes cannot carry types.
 - `props` can be passed through HTML attributes only when the default value is a string / number / boolean.
 - Automatic binding covers only text holes and `data-if`; lists and attributes must be written in `render`.
-- Version 0.1, and the API may still change (for example, the `Update` callback signature has changed twice); see [CHANGELOG.md](CHANGELOG.md) for the versioning policy.
+- Version 0.x, and the API may still change (for example, the `Update` callback signature has changed twice); see [CHANGELOG.md](CHANGELOG.md) for the versioning policy.
 - No SSR or hydration.
 - No attribute binding (deliberately; use `refs`).
 - The unused-markup lint compares against the class body text, and is looser for names inside list items (it only looks at identifiers).

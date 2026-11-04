@@ -1,6 +1,6 @@
 {
   "name": "ts-dom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
   "keywords": [
     "html",
@@ -14,6 +14,14 @@
   ],
   "license": "MIT",
   "author": "ts-dom contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pixmi/ts-dom.git"
+  },
+  "homepage": "https://github.com/Pixmi/ts-dom#readme",
+  "bugs": {
+    "url": "https://github.com/Pixmi/ts-dom/issues"
+  },
   "type": "module",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
@@ -78,5 +86,9 @@
     "./examples/**",
     "./browser/**",
     "./test/**"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

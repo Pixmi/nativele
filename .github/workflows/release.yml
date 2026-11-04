@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version $version is not MAJOR.MINOR.PATCH with an optional -prerelease"
+            exit 1
+          fi
+          if ! grep -q "^## $version\b" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $version' section"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          tags=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$version" --jq ".[].ref | select(. == \"refs/tags/v$version\")")
+          if [[ -n "$tags" ]]; then echo "released=true" >> "$GITHUB_OUTPUT"; else echo "released=false" >> "$GITHUB_OUTPUT"; fi
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+
+  verify:
+    needs: version
+    if: needs.version.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gen
+      - run: npx tsc
+      - run: npm test
+      - run: npm run lint
+      - run: npm run verify:pack
+
+  release:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      # A prerelease version (one with a "-") is published under the "next" tag so that "npm i ts-dom" keeps installing the latest stable release.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::The NPM_TOKEN secret is not set, so nothing was published"
+            exit 1
+          fi
+          tag=latest
+          if [[ "$PRERELEASE" == 'true' ]]; then tag=next; fi
+          npm publish --tag "$tag"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq "map(select(.merge_commit_sha == \"$GITHUB_SHA\"))[0].body // empty" > notes.md
+          flags=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "v$VERSION")
+          if [[ -s notes.md ]]; then flags+=(--notes-file notes.md); else flags+=(--generate-notes); fi
+          if [[ "$PRERELEASE" == 'true' ]]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" "${flags[@]}"
