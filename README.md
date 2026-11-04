@@ -496,7 +496,7 @@ add(e: Event) { e.preventDefault(); … }
 removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((i) => i.id !== hit.key) })); }
 ```
 
-- The method receives `(event, hit)`. `hit.el` is the element carrying the `data-on-*`; when the event happens inside a list item, `hit.key` is that item's key and `hit.item` is the data most recently passed to `update`; this also holds for events emitted by a child component placed inside the item. If you need extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
+- The method receives `(event, hit)`. `hit.el` is the element carrying the `data-on-*`; when the event happens inside a list item, `hit.key` is that item's key and `hit.item` is the data most recently passed to `update`; this also holds for events emitted by a child component placed inside the item. `hit.item` is `unknown` unless the handler annotates it, e.g. `hit: EventHit<Todo>`. If you need extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
 - **Event delegation**: only one listener per event type is attached at the component root, so a longer list does not add listeners, and adding or removing items needs no rebinding. Non-bubbling events (`focus`, `blur`, `mouseenter`, etc.) use the capture phase and handle only the target itself; for bubbling events, the handler methods are called in order from the inside out, and `stopPropagation()` stops the chain.
 - **Only elements in the component's own template count**: content a user puts into a slot does not trigger anything even if it has `data-on-click`.
 - Only a method name may be written; `add(1)` and `a.b` cause an error at codegen time. A method name must not collide with DOM built-in methods or ts-dom members (for example `remove`, `click`, `focus`, `set`, `render`); otherwise they would be overridden, and codegen reports an error and suggests renaming.
@@ -643,7 +643,7 @@ store.set((s) => ({ count: s.count + 1 }));
 const off = store.subscribe((s) => console.log(s)); // returns an unsubscribe function
 ```
 
-There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.
+`this.bind` also accepts a read-only source that has only `get` and `subscribe`. There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.
 
 ## Templates Without a Component
 

@@ -277,3 +277,25 @@ export function typeOnly(r: Rows) {
   // @ts-expect-error a list that does not exist
   void r.lists.nope;
 }
+
+describe("list keys and read-only binding", () => {
+  it("replace throws on duplicate keys and leaves the list as it was", () => {
+    const r = document.createElement("t-rows") as Rows;
+    document.body.append(r);
+    const upd = (s: string, { text }: { text: { n: unknown } }) => (text.n = s);
+    r.lists.rows.replace(["a", "b"], (s) => s, upd);
+    expect(() => r.lists.rows.replace(["a", "a"], (s) => s, upd)).toThrow(/duplicate-key/);
+    expect(texts(r)).toEqual(["a", "b"]);
+  });
+
+  it("bind accepts a source with only get and subscribe", () => {
+    const store = createStore(1);
+    const readOnly = { get: store.get, subscribe: store.subscribe };
+    const r = document.createElement("t-rows") as Rows;
+    document.body.append(r);
+    const seen: number[] = [];
+    r.bind(readOnly, (v) => seen.push(v));
+    store.set(2);
+    expect(seen).toEqual([1, 2]);
+  });
+});
