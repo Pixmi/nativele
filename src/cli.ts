@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck } from "./lib/check.ts";
+import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { CODEGEN_RULES, CodegenError, generateAll, listHtml, staleGenerated, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
@@ -27,6 +28,9 @@ Commands
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text
+  doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
+                    and the Vite, oxlint and formatter configuration (default dir: src)
+        --json            print the issues as JSON instead of text
   rules             List every rule id with its description
 
 Output format: file:line:col severity [rule-id] message. Each message says what is wrong and how to fix it.
@@ -46,6 +50,7 @@ function printRules(): void {
   const groups: [string, string, Record<string, string>][] = [
     ["gen", "reported by `ts-dom gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
     ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state)", CHECK_RULES],
+    ["doctor", "reported by `ts-dom doctor` (project set-up)", DOCTOR_RULES],
     ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup", UNUSED_MARKUP_RULES],
     ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow", DATA_FLOW_RULES],
     ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
@@ -100,6 +105,12 @@ try {
     const errors = issues.filter((i) => i.severity === "error").length;
     if (errors || (flags.has("--strict") && issues.length)) process.exitCode = 1;
     if (!flags.has("--json") && !issues.length) console.log("ts-dom check: no issues");
+  } else if (cmd === "doctor") {
+    const issues = runDoctor({ dirs, generate });
+    if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
+    else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatDoctorIssue(i));
+    if (issues.some((i) => i.severity === "error")) process.exitCode = 1;
+    if (!flags.has("--json") && !issues.length) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
     const files = dirs.flatMap(tsFiles);
     const issues: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];

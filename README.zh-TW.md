@@ -893,6 +893,8 @@ this.lists.tags.replace(
 
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
 
+**懷疑是設定本身有問題時：`npx ts-dom doctor [dirs...]`。** 它檢查專案在任何檢查能運作之前需要的東西：tsconfig 要開 `strict`、含 DOM lib、模組解析能把 `./x.html.js` 對到產生檔、`include` 涵蓋範本資料夾；runtime 套件已安裝；範本以 `./x.html.js` 匯入（不是 `./x.html`）；產生檔是否過期；Vite 外掛與 oxlint 外掛是否設定；以及設定了 oxfmt 或 Prettier 這類格式化工具時，範本是否以 `collapse` 空白模式產生。每則都有穩定的規則代號與 `Fix:` 提示，`--json` 以資料形式輸出。
+
 **一個指令跑完全部：`npx ts-dom check [dirs...]`。** 它會回報範本診斷、重新產生產生檔（加 `--no-write` 則改為回報過期的產生檔）、執行專案自己的 `tsc`（TypeScript 5、6、7 皆可；`--project=` 指定 tsconfig），並跑 lint 規則（`--a11y` 加上無障礙檢查）。來自範本契約的 TypeScript 錯誤會指向範本，而不是 `Component(...)` 那一行：`{{ title }}` 找不到任何名為 `title` 的東西時，會以 `missing-binding` 回報在 `.html` 的行列；缺少的處理方法則是 `missing-handler`；項目元件的問題各有自己的規則代號；只是因為類別已經壞掉而連帶產生的錯誤會被略過。`--json` 以資料形式輸出，有錯誤時結束碼為 1（加 `--strict` 時警告也算）。
 
 1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-key` 與 `data-prop` 不完整或不合法、有 `data-key` 的清單其項目不是單一自訂元素、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），範本內的 `<html>`、`<head>`、`<body>`，以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
