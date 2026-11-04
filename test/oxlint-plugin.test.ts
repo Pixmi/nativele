@@ -23,7 +23,7 @@ function project(rules: Record<string, string>): string {
 
 const run = (dir: string, ...args: string[]) => {
   try {
-    return execFileSync(process.execPath, [oxlint, ...args, "panel.ts"], { cwd: dir, encoding: "utf8", env });
+    return execFileSync(process.execPath, [oxlint, "--format=json", ...args, "panel.ts"], { cwd: dir, encoding: "utf8", env });
   } catch (e) {
     return (e as { stdout: string }).stdout;
   }
@@ -31,9 +31,13 @@ const run = (dir: string, ...args: string[]) => {
 
 describe("the lint plugin in oxlint", () => {
   it("one rule per rule id, each with its own severity, reported on the template's import line", () => {
-    const out = run(project({ "ts-dom/missing-handler": "error", "ts-dom/unused-ref": "warn" }));
-    expect(out).toMatch(/panel\.ts:2:1: error ts-dom\(missing-handler\): \.\/panel\.html\.js:1:1 \[missing-handler\]/);
-    expect(out).toMatch(/panel\.ts:2:1: warning ts-dom\(unused-ref\): \.\/panel\.html\.js:2:1 \[unused-ref\]/);
+    // JSON, because oxlint picks its text format from the environment (GitHub annotations in GitHub Actions).
+    const out = JSON.parse(run(project({ "ts-dom/missing-handler": "error", "ts-dom/unused-ref": "warn" }))) as { diagnostics: { code: string; severity: string; message: string }[] };
+    const found = out.diagnostics.map((d) => [d.code, d.severity, d.message.slice(0, d.message.indexOf("]") + 1)]).sort();
+    expect(found).toEqual([
+      ["ts-dom(missing-handler)", "error", "./panel.html.js:1:1 [missing-handler]"],
+      ["ts-dom(unused-ref)", "warning", "./panel.html.js:2:1 [unused-ref]"],
+    ]);
   }, 30_000);
 
   it("--fix-suggestions adds the missing handler to the component class", () => {
