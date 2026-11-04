@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { analyze, CODEGEN_RULES, formatDiagnostics, generateModule, isFullPage } from "../src/lib/codegen.ts";
+import { analyze, CODEGEN_RULES, formatDiagnostics, generateModule, isFullPage, isSelected } from "../src/lib/codegen.ts";
 import { A11Y_RULES } from "../src/lib/a11y.ts";
 
 const errs = (html: string) => analyze(html).diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
@@ -391,5 +391,36 @@ describe("whitespace option", () => {
     expect(m).not.toContain(`"\\n  "`);
     expect(m).toContain(`" "`);
     expect(m).toContain(`"  keep\\n"`);
+  });
+});
+
+describe("include / exclude", () => {
+  const dir = "/p/src";
+  it("selects every template when no pattern is given", () => {
+    expect(isSelected(dir, "/p/src/a/b.html")).toBe(true);
+  });
+  it("matches * within a folder and ** across folders", () => {
+    expect(isSelected(dir, "/p/src/a/b.html", { exclude: ["a/*.html"] })).toBe(false);
+    expect(isSelected(dir, "/p/src/a/c/b.html", { exclude: ["a/*.html"] })).toBe(true);
+    expect(isSelected(dir, "/p/src/a/c/b.html", { exclude: ["a/**"] })).toBe(false);
+    expect(isSelected(dir, "/p/src/b.html", { exclude: ["**/b.html"] })).toBe(false);
+  });
+  it("include narrows first and exclude removes from it", () => {
+    const options = { include: ["new/**"], exclude: ["new/draft/**"] };
+    expect(isSelected(dir, "/p/src/old/x.html", options)).toBe(false);
+    expect(isSelected(dir, "/p/src/new/x.html", options)).toBe(true);
+    expect(isSelected(dir, "/p/src/new/draft/x.html", options)).toBe(false);
+  });
+  it("generateAll skips templates that are not selected", async () => {
+    const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { generateAll } = await import("../src/lib/codegen.ts");
+    const root = mkdtempSync(join(tmpdir(), "tsdom-"));
+    mkdirSync(join(root, "old"));
+    writeFileSync(join(root, "old/a.html"), `<i></i>`);
+    writeFileSync(join(root, "b.html"), `<i></i>`);
+    generateAll(root, { exclude: ["old/**"] });
+    expect(existsSync(join(root, "old/a.html.ts"))).toBe(false);
+    expect(existsSync(join(root, "b.html.ts"))).toBe(true);
   });
 });

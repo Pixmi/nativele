@@ -236,7 +236,7 @@ export function analyze(html: string): Analysis {
       if (tag === "template" && each !== undefined) {
         if (!each.trim()) report("empty-each", "error", 'data-each is empty. Fix: give it a name, e.g. <template data-each="items">.', n);
         else if (listName) {
-          report("nested-each", "error", `data-each="${each}" is nested inside data-each="${listName}". Lists cannot be nested. Fix: make the inner list its own component, or render it from TypeScript.`, n);
+          report("nested-each", "error", `data-each="${each}" is nested inside data-each="${listName}". Lists cannot be nested; an inner list belongs to its own template. Fix: move the inner list and its item markup into a separate .html file (a child component with its own data-each) and use that component's tag inside the outer item.`, n);
         } else if (a.lists.has(each)) {
           report("duplicate-each", "error", `data-each="${each}" is used more than once, so this.lists.${each} would be ambiguous. Fix: use a different name.`, n);
         } else {
@@ -274,6 +274,32 @@ export interface GenerateOptions {
    * "collapse" turns every run of whitespace into one space and drops whitespace-only text that contains a line break (layout between tags); `<pre>`, `<textarea>`, `<style>` and `<script>` are left alone.
    */
   whitespace?: "preserve" | "collapse";
+  /** Glob patterns, relative to the scanned directory, of the `.html` files to generate. Default: every template. */
+  include?: readonly string[];
+  /** Glob patterns, relative to the scanned directory, of `.html` files to leave out (applied after `include`). `*` matches within a folder, `**` across folders. */
+  exclude?: readonly string[];
+}
+
+function globToRegExp(glob: string): RegExp {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i] as string;
+    if (c === "*" && glob[i + 1] === "*") {
+      const slash = glob[i + 2] === "/";
+      re += slash ? "(?:.*/)?" : ".*";
+      i += slash ? 2 : 1;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/** Whether `file` (under `dir`) is one of the templates `options.include` / `options.exclude` select. */
+export function isSelected(dir: string, file: string, options: GenerateOptions = {}): boolean {
+  const rel = relative(dir, file).split(sep).join("/");
+  const hit = (globs: readonly string[]) => globs.some((g) => globToRegExp(g).test(rel));
+  return (!options.include?.length || hit(options.include)) && !(options.exclude?.length && hit(options.exclude));
 }
 
 const KEEPS_WHITESPACE = new Set(["pre", "textarea", "style", "script"]);
@@ -506,6 +532,7 @@ export function generateAll(dir: string, options: GenerateOptions = {}): string[
   const errors: string[] = [];
   const defs = scanDefines(dir);
   for (const f of listHtml(dir)) {
+    if (!isSelected(dir, f, options)) continue;
     try {
       written.push(generateFile(f, options, defs));
     } catch (e) {
@@ -551,7 +578,7 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         file,
         setTimeout(() => {
           try {
-            if (!existsSync(file) || isFullPage(readFileSync(file, "utf8"))) return;
+            if (!existsSync(file) || !isSelected(dir, file, opts) || isFullPage(readFileSync(file, "utf8"))) return;
             opts.onGenerate?.(generateFile(file, opts, dir));
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
