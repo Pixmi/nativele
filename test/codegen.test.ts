@@ -203,7 +203,18 @@ const RULE_INPUTS: Record<string, string> = {
   "nested-each": `<template data-each="a"><i><template data-each="b"><u></u></template></i></template>`,
   "duplicate-each": `<template data-each="a"><i></i></template><template data-each="a"><i></i></template>`,
   "each-root-count": `<template data-each="a"><i></i><i></i></template>`,
+  "forbidden-tag": `<script>alert(1)</script>`,
+  "forbidden-attribute": `<b onclick="x()"></b>`,
+  "unsafe-url": `<a href="javascript:void(0)"></a>`,
 };
+
+describe("unsafe markup", () => {
+  it("rejects srcdoc and javascript: URLs, and allows data-on-* and ordinary links", () => {
+    expect(ruleIds(`<iframe srcdoc="<p>x</p>"></iframe>`)).toContain("forbidden-attribute");
+    expect(ruleIds(`<a href=" JavaScript:x"></a>`)).toContain("unsafe-url");
+    expect(ruleIds(`<a href="/x" data-on-click="go" data-ref="a"></a>`)).toEqual([]);
+  });
+});
 
 describe("rule ids and diagnostic shape", () => {
   it("every analyze rule in CODEGEN_RULES is produced by at least one template", () => {
