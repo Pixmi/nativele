@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - The Vite plugin regenerates a template when it changes while the dev server runs and reloads the page once with the new markup. Before, the regeneration never ran under Vite+ (it reports changed files by relative path), so editing a template left the old one in the page.
 - The accessibility messages say "natively" again where a rename had turned it into "ts-domy".
+- `<template data-each data-key="id" data-prop="todo">` with one custom element as the item, and `this.lists.todos.items = todos`: items are components that receive each item as a property, matched by key. New rules `each-binding-incomplete`, `invalid-each-binding` and `each-binding-root`. `replace()` stays for lists of plain elements. `data-each` still cannot be nested.
 
 ## 0.3.0
 

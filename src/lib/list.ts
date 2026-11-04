@@ -38,6 +38,7 @@ export interface ReplaceOptions {
  * the content of an item is written explicitly by the user's update callback.
  */
 export class List<L extends ListSchema = ListSchema> {
+  #current: readonly unknown[] = [];
   #items = new Map<PropertyKey, Entry<L>>();
   #byEl = new WeakMap<Element, { key: PropertyKey; item: unknown }>();
   constructor(
@@ -45,7 +46,44 @@ export class List<L extends ListSchema = ListSchema> {
     private readonly proto: Element,
     /** Called when a new item is created (the component uses it to register data-on-* inside the item) */
     private readonly onCreate?: (el: Element) => void,
+    /** From `data-key` and `data-prop`: the item field that identifies it and the element property that receives it. */
+    private readonly binding?: { readonly key: string; readonly prop: string },
   ) {}
+
+  /**
+   * The items shown. Assigning shows them: an element is kept for each key that stays, created for a new key and removed for a key that is gone, and `data-prop` receives each item that is not the same object as last time.
+   * Needs `data-key` and `data-prop` on the `<template data-each>`.
+   * @throws When the template has no `data-key` and `data-prop`, when an item has no `data-key` field, or when two items have the same key
+   */
+  get items(): readonly unknown[] {
+    return this.#current;
+  }
+
+  set items(items: readonly unknown[]) {
+    const binding = this.binding;
+    if (!binding) {
+      throw new Error("[list-not-bound] this list has no data-key and data-prop, so its items cannot be assigned. Fix: add them to the <template data-each>, e.g. data-key=\"id\" data-prop=\"item\", or call replace().");
+    }
+    const keyOf = (item: unknown): PropertyKey => {
+      const key = (item as Record<string, unknown> | null | undefined)?.[binding.key];
+      if (typeof key !== "string" && typeof key !== "number" && typeof key !== "symbol") {
+        throw new Error(`[missing-key] an item has no usable "${binding.key}" field (data-key). Fix: give every item a string or number ${binding.key}, or change data-key.`);
+      }
+      return key;
+    };
+    this.replace(
+      items,
+      keyOf,
+      (item, { el }) => {
+        if (el.isConnected && customElements.get(el.localName) && !(binding.prop in el)) {
+          throw new Error(`[unknown-prop] <${el.localName}> has no "${binding.prop}" property (data-prop). Fix: declare ${binding.prop} in the component's props, or change data-prop.`);
+        }
+        (el as unknown as Record<string, unknown>)[binding.prop] = item;
+      },
+      { skipUnchanged: true },
+    );
+    this.#current = items;
+  }
 
   /** From any node inside an item, find the key and data of the item it belongs to (used by event handlers). */
   itemOf(node: Node | null): { key: PropertyKey; item: unknown } | undefined {

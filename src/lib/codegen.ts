@@ -38,6 +38,9 @@ export const CODEGEN_RULES = {
   "empty-each": "data-each must not be empty",
   "nested-each": "data-each templates cannot be nested",
   "duplicate-each": "data-each names must be unique",
+  "each-binding-incomplete": "data-key and data-prop go together on a data-each template",
+  "invalid-each-binding": "data-key and data-prop must each be a single identifier",
+  "each-binding-root": "with data-key and data-prop the item must be one custom element",
   "each-root-count": "a data-each template needs exactly one root element",
   "document-tag": "<html>, <head> and <body> cannot be in a template (the browser drops them from fragments)",
   "forbidden-tag": "<script> cannot be in a template (it would run code)",
@@ -255,6 +258,20 @@ export function analyze(html: string): Analysis {
           const items = (n as Template).content.childNodes.filter((c: Node) => isEl(c) || (c.nodeName === "#text" && (c as { value: string }).value.trim()));
           if (items.length !== 1 || !isEl(items[0] as Node)) {
             report("each-root-count", "error", `data-each="${each}" must contain exactly one root element (found ${items.length} root nodes). Fix: wrap the item content in a single element such as <li>.`, n);
+          }
+          const key = attr(n, "data-key");
+          const prop = attr(n, "data-prop");
+          if ((key === undefined) !== (prop === undefined)) {
+            report("each-binding-incomplete", "error", `data-each="${each}" has ${key === undefined ? "data-prop" : "data-key"} but not ${key === undefined ? "data-key" : "data-prop"}. Fix: write both, e.g. <template data-each="${each}" data-key="id" data-prop="item">, or neither to fill the items yourself with replace().`, n);
+          } else if (key !== undefined && prop !== undefined) {
+            if (!IDENT.test(key.trim()) || !IDENT.test(prop.trim())) {
+              report("invalid-each-binding", "error", `data-key="${key}" and data-prop="${prop}" must each be a single identifier: the item field that identifies it, and the property of the item element that receives the item. Fix: write data-key="id" data-prop="item".`, n);
+            } else if (items.length === 1 && isEl(items[0] as Node)) {
+              const root = items[0] as Element;
+              if (!(root.tagName.includes("-") && root.namespaceURI === HTML_NS)) {
+                report("each-binding-root", "error", `data-each="${each}" has data-key and data-prop, so each item is one component that receives the item as a property, but its root is <${root.tagName}>. Fix: make the item a custom element such as <${each}-row></${each}-row> and put the item's markup in that component's own .html.`, n);
+              }
+            }
           }
           const s = newScope();
           a.lists.set(each, s);

@@ -1,0 +1,90 @@
+import { describe, expect, it } from "vitest";
+import { Component, define, event } from "../src/lib/index.ts";
+import type { EventHit } from "../src/lib/index.ts";
+import rowTpl from "./bind-row.html.js";
+import listTpl from "./bind-list.html.js";
+
+interface Todo {
+  id: number;
+  title: string;
+}
+
+export class BindRow extends Component(rowTpl, {
+  props: { todo: null as Todo | null },
+  derive: { title: (s) => s.todo?.title ?? "" },
+  emits: { toggled: event<void>() },
+}) {
+  renders = 0;
+  override render(): void {
+    this.renders++;
+  }
+  toggle(): void {
+    this.emit("toggled");
+  }
+}
+define("t-bind-row", BindRow);
+
+class BindList extends Component(listTpl) {
+  toggled: PropertyKey[] = [];
+  onToggled(_e: Event, hit: EventHit): void {
+    this.toggled.push(hit.key as PropertyKey);
+  }
+}
+define("t-bind-list", BindList);
+
+const mount = () => {
+  const list = document.createElement("t-bind-list") as BindList;
+  document.body.append(list);
+  return list;
+};
+const rows = (list: BindList) => [...list.querySelectorAll<BindRow>("t-bind-row")];
+
+describe("list items assignment (data-key and data-prop)", () => {
+  it("shows the items, keeps the element of a key that stays and removes the rest", () => {
+    const list = mount();
+    const a = { id: 1, title: "a" };
+    const b = { id: 2, title: "b" };
+    list.lists.todos.items = [a, b];
+    const [rowA, rowB] = rows(list);
+    expect(rows(list).map((r) => r.textContent?.trim().split("\n")[0])).toEqual(["a", "b"]);
+
+    list.lists.todos.items = [b, { id: 3, title: "c" }];
+    expect(rows(list)).toHaveLength(2);
+    expect(rows(list)[0]).toBe(rowB);
+    expect(rowA?.isConnected).toBe(false);
+    expect(list.lists.todos.items).toHaveLength(2);
+  });
+
+  it("assigns only the items that are not the same object as before", () => {
+    const list = mount();
+    const a = { id: 1, title: "a" };
+    const b = { id: 2, title: "b" };
+    list.lists.todos.items = [a, b];
+    const before = rows(list).map((r) => r.renders);
+    list.lists.todos.items = [a, { id: 2, title: "b2" }];
+    const after = rows(list).map((r) => r.renders);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBeGreaterThan(before[1] as number);
+    expect(rows(list)[1]?.textContent).toContain("b2");
+  });
+
+  it("an event from an item reaches the parent with the item's key", () => {
+    const list = mount();
+    list.lists.todos.items = [{ id: 7, title: "x" }];
+    rows(list)[0]?.querySelector("button")?.click();
+    expect(list.toggled).toEqual([7]);
+  });
+
+  it("reports an item without a key, a duplicate key, and a list that is not bound", () => {
+    const list = mount();
+    expect(() => (list.lists.todos.items = [{ title: "no id" }])).toThrow(/missing-key/);
+    expect(() => (list.lists.todos.items = [{ id: 1, title: "a" }, { id: 1, title: "b" }])).toThrow(/duplicate-key/);
+    expect(() => (list.lists.plain.items = [])).toThrow(/list-not-bound/);
+  });
+
+  it("replace() still works on any list", () => {
+    const list = mount();
+    list.lists.plain.replace(["x", "y"], (s) => s, (s, { text }) => (text.n = s));
+    expect([...list.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["x", "y"]);
+  });
+});

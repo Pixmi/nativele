@@ -67,6 +67,11 @@ define("my-counter", MyCounter);
 ## Template without a component
 `const view = tpl.instantiate()` returns `{ root: DocumentFragment, rootElement, refs, lists, text, show }` typed like a component (`rootElement` exists in the type only when the template has exactly one top-level element, `<style>` excluded), for pieces created in code. No host: `data-on-*` is inert (use `refs.x.addEventListener`) and `<slot>` is not projected.
 
+## Lists
+- Items that are components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row></todo-row></template>`, then `this.lists.todos.items = view.todos` (inside `render`, guarded by `changed.has("todos")`). Keeps the element of each key, creates and removes the rest, sets the `todo` prop of each changed item; `hit.key` in handlers. The item component declares `todo` in its `props`.
+- Items that are plain elements: `<template data-each="x">` with `this.lists.x.replace(items, keyFn, (item, { text, show }) => ...)`.
+- `data-each` is never nested: a list inside an item is the item component's own `data-each`.
+
 ## Rules for agents
 - Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` change run `npx ts-dom gen && npx tsc` and fix every type error instead of casting it away. Until `gen` has run, `tsc` only reports that `./x.html.js` is missing.
 - No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list.
