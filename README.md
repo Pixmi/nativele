@@ -656,13 +656,15 @@ const off = store.subscribe((s) => console.log(s)); // returns an unsubscribe fu
 ```ts
 import itemTpl from "./menu-item.html.js";
 
-function menuItem(label: string): HTMLElement {
+function menuItem(label: string): HTMLLIElement {
   const view = itemTpl.instantiate();
   view.text.label = label;
   view.refs.button.addEventListener("click", () => select(label));
-  return view.root.firstElementChild as HTMLElement;
+  return view.rootElement; // typed by the template's top-level tag
 }
 ```
+
+`rootElement` is the template's only top-level element (a top-level `<style>` does not count); it exists in the type only when the template has exactly one, so a template that later gains a second root element makes `tsc` report the use.
 
 There is no host element, so `data-on-*` attributes do nothing here (listen on `refs`) and `<slot>` is not projected; use a component when you need those.
 

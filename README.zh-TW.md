@@ -658,13 +658,15 @@ const off = store.subscribe((s) => console.log(s)); // 回傳取消函式
 ```ts
 import itemTpl from "./menu-item.html.js";
 
-function menuItem(label: string): HTMLElement {
+function menuItem(label: string): HTMLLIElement {
   const view = itemTpl.instantiate();
   view.text.label = label;
   view.refs.button.addEventListener("click", () => select(label));
-  return view.root.firstElementChild as HTMLElement;
+  return view.rootElement; // 型別由範本第一層的標籤決定
 }
 ```
+
+`rootElement` 是範本第一層唯一的元素（第一層的 `<style>` 不算）；只有範本剛好一個根元素時型別上才有它，所以範本日後多出第二個根元素時，`tsc` 會在使用處報錯。
 
 這種用法沒有宿主元素，所以 `data-on-*` 不會生效（請在 `refs` 上自行監聽），`<slot>` 也不會投影；需要這些時請用元件。
 

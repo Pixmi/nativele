@@ -11,6 +11,8 @@ export interface Schema {
   events: string;
   ifs: string;
   slots: string;
+  /** The template's only top-level element (a `<style>` does not count), or `never` when there is not exactly one. */
+  rootElement: Element;
 }
 
 /**
@@ -20,7 +22,10 @@ export interface Schema {
 export type TemplateNode = string | readonly [tag: string, attrs: Readonly<Record<string, string>>, children: readonly TemplateNode[], ns?: string] | readonly ["#comment", string];
 
 /** A template built without a component: the nodes, and the typed handles to the places the template names. */
-export interface TemplateInstance<S extends Schema> {
+export type TemplateInstance<S extends Schema> = TemplateInstanceBase<S> &
+  ([S["rootElement"]] extends [never] ? unknown : { /** The template's only top-level element; present only when the template has exactly one. */ readonly rootElement: S["rootElement"] });
+
+interface TemplateInstanceBase<S extends Schema> {
   /** The built nodes; insert it (or its children) where it should show. */
   readonly root: DocumentFragment;
   /** The elements marked with `data-ref`. */
@@ -54,9 +59,11 @@ export function template<S extends Schema = Schema>(nodes: readonly TemplateNode
     build: () => buildNodes(nodes),
     instantiate() {
       const root = buildNodes(nodes);
+      const tops = [...root.children].filter((el) => el.localName !== "style" && !(el instanceof HTMLTemplateElement && el.hasAttribute("data-each")));
+      const rootElement = tops.length === 1 ? tops[0] : undefined;
       const { refs, lists, text, conds } = mountTemplate(root);
       conds.hideAll();
-      return { root, refs, lists, text, show: conds.show } as unknown as TemplateInstance<S>;
+      return { root, rootElement, refs, lists, text, show: conds.show } as unknown as TemplateInstance<S>;
     },
   };
 }
