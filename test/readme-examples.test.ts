@@ -68,3 +68,36 @@ describe("README example: parent and child (props down, events up)", () => {
     expect(o.state.quantity).toBe(1);
   });
 });
+
+import { TaskBoard } from "../examples/readme/task-board.ts";
+import type { TaskRow } from "../examples/readme/task-row.ts";
+
+describe("README example: a list of components (items =, props down, events up)", () => {
+  const add = (b: TaskBoard, title: string) => {
+    b.refs.title.value = title;
+    b.querySelector("form")?.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  };
+  const rows = (b: TaskBoard) => [...b.querySelectorAll<TaskRow>("task-row")];
+  const titles = (b: TaskBoard) => rows(b).map((r) => r.querySelector("label")?.textContent?.trim());
+
+  it("adds, toggles, sorts and removes; a kept task keeps its element", () => {
+    const b = mount<TaskBoard>("task-board");
+    add(b, "write");
+    add(b, "read");
+    expect(titles(b)).toEqual(["write", "read"]);
+    const [write, read] = rows(b);
+
+    read?.querySelector("input")?.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(b.state.tasks.map((t) => t.done)).toEqual([false, true]);
+    expect(read?.querySelector("input")?.checked).toBe(true);
+    expect(rows(b)[1]).toBe(read);
+
+    byText(b, "Sort by title").click();
+    expect(titles(b)).toEqual(["read", "write"]);
+    expect(rows(b)).toEqual([read, write]);
+
+    byText(read as unknown as HTMLElement, "Remove").click();
+    expect(titles(b)).toEqual(["write"]);
+    expect(rows(b)[0]).toBe(write);
+  });
+});
