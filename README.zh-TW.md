@@ -38,7 +38,7 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 1. **HTML 只放名稱**：`{{ name }}`（文字）、`data-ref="x"`（需要用到的元素）、`data-if="x"`（顯示與否）、`<template data-each="x">`（清單）、`data-on-click="method"`（事件）、`<slot>`。沒有表達式，需要計算就在 TypeScript 做。
 2. **`.html` 有改動就先跑 `npx ts-dom gen` 再跑 `tsc`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`；在那之前 `tsc` 只會告訴你找不到模組。
 3. **資料放在類別裡**：`state`（自己的）、`props`（父元件給的）、`derive`（算出來的）。state 只用 `this.set()` 改；同名的 `{{ }}` 與 `data-if` 會自己更新。
-4. **其他都寫在 `render(view, changed)`**：清單、屬性、焦點。重建清單前先檢查 `changed.has("items")`。
+4. **其他都寫在 `render(view, changed)`**：清單、屬性、焦點。元件組成的清單只要一次指派，`if (changed.has("todos")) this.lists.todos.items = view.todos`，並在 `<template data-each>` 上寫 `data-key` 與 `data-prop`。
 5. **props 往下、事件往上**：父元件設定 props；子元件呼叫 `this.emit("name", detail)`，父元件在子元件的標籤上用 `data-on-name` 處理。
 6. **處理方法是公開方法** `(event, hit)`；在清單項目內 `hit.key` 就是該項目的 key。
 
@@ -52,6 +52,7 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 - HTML 裡不放表達式：計算值放進 `derive`，state 只用 `this.set()` 改。
 - `ts-dom gen` 與 `ts-dom lint` 的每則診斷結尾都有 `Fix:` 提示，照做。`npx ts-dom rules` 列出所有規則編號，`npx ts-dom lint --a11y` 另外檢查無障礙。
 - `data-each` 清單不能巢狀：把內層清單放進自己的 `.html`，當成子元件。
+- 元件組成的清單：在 `<template data-each>` 寫 `data-key` 與 `data-prop`，在 `<ul>` 或 `<ol>` 裡的項目元件加 `role="listitem"`，以 `this.lists.x.items = ...` 指派，變動的項目要給新物件（不要就地修改已指派的物件），並讓 `tsc` 檢查項目型別。
 
 ## 快速開始
 

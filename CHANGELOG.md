@@ -10,16 +10,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.4.0
 
-- The Vite plugin regenerates a template when it changes while the dev server runs and reloads the page once with the new markup. Before, the regeneration never ran under Vite+ (it reports changed files by relative path), so editing a template left the old one in the page.
-- In the dev server the plugin also removes the generated module of a deleted template, updates `ts-dom-tags.ts` and the child imports when a `define()` is added or removed, skips the reload when a save changes nothing, and lets Vite reload the page when something else rewrites a generated module. `dirs` are resolved against Vite's `root` instead of the working directory, and module graph lookups use forward slashes, as Vite does on Windows.
-- An item component defined in a scanned folder no longer loosens the type of `items` when its class is not exported or `ts-dom-tags.ts` does not list it: the assignment is a type error that names the cause. Only components from outside the scanned folders keep the loose type.
-- The dev server scans `define()` calls once per folder and again only when a `.ts` file with a `define()` changes, instead of reading every `.ts` file on each template save. Messages go to the logger of the server that saw the change.
-- A generated module reloads the page once per content: the duplicate change events one write can produce, and the identical rewrites of other dev servers watching the same folder, no longer reload the page a second time.
-- Assigning `items` with a `data-prop` the item component lacks throws before the list changes, so no half-built list is left behind.
-- The accessibility messages say "natively" again where a rename had turned it into "ts-domy".
-- `<template data-each data-key="id" data-prop="todo">` with one custom element as the item, and `this.lists.todos.items = todos`: items are components that receive each item as a property, matched by key. New rules `each-binding-incomplete`, `invalid-each-binding` and `each-binding-root`. `tsc` checks the assigned items against the item component's property type and the `data-key` field. The accessibility check `list-structure` accepts a custom element with `role="listitem"` as a list item. `replace()` stays for lists of plain elements. `data-each` still cannot be nested.
+### Lists of components
+
+- `<template data-each="todos" data-key="id" data-prop="todo"><todo-row role="listitem"></todo-row></template>` and `this.lists.todos.items = todos`: each item is one component that receives its item as a property, matched by key. An element is kept for a key that stays (moved with `moveBefore`), created for a new key and removed for a key that is gone; reading `items` returns the items in document order.
+- `tsc` checks the assigned items against the property type the item component declares and the `data-key` field (a string or a number). An item component defined in a scanned folder must be exported and listed in `ts-dom-tags.ts`, otherwise the assignment is a type error that names the cause; only components from outside the scanned folders get a loose type.
+- New codegen rules `each-binding-incomplete`, `invalid-each-binding` and `each-binding-root`, and runtime errors with a `Fix:` hint for what types cannot see (`invalid-items`, `invalid-item`, `missing-key`, `duplicate-key`, `list-not-bound`, `unknown-prop`). A wrong `data-prop` throws before the list changes.
+- The accessibility check `list-structure` accepts a custom element with `role="listitem"` as a list item.
+- `replace()` stays for lists of plain elements, and `data-each` still cannot be nested: a list inside an item is that component's own list.
+
+### Vite dev server
+
+- Editing a template regenerates its `x.html.ts` and reloads the page once if a page uses it; a save that changes nothing does not reload. This works under Vite and Vite+ (which reports changed files by relative path).
+- Deleting a template removes its generated module, and adding or removing a `define()` updates `ts-dom-tags.ts` and the child imports of the templates.
+- A generated module rewritten by something else (`ts-dom gen --watch`, a checkout) reloads the page through Vite; duplicate change events and identical rewrites by other dev servers no longer reload it twice.
+- `dirs` are resolved against Vite's `root` instead of the working directory. The `define()` scan is cached and redone only when a `.ts` file with a `define()` changes. Messages go to the logger of the server that saw the change.
+
+### Fixes
+
+- The accessibility messages say "natively" again where it had been replaced by "ts-domy".
+
+### Breaking changes
+
+- The Vite plugin's `dirs` are relative to Vite's `root`; a project whose `root` differs from the working directory must adjust them.
+- A project whose item component class is not exported, or whose `ts-dom-tags.ts` is stale, now gets a type error on `items`.
 
 ## 0.3.0
 

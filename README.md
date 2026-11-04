@@ -38,7 +38,7 @@ Six things cover most components:
 1. **HTML only names things**: `{{ name }}` (text), `data-ref="x"` (an element you need), `data-if="x"` (shown or not), `<template data-each="x">` (a list), `data-on-click="method"` (an event), `<slot>`. There are no expressions; compute in TypeScript.
 2. **Run `npx ts-dom gen` before `tsc`** whenever a `.html` changes. It writes the typed `x.html.ts` that `import tpl from "./x.html.js"` needs; until then `tsc` can only say the module is missing.
 3. **Data lives in the class**: `state` (yours), `props` (the parent's), `derive` (computed). Change state only with `this.set()`; `{{ }}` and `data-if` with the same name update by themselves.
-4. **Everything else goes in `render(view, changed)`**: lists, attributes, focus. Check `changed.has("items")` before rebuilding a list.
+4. **Everything else goes in `render(view, changed)`**: lists, attributes, focus. A list of components is one assignment, `if (changed.has("todos")) this.lists.todos.items = view.todos`, with `data-key` and `data-prop` on its `<template data-each>`.
 5. **Props go down, events go up**: the parent sets props; the child calls `this.emit("name", detail)` and the parent handles it with `data-on-name` on the child's tag.
 6. **A handler is a public method** `(event, hit)`; inside a list item `hit.key` is the item's key.
 
@@ -52,6 +52,7 @@ Paste these into your project's agent instructions (`AGENTS.md`, `CLAUDE.md` or 
 - No expressions in HTML: put computed values in `derive`, and change state only with `this.set()`.
 - Every diagnostic from `ts-dom gen` and `ts-dom lint` ends with a `Fix:` hint; follow it. `npx ts-dom rules` lists all rule ids, and `npx ts-dom lint --a11y` also checks accessibility.
 - A `data-each` list cannot be nested: put the inner list in its own `.html` as a child component.
+- For a list of components, write `data-key` and `data-prop` on the `<template data-each>`, give the item component `role="listitem"` inside `<ul>` or `<ol>`, assign `this.lists.x.items = ...` with new objects for changed items (never mutate an assigned item), and let `tsc` check the items.
 
 ## Quick Start
 
