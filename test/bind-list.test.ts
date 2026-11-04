@@ -190,3 +190,43 @@ describe("an item component that is not in HTMLElementTagNameMap", () => {
     expect(ok).toBeTypeOf("function");
   });
 });
+
+import { template } from "../src/lib/index.ts";
+
+const itemList = <S extends "local" | "unexported" | "external">() =>
+  template<{
+    refs: Record<never, never>;
+    lists: { rows: { refs: Record<never, never>; text: never; ifs: never; item: { tag: "x-not-in-map"; prop: "row"; key: "id"; source: S } } };
+    ifs: never;
+    slots: never;
+    rootElement: never;
+    text: never;
+    events: never;
+  }>([]);
+
+describe("item components that tsc cannot see", () => {
+  it("a component defined in a scanned folder but missing from the tag map, or not exported, is a type error; one from elsewhere only needs the key", () => {
+    const local = itemList<"local">().instantiate();
+    const unexported = itemList<"unexported">().instantiate();
+    const external = itemList<"external">().instantiate();
+    const checks = (): void => {
+      // @ts-expect-error the component is defined here, so a missing tag map entry means ts-dom gen has to run
+      local.lists.rows.items = [{ id: 1 }];
+      // @ts-expect-error the class passed to define() is not exported, so its prop type cannot be read
+      unexported.lists.rows.items = [{ id: 1 }];
+      external.lists.rows.items = [{ id: 1, anything: true }];
+    };
+    expect(checks).toBeTypeOf("function");
+  });
+});
+
+describe("codegen marks where the item component comes from", () => {
+  it("local, unexported or external", async () => {
+    const { generateModule } = await import("../src/lib/codegen.ts");
+    const html = `<template data-each="rows" data-key="id" data-prop="row"><x-row></x-row></template>`;
+    const def = (exported: boolean) => [{ tag: "x-row", className: "Row", file: "row.ts", exported, isDefault: false }];
+    expect(generateModule(html, {}, [], def(true))).toContain(`source: "local"`);
+    expect(generateModule(html, {}, [], def(false))).toContain(`source: "unexported"`);
+    expect(generateModule(html)).toContain(`source: "external"`);
+  });
+});

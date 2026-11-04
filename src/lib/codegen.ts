@@ -373,13 +373,15 @@ function toNodes(parent: Parent, collapse = false): unknown[] {
  * tsc (or any bundler) can compile it directly: no plugin and no allowArbitraryExtensions needed.
  * Consumers import it as `import tpl from "./x.html.js"` (TypeScript maps it to x.html.ts).
  */
-export function generateModule(html: string, options: GenerateOptions = {}, imports: readonly string[] = []): string {
+export function generateModule(html: string, options: GenerateOptions = {}, imports: readonly string[] = [], defs: readonly DefineDef[] = []): string {
   const runtime = options.runtime ?? "@nativele/ts-dom";
   const a = analyze(html);
   const lists = [...a.lists]
     .map(([n, s]) => {
       const bound = a.boundLists.get(n);
-      const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)} }` : "";
+      const def = bound && defs.find((d) => d.tag === bound.tag);
+      const source = !def ? "external" : def.exported ? "local" : "unexported";
+      const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)}; source: ${q(source)} }` : "";
       return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}${item} }`;
     })
     .join("; ");
@@ -433,7 +435,7 @@ export function generateFile(htmlPath: string, options: GenerateOptions = {}, de
   const here = dirname(htmlPath);
   const imports = [...new Set(known.filter((d) => analysis.customTags.has(d.tag)).map((d) => relImport(here, d.file)))].sort();
   const out = modulePathFor(htmlPath);
-  const next = generateModule(html, options, imports);
+  const next = generateModule(html, options, imports, known);
   let prev = "";
   try {
     prev = readFileSync(out, "utf8");
