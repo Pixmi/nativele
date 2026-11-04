@@ -11,6 +11,7 @@ const HELP = `ts-dom <command> [dirs...] [flags]
 Commands
   gen   [dirs...]   Generate x.html.ts for every x.html, plus ts-dom-tags.ts (default dir: src)
         --watch           keep watching and regenerate on change
+        --whitespace=collapse   collapse whitespace in text and drop line-break-only text between tags
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
@@ -45,6 +46,7 @@ function printRules(): void {
 
 const [cmd, ...args] = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
+const generate = { whitespace: flags.has("--whitespace=collapse") ? ("collapse" as const) : ("preserve" as const) };
 const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
 
@@ -53,7 +55,7 @@ try {
     let failed = false;
     for (const d of dirs) {
       try {
-        generateAll(d);
+        generateAll(d, generate);
       } catch (e) {
         if (!(e instanceof CodegenError) || !flags.has("--watch")) throw e;
         console.error(e.message);
@@ -63,6 +65,7 @@ try {
     if (flags.has("--watch")) {
       console.log(`[ts-dom] watching ${dirs.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
       watchAll(dirs, {
+        ...generate,
         onGenerate: (f) => console.log(`[ts-dom] generated ${f}`),
         onError: (m) => console.error(m),
       });

@@ -256,6 +256,8 @@ npx ts-dom gen        # generate x.html.ts for every x.html under src/
 npx tsc               # type-check and compile to out/
 ```
 
+Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone.
+
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
 
 In your code, import templates with a `.js` suffix (standard NodeNext style; TS maps it to the generated `x.html.ts`):
@@ -287,7 +289,7 @@ import { defineConfig } from "vite-plus"; // or "vite"
 import { tsDom } from "ts-dom/vite";
 
 export default defineConfig({
-  plugins: [tsDom()], // options: dirs (default ["src"]), runtime, a11y
+  plugins: [tsDom()], // options: dirs (default ["src"]), runtime, whitespace, a11y
 });
 ```
 

@@ -256,6 +256,8 @@ npx ts-dom gen        # 為 src/ 下每個 x.html 產生 x.html.ts
 npx tsc               # 型別檢查並編譯到 out/
 ```
 
+文字中的空白預設照原樣保留。若想把連續空白收成一個空格、並丟掉標籤之間只含換行的文字（讓縮排的 HTML 不產生多餘空格），用 `npx ts-dom gen --whitespace=collapse` 或 Vite 外掛選項 `whitespace: "collapse"`；`<pre>` 與 `<textarea>` 不受影響。
+
 開發時可用 `npx ts-dom gen --watch` 持續監看 `.html`，搭配 `tsc --watch`。
 
 在程式中以 `.js` 結尾匯入範本（標準 NodeNext 寫法，TS 會對應到產生的 `x.html.ts`）：
