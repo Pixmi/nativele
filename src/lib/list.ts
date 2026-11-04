@@ -6,8 +6,11 @@ export interface ListSchema {
   refs: Record<string, Element>;
   text: string;
   ifs: string;
-  /** Set for a list whose items are components (`data-key` and `data-prop`): the item tag, the property that receives the item and the field that identifies it. */
-  item?: { tag: string; prop: string; key: string };
+  /**
+   * Set for a list whose items are components (`data-key` and `data-prop`): the item tag, the property that receives the item, the field that identifies it,
+   * and where codegen found the component: defined and exported in a scanned directory, defined there without export, or not found (a component from elsewhere).
+   */
+  item?: { tag: string; prop: string; key: string; source?: "local" | "unexported" | "external" };
 }
 
 type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
@@ -15,7 +18,11 @@ type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
     ? P extends keyof HTMLElementTagNameMap[T]
       ? NonNullable<HTMLElementTagNameMap[T][P]>
       : { dataPropNotOnItemComponent: P }
-    : { [field: string]: unknown }
+    : L extends { item: { source: "local" } }
+      ? { itemComponentMissingFromTagMap: T; fix: "run ts-dom gen so ts-dom-tags.ts lists it" }
+      : L extends { item: { source: "unexported" } }
+        ? { itemComponentClassNotExported: T; fix: "export the class passed to define() so its type can be read" }
+        : { [field: string]: unknown }
   : never;
 type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: string | number } : unknown;
 
