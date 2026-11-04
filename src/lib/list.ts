@@ -6,7 +6,21 @@ export interface ListSchema {
   refs: Record<string, Element>;
   text: string;
   ifs: string;
+  /** Set for a list whose items are components (`data-key` and `data-prop`): the item tag, the property that receives the item and the field that identifies it. */
+  item?: { tag: string; prop: string; key: string };
 }
+
+type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
+  ? T extends keyof HTMLElementTagNameMap
+    ? P extends keyof HTMLElementTagNameMap[T]
+      ? NonNullable<HTMLElementTagNameMap[T][P]>
+      : { dataPropNotOnItemComponent: P }
+    : unknown
+  : never;
+type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: PropertyKey } : unknown;
+
+/** What `items` takes for a list: the type of the item component's `data-prop` property, with the `data-key` field. */
+export type ListItem<L> = ItemOf<L> & KeyField<L>;
 export type TextOf<N extends string> = { [K in N]: TextValue };
 
 interface Entry<L extends ListSchema> extends ItemContext<L> {
@@ -52,13 +66,13 @@ export class List<L extends ListSchema = ListSchema> {
    * The items shown, in order. Assigning shows them: an element is kept for each key that stays, created for a new key and removed for a key that is gone, and the `data-prop` property receives each item that is not the same object as last time.
    * @throws When the template has no `data-key` and `data-prop`, when an item has no `data-key` field, or when two items have the same key
    */
-  get items(): readonly unknown[] {
+  get items(): readonly ListItem<L>[] {
     return [...this.#items.values()]
       .sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
-      .map((entry) => entry.item);
+      .map((entry) => entry.item as ListItem<L>);
   }
 
-  set items(items: readonly unknown[]) {
+  set items(items: readonly ListItem<L>[]) {
     if (!this.binding) {
       throw new Error("[list-not-bound] this list has no data-key and data-prop, so its items cannot be assigned. Fix: add them to the <template data-each>, e.g. data-key=\"id\" data-prop=\"item\", or call replace().");
     }

@@ -77,6 +77,7 @@ describe("list items assignment (data-key and data-prop)", () => {
 
   it("reports an item without a key, a duplicate key, and a list that is not bound", () => {
     const list = mount();
+    // @ts-expect-error the item has no id (data-key)
     expect(() => (list.lists.todos.items = [{ title: "no id" }])).toThrow(/missing-key/);
     expect(() => (list.lists.todos.items = [{ id: 1, title: "a" }, { id: 1, title: "b" }])).toThrow(/duplicate-key/);
     expect(() => (list.lists.plain.items = [])).toThrow(/list-not-bound/);
@@ -108,6 +109,21 @@ describe("list items assignment (data-key and data-prop)", () => {
     expect(rows(list)[0]?.textContent).toContain("a");
   });
 
+  it("tsc checks the items against the item component's property and the data-key field", () => {
+    const list = mount();
+    const ok: readonly Todo[] = [{ id: 1, title: "a" }];
+    list.lists.todos.items = ok;
+    const shown: readonly Todo[] = list.lists.todos.items;
+    expect(shown).toHaveLength(1);
+    const rejected = (): void => {
+      // @ts-expect-error title must be a string, as the item component declares
+      list.lists.todos.items = [{ id: 1, title: 5 }];
+      // @ts-expect-error a list of plain elements has no items to assign
+      list.lists.plain.items = [{ n: "x" }];
+    };
+    expect(rejected).toBeTypeOf("function");
+  });
+
   it("replace() still works on any list", () => {
     const list = mount();
     list.lists.plain.replace(["x", "y"], (s) => s, (s, { text }) => (text.n = s));
@@ -133,9 +149,25 @@ describe("data-key and data-prop values", () => {
   it("report a property the item component does not have, connected or not", () => {
     const connected = document.createElement("t-padded-list") as PaddedList;
     document.body.append(connected);
+    // @ts-expect-error the item component has no "nope" property (data-prop)
     expect(() => (connected.lists.rows.items = [{ id: 1 }])).toThrow(/unknown-prop/);
     const loose = document.createElement("t-shadow-padded-list") as ShadowPaddedList;
     expect(loose.isConnected).toBe(false);
+    // @ts-expect-error the item component has no "nope" property (data-prop)
     expect(() => (loose.lists.rows.items = [{ id: 1 }])).toThrow(/unknown-prop/);
+  });
+});
+
+import unmappedTpl from "./bind-unmapped.html.js";
+
+describe("an item component that is not in HTMLElementTagNameMap", () => {
+  it("accepts any item that has the data-key field", () => {
+    const view = unmappedTpl.instantiate();
+    const ok = (): void => {
+      view.lists.rows.items = [{ id: 1, anything: true }];
+      // @ts-expect-error the data-key field is still required
+      view.lists.rows.items = [{ anything: true }];
+    };
+    expect(ok).toBeTypeOf("function");
   });
 });

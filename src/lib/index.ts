@@ -1,7 +1,7 @@
 export { Component, define, event } from "./component.ts";
 export type { ComponentInstance, ComponentOptions, DataOptions, EmitEvent, EventDecl, EventHit, StatefulInstance, View } from "./component.ts";
 export { List } from "./list.ts";
-export type { ListSchema, ItemContext, ReplaceOptions, Update, TextOf } from "./list.ts";
+export type { ListSchema, ListItem, ItemContext, ReplaceOptions, Update, TextOf } from "./list.ts";
 export type { TextValue } from "./text.ts";
 export { createStore } from "./store.ts";
 export type { ReadableStore, Store } from "./store.ts";
