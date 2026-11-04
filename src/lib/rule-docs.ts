@@ -30,9 +30,12 @@ this.set({ userName: user.name, nextCount: count + 1 });`,
 this.refs.link.href = "/user/" + id;`,
   },
   "invalid-event-name": {
-    why: "The event name in data-on-<event> becomes a DOM event listener, and DOM event names are lowercase. HTML attribute names are case-insensitive, so an uppercase name would silently listen for a different event than the one written.",
-    bad: `<button data-on-clickOutside="close">x</button>`,
-    good: `<button data-on-click="close">x</button>`,
+    why: "The part after data-on- becomes the name of a DOM event listener, so it must be a plain event name. Modifiers or other characters (as other frameworks allow) would make it listen for an event that never fires.",
+    bad: `<form data-on-submit.prevent="save">...</form>`,
+    good: `<!-- form.html -->
+<form data-on-submit="save">...</form>
+// form.ts
+save(e: Event): void { e.preventDefault(); }`,
   },
   "invalid-handler": {
     why: "data-on-* only names a method; HTML holds no expressions or calls. A call such as save(1) would not be run, and the type of the method could not be checked.",
@@ -253,10 +256,10 @@ this.lists.rows.replace([{ id: 1, label: "a" }]);`,
     why: "A name inside a list item that no code fills or reads is dead markup, usually left over after the item shape changed.",
     bad: `<template data-each="rows"><li>{{ label }} {{ note }}</li></template>
 // card.ts
-this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
     good: `<template data-each="rows"><li>{{ label }}</li></template>
 // card.ts
-this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
   },
   "missing-handler": {
     why: "data-on-* names a method, and a missing method means the event does nothing. The same check runs in tsc through the generated types and in lint on the class text.",
@@ -515,6 +518,11 @@ define("task-row", TaskRow);`,
 const n: number = "1";`,
     good: `// card.ts
 const n: number = 1;`,
+  },
+  "tsc-failed": {
+    why: "When tsc stops before checking (no tsconfig, a bad option, a crash), a check that only looked for type errors would pass with none. This rule makes that visible.",
+    bad: `npx ts-dom check --project=tsconfig.app.json   # the file does not exist`,
+    good: `npx ts-dom check --project=tsconfig.json`,
   },
   "tsc-not-found": {
     why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",

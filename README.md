@@ -446,6 +446,8 @@ npx ts-dom lint --a11y      # additionally check ARIA / accessibility (warnings)
 npx ts-dom lint --strict    # warnings also make the exit code 1 (errors always do)
 npx ts-dom lint --json      # output JSON: { "issues": [{ file, line, col, severity, rule, message }] }
 npx ts-dom rules            # list all rule ids and descriptions
+npx ts-dom rules --explain=unused-ref   # why the rule exists, a wrong example and the fix
+npx ts-dom rules --json     # every rule as data: { id, group, description, why, bad, good }
 ```
 
 Every message has the same format. It explains **what is wrong, why, and how to fix it**, and includes the line and column in the HTML:
@@ -892,6 +894,17 @@ Assigning `items` sets the `data-prop` property of a new item before its element
 - Reordering: a keyed list (`data-each`) moves its items with `moveBefore` where the browser has it, and every component accepts the move without being disconnected, so a moved item keeps its focus, scroll position and subscriptions.
 
 ## Checks
+
+Each tool checks what it can see, and none repeats another:
+
+| Tool | What it checks |
+|---|---|
+| A formatter such as oxfmt (`oxfmt --check`, or `vp fmt --check`) | Whether the template markup is well formed (a misnested closing tag such as `<p><div></p></div>` is a syntax error there, while the HTML parser the library uses would silently repair it into a different tree) and laid out consistently. It knows nothing of `{{ }}` or `data-*` names. Generate with whitespace `collapse` when you use one, or reformatting can change the spacing on the page. |
+| `ts-dom gen` | The template rules: holes, `data-each`, `data-if`, `data-on-*`, forbidden markup. |
+| `tsc` | That every name in the HTML exists in the component with the right type, and that lists, props and events fit. |
+| `ts-dom lint` / the oxlint plugin | What the HTML declares but the class never uses, data flow between components, accessibility. |
+| `ts-dom doctor` | The project set-up that the other tools depend on. |
+| `ts-dom check` | Runs `gen`, `tsc` and `lint` in one pass and points the template contract errors at the template. |
 
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
 

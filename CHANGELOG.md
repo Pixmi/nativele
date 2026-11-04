@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.4.6
+
+Not published on its own; it ships with the last 0.4.x version.
+
+- `ts-dom rules --explain=<id>` explains any rule id: why it exists (tied to the principle it protects), a wrong example and the fix. `ts-dom rules --json` prints every rule as data. Every rule id has an explanation; a test keeps them in step.
+- The README's Checks section says which tool checks what: a formatter such as oxfmt for well-formed markup and layout (it reports misnested tags that the library's parser would silently repair), `ts-dom gen` for the template rules, `tsc` for names and types, lint for usage, data flow and accessibility, `ts-dom doctor` for the set-up, and `ts-dom check` for all of them at once.
+
 ## 0.4.5
 
 Not published on its own; it ships with the last 0.4.x version.

@@ -448,6 +448,8 @@ npx ts-dom lint --a11y      # 另外檢查 ARIA / 無障礙（警告）
 npx ts-dom lint --strict    # 警告也使結束碼為 1（錯誤一定會）
 npx ts-dom lint --json      # 輸出 JSON：{ "issues": [{ file, line, col, severity, rule, message }] }
 npx ts-dom rules            # 列出所有規則代號與說明
+npx ts-dom rules --explain=unused-ref   # 規則存在的理由、錯誤範例與修正
+npx ts-dom rules --json     # 以資料列出所有規則：{ id, group, description, why, bad, good }
 ```
 
 每則訊息的格式都一樣，說明**哪裡錯、為什麼、怎麼修**，並附上 HTML 裡的行與欄：
@@ -894,6 +896,17 @@ this.lists.tags.replace(
 - 重新排序：清單（`data-each`）在瀏覽器支援時用 `moveBefore` 搬動項目，所有元件都接受這種搬動而不會被斷開再連上，所以被搬動的項目保有焦點、捲動位置與訂閱。
 
 ## 檢查
+
+每個工具只檢查自己看得到的部分，彼此不重複：
+
+| 工具 | 檢查什麼 |
+|---|---|
+| oxfmt 這類格式化工具（`oxfmt --check` 或 `vp fmt --check`） | 範本標記是否結構正確（例如 `<p><div></p></div>` 這種錯置的結束標籤，在那裡是語法錯誤；而本函式庫使用的 HTML 解析器會悄悄把它修正成另一棵樹），以及排版是否一致。它不認識 `{{ }}` 或 `data-*` 的名稱。使用時請以 `collapse` 空白模式產生，否則重新排版可能改變畫面上的空白。 |
+| `ts-dom gen` | 範本規則：洞、`data-each`、`data-if`、`data-on-*`、禁止的標記。 |
+| `tsc` | HTML 裡的每個名稱都存在於元件中且型別正確，清單、props 與事件都對得上。 |
+| `ts-dom lint` / oxlint 外掛 | HTML 宣告了但類別從未使用的東西、元件之間的資料流、無障礙。 |
+| `ts-dom doctor` | 其他工具所依賴的專案設定。 |
+| `ts-dom check` | 一次跑完 `gen`、`tsc` 與 `lint`，並把範本契約的錯誤指向範本。 |
 
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
 
