@@ -421,12 +421,8 @@ export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
 
 export class CodegenError extends Error {}
 
-/**
- * Generate a single `x.html.ts`; throws CodegenError (and writes nothing) when there are error diagnostics.
- * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
- * are imported automatically from the modules that define them.
- */
-export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[]): string {
+/** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. */
+export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[]): { out: string; next: string } {
   const html = readFileSync(htmlPath, "utf8");
   const analysis = analyze(html);
   const errors = analysis.diagnostics.filter((d) => d.severity === "error");
@@ -434,8 +430,16 @@ export function generateFile(htmlPath: string, options: GenerateOptions = {}, de
   const known = typeof defs === "string" ? scanDefines(defs) : (defs ?? []);
   const here = dirname(htmlPath);
   const imports = [...new Set(known.filter((d) => analysis.customTags.has(d.tag)).map((d) => relImport(here, d.file)))].sort();
-  const out = modulePathFor(htmlPath);
-  const next = generateModule(html, options, imports, known);
+  return { out: modulePathFor(htmlPath), next: generateModule(html, options, imports, known) };
+}
+
+/**
+ * Generate a single `x.html.ts`; throws CodegenError (and writes nothing) when there are error diagnostics.
+ * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
+ * are imported automatically from the modules that define them.
+ */
+export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[]): string {
+  const { out, next } = renderFile(htmlPath, options, defs);
   let prev = "";
   try {
     prev = readFileSync(out, "utf8");
@@ -551,6 +555,23 @@ export function scanTags(dir: string): TagDef[] {
  * so that `refs.x` for `<tag data-ref="x">` in a template is fully typed (props, methods and emitted events).
  */
 export function generateTags(dir: string): string | null {
+  const { out, next } = renderTags(dir);
+  if (next === null) {
+    if (existsSync(out) && readFileSync(out, "utf8").startsWith(TAGS_HEADER)) unlinkSync(out);
+    return null;
+  }
+  let prev = "";
+  try {
+    prev = readFileSync(out, "utf8");
+  } catch {
+    /* first generation */
+  }
+  if (prev !== next) writeFileSync(out, next);
+  return out;
+}
+
+/** What `generateTags` would write, without writing it; `next` is null when the directory defines no exported component. */
+export function renderTags(dir: string): { out: string; next: string | null } {
   const defs = scanTags(dir);
   const out = join(dir, TAGS_FILE);
   const seen = new Map<string, TagDef>();
@@ -561,21 +582,70 @@ export function generateTags(dir: string): string | null {
     }
     seen.set(d.tag, d);
   }
-  if (!defs.length) {
-    if (existsSync(out) && readFileSync(out, "utf8").startsWith(TAGS_HEADER)) unlinkSync(out);
-    return null;
-  }
+  if (!defs.length) return { out, next: null };
   const alias = (d: TagDef) => `Tag${[...seen.keys()].indexOf(d.tag)}`;
   const imports = [...seen.values()].map((d) => `import type { ${d.isDefault ? "default" : d.className} as ${alias(d)} } from ${JSON.stringify(d.from)};`);
   const entries = [...seen.values()].map((d) => `    ${JSON.stringify(d.tag)}: ${alias(d)};`);
-  const next = `${TAGS_HEADER}\n${imports.join("\n")}\n\ndeclare global {\n  interface HTMLElementTagNameMap {\n${entries.join("\n")}\n  }\n}\n\nexport {};\n`;
-  let prev = "";
-  try {
-    prev = readFileSync(out, "utf8");
-  } catch {
-    /* first generation */
+  return { out, next: `${TAGS_HEADER}\n${imports.join("\n")}\n\ndeclare global {\n  interface HTMLElementTagNameMap {\n${entries.join("\n")}\n  }\n}\n\nexport {};\n` };
+}
+
+/** A generated file that does not match what `ts-dom gen` would write now. */
+export interface StaleFile {
+  file: string;
+  /** missing: not generated yet; outdated: its template or a define() changed since; orphan: its template was deleted */
+  reason: "missing" | "outdated" | "orphan";
+}
+
+/**
+ * Everything `generateAll` would write for a directory, in memory: generated path to content, or null for a file that should not exist.
+ * Templates with error diagnostics are left out and their messages returned in `errors`.
+ */
+export function planGenerated(dir: string, options: GenerateOptions = {}): { files: Map<string, string | null>; errors: string[] } {
+  const files = new Map<string, string | null>();
+  const errors: string[] = [];
+  const defs = scanDefines(dir);
+  for (const f of listHtml(dir)) {
+    if (!isSelected(dir, f, options)) continue;
+    try {
+      const { out, next } = renderFile(f, options, defs);
+      files.set(out, next);
+    } catch (e) {
+      if (e instanceof CodegenError) errors.push(e.message);
+      else throw e;
+    }
   }
-  if (prev !== next) writeFileSync(out, next);
+  try {
+    const tags = renderTags(dir);
+    files.set(tags.out, tags.next);
+  } catch (e) {
+    if (e instanceof CodegenError) errors.push(e.message);
+    else throw e;
+  }
+  for (const f of listGenerated(dir)) if (!files.has(f) && !existsSync(f.slice(0, -3))) files.set(f, null);
+  return { files, errors };
+}
+
+/** Generated files under `dir` that differ from what `ts-dom gen` would write now. */
+export function staleGenerated(dir: string, options: GenerateOptions = {}): StaleFile[] {
+  const out: StaleFile[] = [];
+  for (const [file, next] of planGenerated(dir, options).files) {
+    const prev = existsSync(file) ? readFileSync(file, "utf8") : null;
+    if (next === null) {
+      if (prev !== null && prev.startsWith(TAGS_HEADER)) out.push({ file, reason: file.endsWith(".html.ts") ? "orphan" : "outdated" });
+    } else if (prev === null) out.push({ file, reason: "missing" });
+    else if (prev !== next) out.push({ file, reason: "outdated" });
+  }
+  return out.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+function listGenerated(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules") continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...listGenerated(full));
+    else if (name.endsWith(".html.ts") && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
+  }
   return out;
 }
 

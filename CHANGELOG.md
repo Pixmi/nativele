@@ -10,9 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.4.2
+
+Not published on its own; it ships with the last 0.4.x version.
+
+- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template), with exit code 1 if there are any; `--json` prints them as data. Codegen exposes `renderFile`, `renderTags`, `planGenerated` and `staleGenerated` for tools that need the generated output without writing it.
+
 ## 0.4.1
 
-Not published on its own; it ships with 0.4.2.
+Not published on its own; it ships with the last 0.4.x version.
 
 - `npm run bench` measures lists of 1,000 to 10,000 items in real Chrome (create, update 10%, reverse, remove half, append) for component items, plain elements and a direct DOM baseline; the README's Performance section shows the results and when to choose which.
 - Assigning `items` sets the prop of a new item before its element goes into the document, so the item component is connected with its item already set and renders once instead of first rendering without it. `replace()` and `upsert()` keep inserting first.

@@ -456,3 +456,26 @@ describe("include / exclude", () => {
     expect(existsSync(join(root, "b.html.ts"))).toBe(true);
   });
 });
+
+describe("gen --check: generated files out of step", () => {
+  it("reports missing, outdated and orphaned generated files, and the tag map", async () => {
+    const { mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "a.html"), `<p>{{ a }}</p>`);
+    writeFileSync(join(dir, "b.html"), `<p></p>`);
+    writeFileSync(join(dir, "kid.ts"), `export class Kid {}\ndefine("x-kid", Kid);`);
+    expect(staleGenerated(dir).map((s) => s.reason)).toEqual(["missing", "missing", "missing"]);
+    generateAll(dir);
+    expect(staleGenerated(dir)).toEqual([]);
+    writeFileSync(join(dir, "a.html"), `<p>{{ b }}</p>`);
+    unlinkSync(join(dir, "b.html"));
+    writeFileSync(join(dir, "kid.ts"), `export class Kid {}\ndefine("x-other", Kid);`);
+    expect(staleGenerated(dir).map((s) => [s.file.slice(dir.length + 1), s.reason])).toEqual([
+      ["a.html.ts", "outdated"],
+      ["b.html.ts", "orphan"],
+      ["ts-dom-tags.ts", "outdated"],
+    ]);
+  });
+});

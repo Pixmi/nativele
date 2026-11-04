@@ -380,6 +380,8 @@ Whitespace in text is kept as written. To collapse each run of whitespace into o
 
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
 
+`npx ts-dom gen --check` writes nothing: it lists generated files that are missing, outdated (their template or a `define()` changed) or orphaned (their template was deleted), and exits with code 1 if there are any (`--json` for machine-readable output). Use it in CI if your project commits the generated files, or to confirm they are fresh before reading type errors.
+
 In your code, import templates with a `.js` suffix (standard NodeNext style; TS maps it to the generated `x.html.ts`):
 
 ```ts

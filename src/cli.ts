@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
-import { CODEGEN_RULES, CodegenError, generateAll, listHtml, watchAll } from "./lib/codegen.ts";
+import { CODEGEN_RULES, CodegenError, generateAll, listHtml, staleGenerated, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
@@ -11,13 +11,14 @@ const HELP = `ts-dom <command> [dirs...] [flags]
 Commands
   gen   [dirs...]   Generate x.html.ts for every x.html, plus ts-dom-tags.ts (default dir: src)
         --watch           keep watching and regenerate on change
+        --check           write nothing; list generated files that are missing, outdated or orphaned, exit 1 if any
         --include=<glob>  only these templates (repeatable; relative to each dir, ** crosses folders)
         --exclude=<glob>  leave these templates out (repeatable)
         --whitespace=collapse   collapse whitespace in text and drop line-break-only text between tags
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
-        --json            print the issues as JSON instead of text
+        --json            print the issues as JSON instead of text (also for gen --check)
   rules             List every rule id with its description
 
 Output format: file:line:col severity [rule-id] message. Each message says what is wrong and how to fix it.
@@ -54,7 +55,15 @@ const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
 
 try {
-  if (cmd === "gen") {
+  if (cmd === "gen" && flags.has("--check")) {
+    const stale = dirs.flatMap((d) => staleGenerated(d, generate));
+    if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })) }, null, 2));
+    else if (!stale.length) console.log("ts-dom gen --check: generated files are up to date");
+    else {
+      for (const s of stale) console.error(`${relative(process.cwd(), s.file)} error [stale-generated] the generated file is ${s.reason}. Fix: run ts-dom gen.`);
+    }
+    if (stale.length) process.exitCode = 1;
+  } else if (cmd === "gen") {
     let failed = false;
     for (const d of dirs) {
       try {
