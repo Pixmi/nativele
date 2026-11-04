@@ -331,7 +331,7 @@ a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid
 
 ## 型別如何產生
 
-每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `ts-dom-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含範本字串與這個範本的結構描述，所以 `tsc` 直接就能編譯與檢查。
+每個 `x.html` 旁會產生 `x.html.ts`（已加入 `.gitignore`；另外會產生 `ts-dom-tags.ts`，見「組合」），它是一個真正的 TS 模組：同時包含這個範本解析後的標記（以資料表示，執行期用 DOM 呼叫轉成節點，瀏覽器不需要解析 HTML 字串）與結構描述，所以 `tsc` 直接就能編譯與檢查。
 
 ```ts
 // user-card.html.ts（自動產生）
@@ -343,7 +343,7 @@ export default template<{
   ifs: "admin";
   slots: "extra";
   text: "name";
-}>("<h2>Hello, {{ name }}!</h2> ...");
+}>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
 整頁文件（以 `<!doctype>` 或 `<html>` 開頭，例如 `index.html`）是頁面入口，不是範本，不會被處理。

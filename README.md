@@ -331,7 +331,7 @@ Recommended check workflow: `ts-dom gen && tsc && ts-dom lint`.
 
 ## How Types Are Generated
 
-Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see "Composition"). It is a real TS module that contains both the template string and the schema of this template, so `tsc` can compile and check it directly.
+Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see "Composition"). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
 
 ```ts
 // user-card.html.ts (auto-generated)
@@ -343,7 +343,7 @@ export default template<{
   ifs: "admin";
   slots: "extra";
   text: "name";
-}>("<h2>Hello, {{ name }}!</h2> ...");
+}>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
 Whole-page documents (starting with `<!doctype>` or `<html>`, such as `index.html`) are page entry points, not templates, and are not processed.
