@@ -352,7 +352,7 @@ export default template<{
 }>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
-Whole-page documents (starting with `<!doctype>` or `<html>`, such as `index.html`) are page entry points, not templates, and are not processed.
+Whole-page documents are page entry points, not templates, and are not processed. A file is a page when its content starts with `<!doctype html>` or `<html>` (comments before it are fine); the file name does not matter, so `index.html`, `main.html` and `login.html` all work. A template is a fragment of a component, so `<html>`, `<head>` and `<body>` are rejected in it (rule `document-tag`): the browser would drop them from the fragment and whatever you put on them would have no effect. To keep a file out of generation in another way, use `--exclude`.
 
 ## HTML Syntax
 
@@ -726,7 +726,7 @@ Notes:
 
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
 
-1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
+1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
 2. **tsc**: an error when TypeScript uses a name the HTML does not declare (`this.refs.nope`, `this.show("nope", true)`); all constraints between `state`, `props`, `derive`, `emits` and the HTML (see "Data Flow"); child component prop names and types; `define()` checks that the methods for `data-on-*` exist.
 3. **Runtime**: `Component()` and components, at definition, connection, and use, throw errors that carry a `[rule id]` and a fix for the same problems.
 4. **lint** (`ts-dom/unused-markup`, `ts-dom/data-flow`, `ts-dom/a11y`): markup declared in the HTML but never used (errors, with the HTML location), data flow suggestions and child component contracts (warnings), ARIA (warnings).

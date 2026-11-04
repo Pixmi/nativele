@@ -39,6 +39,7 @@ export const CODEGEN_RULES = {
   "nested-each": "data-each templates cannot be nested",
   "duplicate-each": "data-each names must be unique",
   "each-root-count": "a data-each template needs exactly one root element",
+  "document-tag": "<html>, <head> and <body> cannot be in a template (the browser drops them from fragments)",
   "forbidden-tag": "<script> cannot be in a template (it would run code)",
   "forbidden-attribute": "on* event attributes and srcdoc cannot be in a template (they run code or are blocked by Trusted Types)",
   "unsafe-url": "href / src / action / formaction cannot start with javascript:",
@@ -103,6 +104,17 @@ export function analyze(html: string): Analysis {
   const report = (rule: string, severity: Diagnostic["severity"], message: string, n: Node) => {
     a.diagnostics.push({ rule, severity, message, ...locOf(n) });
   };
+  const blanked = html.replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, " "));
+  for (const m of blanked.matchAll(/<(html|head|body)(?=[\s/>])/gi)) {
+    const before = blanked.slice(0, m.index);
+    a.diagnostics.push({
+      rule: "document-tag",
+      severity: "error",
+      message: `<${m[1]?.toLowerCase()}> cannot be in a template: a template is a fragment of a component, and the browser drops <html>, <head> and <body> from fragments, so nothing you put on them has any effect. Fix: remove the tag and keep its content. If this file is a whole page, start it with <!doctype html> and it is treated as a page entry and skipped (or leave it out with --exclude).`,
+      line: before.split("\n").length,
+      col: m.index - before.lastIndexOf("\n"),
+    });
+  }
   const mark = (key: string, n: Node) => {
     if (!a.locs.has(key)) a.locs.set(key, locOf(n));
   };

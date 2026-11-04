@@ -203,10 +203,25 @@ const RULE_INPUTS: Record<string, string> = {
   "nested-each": `<template data-each="a"><i><template data-each="b"><u></u></template></i></template>`,
   "duplicate-each": `<template data-each="a"><i></i></template><template data-each="a"><i></i></template>`,
   "each-root-count": `<template data-each="a"><i></i><i></i></template>`,
+  "document-tag": `<body class="app"><p></p></body>`,
   "forbidden-tag": `<script>alert(1)</script>`,
   "forbidden-attribute": `<b onclick="x()"></b>`,
   "unsafe-url": `<a href="javascript:void(0)"></a>`,
 };
+
+describe("document structure tags", () => {
+  it("rejects html, head and body, with their position, and ignores them in comments", () => {
+    const d = analyze(`<p></p>\n<head></head>`).diagnostics.find((x) => x.rule === "document-tag");
+    expect(d).toMatchObject({ line: 2, col: 1 });
+    expect(ruleIds(`<!-- <body> --><p></p>`)).toEqual([]);
+    expect(ruleIds(`<p>a body of text</p>`)).toEqual([]);
+  });
+  it("a file that starts with a doctype or <html> is a page entry, whatever its name", () => {
+    expect(isFullPage(`<!doctype html><html><body></body></html>`)).toBe(true);
+    expect(isFullPage(`<!-- login -->\n<html lang="en"><body></body></html>`)).toBe(true);
+    expect(isFullPage(`<body><p></p></body>`)).toBe(false);
+  });
+});
 
 describe("unsafe markup", () => {
   it("rejects srcdoc and javascript: URLs, and allows data-on-* and ordinary links", () => {
