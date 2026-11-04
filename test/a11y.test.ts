@@ -231,7 +231,7 @@ describe("Vite plugin", () => {
     const handlers: Record<string, (f: string) => void> = {};
     const sent: unknown[] = [];
     t.plugin.configureServer({ watcher: { add: () => {}, on: (ev, fn) => (handlers[ev] = fn) }, config: { logger: { error: () => {}, warn: () => {} } } });
-    const server = { moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: () => {} }, ws: { send: (p: unknown) => sent.push(p) } };
+    const server = { config: { logger: { error: () => {}, warn: () => {} } }, moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: () => {} }, ws: { send: (p: unknown) => sent.push(p) } };
     return { handlers, sent, server };
   };
   it("dev: dirs are relative to Vite's root, not to the working directory", async () => {
@@ -252,15 +252,21 @@ describe("Vite plugin", () => {
     expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server })).toEqual([]);
     expect(d.sent).toEqual([]);
   });
-  it("dev: only the plugin's own write of a generated module is dropped; another rewrite goes through Vite", async () => {
-    const { writeFileSync } = await import("node:fs");
+  it("dev: each generated content reloads the page once; a rewrite with new content goes through Vite", async () => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
     const t = await setup({ "x.html": `<p>{{ a }}</p>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
+    const generated = `${t.dir}/src/x.html.ts`;
     writeFileSync(`${t.dir}/src/x.html`, `<p>{{ b }}</p>`);
     t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
-    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html.ts`, server: d.server })).toEqual([]);
-    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html.ts`, server: d.server })).toBeUndefined();
+    expect(d.sent).toHaveLength(1);
+    expect(t.plugin.handleHotUpdate({ file: generated, server: d.server })).toEqual([]);
+    expect(t.plugin.handleHotUpdate({ file: generated, server: d.server })).toEqual([]);
+    writeFileSync(generated, readFileSync(generated, "utf8").replace('"b"', '"c"'));
+    expect(t.plugin.handleHotUpdate({ file: generated, server: d.server })).toBeUndefined();
+    expect(t.plugin.handleHotUpdate({ file: generated, server: d.server })).toEqual([]);
+    expect(d.sent).toHaveLength(1);
   });
   it("dev: deleting a template removes its generated module", async () => {
     const { existsSync, unlinkSync } = await import("node:fs");
@@ -291,6 +297,34 @@ describe("Vite plugin", () => {
     d.handlers.unlink?.(`${t.dir}/src/kid.ts`);
     expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
   });
+  it("dev: a template save uses the cached define() scan; only a .ts change rescans", async () => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<x-kid></x-kid>` });
+    t.plugin.buildStart.call(t.ctx);
+    const d = devServer(t);
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
+    writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}\ndefine("x-kid", Kid);`);
+    writeFileSync(`${t.dir}/src/x.html`, `<x-kid></x-kid><b></b>`);
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).not.toContain("kid.js");
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/kid.ts`, server: d.server });
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`import "./kid.js";`);
+  });
+  it("dev: errors go to the logger of the server that saw the change", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<p></p>` });
+    t.plugin.buildStart.call(t.ctx);
+    const a: string[] = [];
+    const b: string[] = [];
+    const watcher = { add: () => {}, on: () => {} };
+    t.plugin.configureServer({ watcher, config: { logger: { error: (m: string) => a.push(m), warn: () => {} } } });
+    t.plugin.configureServer({ watcher, config: { logger: { error: (m: string) => b.push(m), warn: () => {} } } });
+    writeFileSync(`${t.dir}/src/x.html`, `<p>{{ a.b }}</p>`);
+    const server = { config: { logger: { error: (m: string) => a.push(m), warn: () => {} } }, moduleGraph: { getModulesByFile: () => undefined, invalidateModule: () => {} }, ws: { send: () => {} } };
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server });
+    expect(a.join("\n")).toContain("invalid-hole");
+    expect(b).toEqual([]);
+  });
   it("dev: a changed .html is regenerated, the old module forgotten and the page reloaded once, even when the path is relative", async () => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const { relative } = await import("node:path");
@@ -303,6 +337,7 @@ describe("Vite plugin", () => {
     const sent: unknown[] = [];
     const forgotten: string[] = [];
     const server = {
+      config: { logger: { error: () => {}, warn: () => {} } },
       moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: (m: unknown) => forgotten.push(String(m)) },
       ws: { send: (payload: unknown) => sent.push(payload) },
     };

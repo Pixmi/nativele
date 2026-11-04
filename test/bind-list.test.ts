@@ -170,6 +170,7 @@ describe("data-key and data-prop values", () => {
     document.body.append(connected);
     // @ts-expect-error the item component has no "nope" property (data-prop)
     expect(() => (connected.lists.rows.items = [{ id: 1 }])).toThrow(/unknown-prop/);
+    expect(connected.querySelectorAll("t-bind-row")).toHaveLength(0);
     const loose = document.createElement("t-shadow-padded-list") as ShadowPaddedList;
     expect(loose.isConnected).toBe(false);
     // @ts-expect-error the item component has no "nope" property (data-prop)

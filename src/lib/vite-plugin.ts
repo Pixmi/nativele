@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml, listTs } from "./codegen.ts";
+import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
+import type { DefineDef } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
 
 export interface TsDomPluginOptions {
@@ -24,6 +25,7 @@ interface Logger {
 }
 
 interface HotServer {
+  config: { logger: Logger };
   moduleGraph: { getModulesByFile(f: string): Set<unknown> | undefined; invalidateModule(m: unknown): void };
   ws: { send(payload: { type: "full-reload" }): void };
 }
@@ -41,17 +43,21 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
-  let logger: Logger | undefined;
-  // The generated files this plugin itself just rewrote: their change events are dropped once, because the template's own update already reloads the page.
-  const ownWrites = new Map<string, number>();
-  let defineFiles = new Set<string>();
+  // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
+  const shown = new Map<string, string>();
+  // The define() calls of each directory, scanned once and again only when a .ts file with a define() changes, instead of on every template save.
+  const defsByDir = new Map<string, DefineDef[]>();
+  const defsOf = (dir: string) => {
+    let defs = defsByDir.get(dir);
+    if (!defs) defsByDir.set(dir, (defs = existsSync(dir) ? scanDefines(dir) : []));
+    return defs;
+  };
+  const isDefineFile = (file: string) => {
+    const dir = dirOf(file);
+    return dir !== undefined && defsOf(dir).some((d) => resolve(d.file) === file);
+  };
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
-  const isOwnWrite = (file: string) => {
-    const at = ownWrites.get(file);
-    ownWrites.delete(file);
-    return at !== undefined && Date.now() - at < 2000;
-  };
 
   const warnA11y = (warn: (m: string) => void) => {
     if (!a11y) return;
@@ -64,40 +70,39 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     }
   };
 
-  const scanDefineFiles = () => {
-    defineFiles = new Set(dirs.flatMap((d) => (existsSync(d) ? listTs(d).filter((f) => readFileSync(f, "utf8").includes("define(")) : [])));
-  };
 
   /** Regenerate one template. Returns whether its generated module changed. */
-  const regenerate = (file: string): boolean => {
+  const regenerate = (file: string, logger: Logger): boolean => {
     const dir = dirOf(file);
     const html = read(file);
     if (!dir || html === null || file.includes(`${sep}node_modules${sep}`) || isFullPage(html) || !isSelected(dir, file, generate)) return false;
     const out = `${file}.ts`;
     const before = read(out);
     try {
-      generateFile(file, generate, dir);
+      generateFile(file, generate, defsOf(dir));
     } catch (e) {
-      if (e instanceof CodegenError) logger?.error(e.message);
+      if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
       return false;
     }
-    if (a11y) for (const diag of checkA11y(html, a11y.ignore)) logger?.warn(formatDiagnostics(file, [diag]));
-    if (read(out) === before) return false;
-    ownWrites.set(out, Date.now());
-    return true;
+    if (a11y) for (const diag of checkA11y(html, a11y.ignore)) logger.warn(formatDiagnostics(file, [diag]));
+    return read(out) !== before;
   };
 
   /** Regenerate a directory after a define() call may have changed: the tag map and the child imports of every template. */
-  const regenerateDir = (dir: string) => {
+  const regenerateDir = (dir: string, logger: Logger) => {
     const before = new Map(listHtml(dir).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
     try {
       generateAll(dir, generate);
     } catch (e) {
-      if (e instanceof CodegenError) logger?.error(e.message);
+      if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
     }
-    for (const [out, content] of before) if (read(out) !== content) ownWrites.set(out, Date.now());
+    defsByDir.set(dir, scanDefines(dir));
+    for (const [out, content] of before) {
+      const now = read(out);
+      if (now !== null && now !== content) shown.set(out, now);
+    }
   };
 
   const removeGenerated = (file: string) => {
@@ -106,6 +111,9 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   };
 
   const reload = (server: HotServer, out: string): void => {
+    const now = read(out);
+    if (now === null || shown.get(out) === now) return;
+    shown.set(out, now);
     const loaded = server.moduleGraph.getModulesByFile(slashes(out));
     if (!loaded?.size) return;
     for (const m of loaded) server.moduleGraph.invalidateModule(m);
@@ -128,39 +136,39 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       warnA11y((m) => this.warn(m));
     },
     configureServer(server: { watcher: { add(p: string | string[]): void; on(ev: string, fn: (f: string) => void): void }; config: { logger: Logger } }) {
-      logger = server.config.logger;
-      scanDefineFiles();
+      const logger = server.config.logger;
       server.watcher.add(dirs);
       server.watcher.on("add", (f) => {
         const file = resolve(f);
-        if (file.endsWith(".html")) regenerate(file);
-        else if (isSourceTs(file) && dirOf(file) && read(file)?.includes("define(")) {
-          defineFiles.add(file);
-          regenerateDir(dirOf(file) as string);
-        }
+        const dir = dirOf(file);
+        if (file.endsWith(".html")) regenerate(file, logger);
+        else if (dir && isSourceTs(file) && read(file)?.includes("define(")) regenerateDir(dir, logger);
       });
       server.watcher.on("unlink", (f) => {
         const file = resolve(f);
+        const dir = dirOf(file);
         if (file.endsWith(".html")) removeGenerated(file);
-        else if (defineFiles.delete(file)) regenerateDir(dirOf(file) as string);
+        else if (dir && isDefineFile(file)) regenerateDir(dir, logger);
       });
     },
     // A template is not a page, so Vite's own reload for a changed .html is ignored by the browser: regenerate it and reload once. A generated module that something else rewrote (ts-dom gen --watch, a checkout) goes through Vite's normal update.
     handleHotUpdate(ctx: { file: string; server: HotServer }) {
       const file = resolve(ctx.file);
-      if (file.endsWith(".html.ts")) return isOwnWrite(file) ? [] : undefined;
+      const logger = ctx.server.config.logger;
+      if (file.endsWith(".html.ts")) {
+        const now = read(file);
+        if (now !== null && shown.get(file) === now) return [];
+        if (now !== null) shown.set(file, now);
+        return;
+      }
       if (file.endsWith(".html")) {
         if (!dirOf(file)) return;
-        if (regenerate(file)) reload(ctx.server, `${file}.ts`);
+        if (regenerate(file, logger)) reload(ctx.server, `${file}.ts`);
         return [];
       }
       const dir = dirOf(file);
       if (!dir || !isSourceTs(file)) return;
-      const hasDefine = read(file)?.includes("define(") ?? false;
-      if (!hasDefine && !defineFiles.has(file)) return;
-      if (hasDefine) defineFiles.add(file);
-      else defineFiles.delete(file);
-      regenerateDir(dir);
+      if (read(file)?.includes("define(") || isDefineFile(file)) regenerateDir(dir, logger);
       return;
     },
   };
