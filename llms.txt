@@ -67,6 +67,11 @@ define("my-counter", MyCounter);
 ## Template without a component
 `const view = tpl.instantiate()` returns `{ root: DocumentFragment, rootElement, refs, lists, text, show }` typed like a component (`rootElement` exists in the type only when the template has exactly one top-level element, `<style>` excluded), for pieces created in code. No host: `data-on-*` is inert (use `refs.x.addEventListener`) and `<slot>` is not projected.
 
+## Rules for agents
+- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` change run `npx ts-dom gen && npx tsc` and fix every type error instead of casting it away. Until `gen` has run, `tsc` only reports that `./x.html.js` is missing.
+- No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list.
+- Props go down (parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `data-each` cannot be nested: make the inner list its own component.
+
 ## Setup
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
