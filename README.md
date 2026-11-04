@@ -319,6 +319,8 @@ export default defineConfig({
 });
 ```
 
+While the dev server runs, editing a template regenerates its `x.html.ts` and reloads the page once. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
+
 When installing, we recommend installing `vite-plus` first and then `ts-dom` (when both are installed in the same npm run, `vite` may not be hoisted to the top level).
 
 ### Lint (optional)
@@ -805,7 +807,7 @@ npx ts-dom lint --a11y [--strict]
 | `heading-empty` | `h1`–`h6` must not be empty |
 | `aria-role` | `role` must be a valid ARIA role |
 | `aria-attr` | `aria-*` must be a valid ARIA attribute |
-| `role-tabindex` | A non-ts-domy-focusable element with an interactive role (button, tab, checkbox…) needs `tabindex` |
+| `role-tabindex` | A non-natively-focusable element with an interactive role (button, tab, checkbox…) needs `tabindex` |
 | `tabindex-positive` | Do not use a `tabindex` greater than 0 |
 | `hidden-focusable` | A focusable element must not have `aria-hidden="true"` |
 | `label-for` | `<label for>` must point to an `id` that exists in the template |

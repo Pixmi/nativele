@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- The Vite plugin regenerates a template when it changes while the dev server runs and reloads the page once with the new markup. Before, the regeneration never ran under Vite+ (it reports changed files by relative path), so editing a template left the old one in the page.
+- The accessibility messages say "natively" again where a rename had turned it into "ts-domy".
+
 ## 0.3.0
 
 - `ts-dom gen` rejects `<html>`, `<head>` and `<body>` inside a template (rule `document-tag`) instead of silently dropping them; a file that starts with `<!doctype html>` or `<html>` is still a page entry whatever its name.
