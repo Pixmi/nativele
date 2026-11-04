@@ -466,7 +466,7 @@ export interface TagDef {
   isDefault: boolean;
 }
 
-function listTs(dir: string): string[] {
+export function listTs(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     if (name === "node_modules" || name === "dist") continue;

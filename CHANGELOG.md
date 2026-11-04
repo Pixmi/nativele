@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ## Unreleased
 
 - The Vite plugin regenerates a template when it changes while the dev server runs and reloads the page once with the new markup. Before, the regeneration never ran under Vite+ (it reports changed files by relative path), so editing a template left the old one in the page.
+- In the dev server the plugin also removes the generated module of a deleted template, updates `ts-dom-tags.ts` and the child imports when a `define()` is added or removed, skips the reload when a save changes nothing, and lets Vite reload the page when something else rewrites a generated module. `dirs` are resolved against Vite's `root` instead of the working directory, and module graph lookups use forward slashes, as Vite does on Windows.
 - The accessibility messages say "natively" again where a rename had turned it into "ts-domy".
 - `<template data-each data-key="id" data-prop="todo">` with one custom element as the item, and `this.lists.todos.items = todos`: items are components that receive each item as a property, matched by key. New rules `each-binding-incomplete`, `invalid-each-binding` and `each-binding-root`. `tsc` checks the assigned items against the item component's property type and the `data-key` field. The accessibility check `list-structure` accepts a custom element with `role="listitem"` as a list item. `replace()` stays for lists of plain elements. `data-each` still cannot be nested.
 

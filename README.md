@@ -319,7 +319,7 @@ export default defineConfig({
 });
 ```
 
-While the dev server runs, editing a template regenerates its `x.html.ts` and reloads the page once. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
+While the dev server runs, the plugin keeps the generated files in step: adding or editing a template regenerates its `x.html.ts` and reloads the page once if a page uses it (a save that changes nothing does not reload), deleting a template removes its `x.html.ts`, and adding or removing a `define()` updates `ts-dom-tags.ts` and the child imports of the templates. `dirs` are relative to Vite's `root`. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
 
 When installing, we recommend installing `vite-plus` first and then `ts-dom` (when both are installed in the same npm run, `vite` may not be hoisted to the top level).
 

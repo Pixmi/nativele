@@ -227,6 +227,70 @@ describe("Vite plugin", () => {
     page.plugin.buildStart.call(page.ctx);
     expect(existsSync(`${page.dir}/src/index.html.ts`)).toBe(false);
   });
+  const devServer = (t: { plugin: ReturnType<typeof import("../src/lib/vite-plugin.ts").tsDom> }) => {
+    const handlers: Record<string, (f: string) => void> = {};
+    const sent: unknown[] = [];
+    t.plugin.configureServer({ watcher: { add: () => {}, on: (ev, fn) => (handlers[ev] = fn) }, config: { logger: { error: () => {}, warn: () => {} } } });
+    const server = { moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: () => {} }, ws: { send: (p: unknown) => sent.push(p) } };
+    return { handlers, sent, server };
+  };
+  it("dev: dirs are relative to Vite's root, not to the working directory", async () => {
+    const { existsSync } = await import("node:fs");
+    const { tsDom } = await import("../src/lib/vite-plugin.ts");
+    const t = await setup({ "x.html": `<p></p>` });
+    const plugin = tsDom({ dirs: ["src"] });
+    plugin.configResolved({ root: t.dir });
+    plugin.buildStart.call(t.ctx);
+    expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(true);
+  });
+  it("dev: a save that does not change the generated module does not reload the page", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+    t.plugin.buildStart.call(t.ctx);
+    const d = devServer(t);
+    writeFileSync(`${t.dir}/src/x.html`, `<p>{{ a }}</p>`);
+    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server })).toEqual([]);
+    expect(d.sent).toEqual([]);
+  });
+  it("dev: only the plugin's own write of a generated module is dropped; another rewrite goes through Vite", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+    t.plugin.buildStart.call(t.ctx);
+    const d = devServer(t);
+    writeFileSync(`${t.dir}/src/x.html`, `<p>{{ b }}</p>`);
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
+    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html.ts`, server: d.server })).toEqual([]);
+    expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html.ts`, server: d.server })).toBeUndefined();
+  });
+  it("dev: deleting a template removes its generated module", async () => {
+    const { existsSync, unlinkSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<p></p>` });
+    t.plugin.buildStart.call(t.ctx);
+    const d = devServer(t);
+    unlinkSync(`${t.dir}/src/x.html`);
+    d.handlers.unlink?.(`${t.dir}/src/x.html`);
+    expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(false);
+  });
+  it("dev: adding or removing a define() regenerates the tag map and the templates' child imports", async () => {
+    const { existsSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
+    const t = await setup({ "x.html": `<x-kid></x-kid>` });
+    t.plugin.buildStart.call(t.ctx);
+    const d = devServer(t);
+    expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
+    writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}\ndefine("x-kid", Kid);`);
+    d.handlers.add?.(`${t.dir}/src/kid.ts`);
+    expect(readFileSync(`${t.dir}/src/ts-dom-tags.ts`, "utf8")).toContain(`"x-kid"`);
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`import "./kid.js";`);
+    writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}`);
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/kid.ts`, server: d.server });
+    expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
+    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).not.toContain("kid.js");
+    writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}\ndefine("x-kid", Kid);`);
+    t.plugin.handleHotUpdate({ file: `${t.dir}/src/kid.ts`, server: d.server });
+    unlinkSync(`${t.dir}/src/kid.ts`);
+    d.handlers.unlink?.(`${t.dir}/src/kid.ts`);
+    expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
+  });
   it("dev: a changed .html is regenerated, the old module forgotten and the page reloaded once, even when the path is relative", async () => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const { relative } = await import("node:path");
