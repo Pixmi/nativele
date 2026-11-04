@@ -258,6 +258,8 @@ npx tsc               # 型別檢查並編譯到 out/
 
 文字中的空白預設照原樣保留。若想把連續空白收成一個空格、並丟掉標籤之間只含換行的文字（讓縮排的 HTML 不產生多餘空格），用 `npx ts-dom gen --whitespace=collapse` 或 Vite 外掛選項 `whitespace: "collapse"`；`<pre>` 與 `<textarea>` 不受影響。
 
+只想產生部分範本時（例如分階段遷移專案），傳入相對於各目錄的 glob：`npx ts-dom gen src --include='new/**' --exclude='**/draft-*.html'`，或用 Vite 外掛選項 `include`、`exclude`。`*` 只比對同一層資料夾，`**` 可跨資料夾。
+
 開發時可用 `npx ts-dom gen --watch` 持續監看 `.html`，搭配 `tsc --watch`。
 
 在程式中以 `.js` 結尾匯入範本（標準 NodeNext 寫法，TS 會對應到產生的 `x.html.ts`）：
@@ -289,7 +291,7 @@ import { defineConfig } from "vite-plus"; // 或 "vite"
 import { tsDom } from "ts-dom/vite";
 
 export default defineConfig({
-  plugins: [tsDom()], // 選項：dirs（預設 ["src"]）、runtime、a11y
+  plugins: [tsDom()], // 選項：dirs（預設 ["src"]）、runtime、whitespace、include、exclude、a11y
 });
 ```
 
@@ -697,7 +699,7 @@ this.lists.tags.replace(
 
 - 項目內的 `data-ref`、洞、`data-if` 屬於該項目，不會出現在元件層級的 `refs` / `text`。
 - `data-if` 不能放在項目的根元素上，請多包一層。
-- `data-each` 不能巢狀。
+- `data-each` 不能巢狀，要分成兩套模板：把內層清單放進自己的 `.html`（有自己 `data-each` 的子元件），在外層項目裡使用該元件的標籤。
 - `<slot>` 不能放在項目內。
 
 ## Trusted Types、翻譯與圖示
@@ -860,7 +862,7 @@ repo 內的範例以 `vite.config.ts` 的 alias 直接指向 `src/lib`，不需�
 - **同步渲染，不做隱式非同步合併**：`set` 之後立刻讀 DOM 一定是新的，測試也不需要等待；要合併請明確用 `batch`。
 - **沒有細粒度反應式系統**：`derive` 每次重新計算、`render` 每次整體重跑，換來的是行為可預測、沒有依賴追蹤的魔法。
 - **`data-if` 預設隱藏**：狀態只在 TS，沒說要顯示就不顯示。
-- **`data-if` 不可放在項目根元素、`data-each` 不可巢狀**：根元素被移除會讓清單失去排序錨點。
+- **`data-if` 不可放在項目根元素、`data-each` 不可巢狀**：根元素被移除會讓清單失去排序錨點；一套模板只有一層清單，巢狀的清單就是第二套模板（子元件），讓每套模板的 `refs`、`text` 與事件處理都在單一範圍內。
 
 ## 限制
 

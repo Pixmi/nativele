@@ -11,6 +11,8 @@ const HELP = `ts-dom <command> [dirs...] [flags]
 Commands
   gen   [dirs...]   Generate x.html.ts for every x.html, plus ts-dom-tags.ts (default dir: src)
         --watch           keep watching and regenerate on change
+        --include=<glob>  only these templates (repeatable; relative to each dir, ** crosses folders)
+        --exclude=<glob>  leave these templates out (repeatable)
         --whitespace=collapse   collapse whitespace in text and drop line-break-only text between tags
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
@@ -46,7 +48,8 @@ function printRules(): void {
 
 const [cmd, ...args] = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
-const generate = { whitespace: flags.has("--whitespace=collapse") ? ("collapse" as const) : ("preserve" as const) };
+const globs = (name: string) => args.filter((a) => a.startsWith(`--${name}=`)).map((a) => a.slice(name.length + 3));
+const generate = { include: globs("include"), exclude: globs("exclude"), whitespace: flags.has("--whitespace=collapse") ? ("collapse" as const) : ("preserve" as const) };
 const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
 

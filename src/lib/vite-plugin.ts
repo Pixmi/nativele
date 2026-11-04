@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, listHtml } from "./codegen.ts";
+import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
 
 export interface TsDomPluginOptions {
@@ -10,6 +10,10 @@ export interface TsDomPluginOptions {
   runtime?: string;
   /** How text nodes keep their whitespace: "preserve" (default) or "collapse" (see `GenerateOptions`). */
   whitespace?: "preserve" | "collapse";
+  /** Glob patterns (relative to each directory) of the templates to generate. Default: all. */
+  include?: string[];
+  /** Glob patterns (relative to each directory) of templates to leave out. */
+  exclude?: string[];
   /** Show ARIA / accessibility warnings in the terminal during builds. true enables every check; an object can list rule ids to ignore. Default: off. */
   a11y?: boolean | { ignore?: string[] };
 }
@@ -19,7 +23,7 @@ export interface TsDomPluginOptions {
  * ts-dom does not depend on it: `ts-dom gen` (or `--watch`) together with tsc is enough.
  */
 export function tsDom(opts: TsDomPluginOptions = {}) {
-  const generate = { runtime: opts.runtime, whitespace: opts.whitespace };
+  const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const dirs = opts.dirs ?? ["src"];
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
 
@@ -28,6 +32,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     for (const d of dirs) {
       if (!existsSync(d)) continue;
       for (const f of listHtml(d)) {
+        if (!isSelected(d, f, generate)) continue;
         for (const diag of checkA11y(readFileSync(f, "utf8"), a11y.ignore)) warn(formatDiagnostics(f, [diag]));
       }
     }
@@ -53,9 +58,10 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         if (!file.endsWith(".html") || file.includes("node_modules") || !existsSync(file)) return;
         const html = readFileSync(file, "utf8");
         if (isFullPage(html)) return;
-        if (!dirs.some((d) => file.startsWith(resolve(d) + sep))) return;
+        const dir = dirs.find((d) => file.startsWith(resolve(d) + sep));
+        if (!dir || !isSelected(resolve(dir), file, generate)) return;
         try {
-          generateFile(file, generate, dirs.find((d) => file.startsWith(resolve(d) + sep)));
+          generateFile(file, generate, dir);
           if (a11y) for (const diag of checkA11y(html, a11y.ignore)) server.config.logger.warn(formatDiagnostics(file, [diag]));
         } catch (e) {
           if (e instanceof CodegenError) server.config.logger.error(e.message);

@@ -289,7 +289,7 @@ import { defineConfig } from "vite-plus"; // or "vite"
 import { tsDom } from "ts-dom/vite";
 
 export default defineConfig({
-  plugins: [tsDom()], // options: dirs (default ["src"]), runtime, whitespace, a11y
+  plugins: [tsDom()], // options: dirs (default ["src"]), runtime, whitespace, include, exclude, a11y
 });
 ```
 
@@ -697,7 +697,7 @@ Notes:
 
 - `data-ref`, holes, and `data-if` inside an item belong to that item and do not appear in the component-level `refs` / `text`.
 - `data-if` cannot be placed on an item's root element; wrap it in one more layer.
-- `data-each` cannot be nested.
+- `data-each` cannot be nested. Split it into two templates: put the inner list in its own `.html` (a child component with its own `data-each`) and use that component's tag inside the outer item.
 - `<slot>` cannot be placed inside an item.
 
 ## Trusted Types, Translations and Icons
@@ -859,7 +859,7 @@ These are deliberate trade-offs, not missing features:
 - **Synchronous rendering, no implicit asynchronous batching**: reading the DOM right after `set` always gives the new state, and tests need no waiting; to combine updates, use `batch` explicitly.
 - **No fine-grained reactive system**: `derive` is recomputed every time and `render` re-runs as a whole every time, in exchange for predictable behavior and no dependency-tracking magic.
 - **`data-if` is hidden by default**: state lives only in TS, and nothing is shown unless it says so.
-- **`data-if` cannot be on an item root element and `data-each` cannot be nested**: removing the root element would make the list lose its ordering anchor.
+- **`data-if` cannot be on an item root element and `data-each` cannot be nested**: removing the root element would make the list lose its ordering anchor, and one template then holds exactly one level of list. A nested list is a second template (a child component), which keeps each template's `refs`, `text` and event handling in a single scope.
 
 ## Limitations
 
