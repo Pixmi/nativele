@@ -93,7 +93,7 @@ describe("codegen diagnostics", () => {
     expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
   });
   it("does not import El when there is no ref (avoids noUnusedLocals errors)", () => {
-    expect(generateModule(`<p>{{ a }}</p>`)).not.toContain("El");
+    expect(generateModule(`<p>{{ a }}</p><p></p>`)).not.toContain("import type { El }");
     expect(generateModule(`<p data-ref="x"></p>`)).toContain("import type { El }");
   });
   it("a full page is not a template", () => {

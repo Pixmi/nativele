@@ -265,6 +265,16 @@ const union = (xs: Iterable<string>) => {
 };
 const obj = (m: Map<string, string>) => `{ ${[...m].map(([n, t]) => `${q(n)}: ${t}`).join("; ")} }`;
 
+/** The type of the template's only top-level element (a `<style>` does not count); `never` when there is not exactly one, or other text sits beside it. */
+function rootElementType(html: string): string {
+  const tops = parseFragment(html).childNodes.filter((n) => n.nodeName !== "#comment" && !(n.nodeName === "#text" && !(n as { value: string }).value.trim()));
+  const elements = tops.filter((n): n is Element => isEl(n) && !(n.tagName === "style" && n.namespaceURI === HTML_NS) && !(n.tagName === "template" && n.attrs.some((a) => a.name === "data-each")));
+  const others = tops.filter((n) => !(isEl(n) && (n.tagName === "style" || n.tagName === "template")));
+  if (elements.length !== 1 || others.length !== 1) return "never";
+  const el = elements[0] as Element;
+  return el.namespaceURI === HTML_NS ? `El<${JSON.stringify(el.tagName)}>` : "SVGElement";
+}
+
 /** What `ts-dom gen` writes; both fields are optional. */
 export interface GenerateOptions {
   /** Module name the generated files import the runtime from. Default: "@nativele/ts-dom" */
@@ -338,6 +348,7 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
   lists: { ${lists} };
   ifs: ${union(a.scope.ifs)};
   slots: ${union(a.slots)};
+  rootElement: ${rootElementType(html)};
   text: ${union(a.scope.text)};
   events: ${union(a.events)};
 }`;
