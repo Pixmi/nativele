@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Unreleased
 
-- README: a fourth example, a list of components (add, remove, sort, toggle, events up from the item), the one-line rule for choosing between `items =` and `replace()`, and how moving an item affects `connected()` and subscriptions with and without `moveBefore`. The introduction and the package description say what the library is built for: type safety and working with AI agents.
+- README: a fourth example, a list of components (add, remove, sort, toggle, events up from the item), the one-line rule for choosing between `items =` and `replace()`, and how moving an item affects `connected()` and subscriptions with and without `moveBefore`. The introduction and the package description say what the library is built for: type safety and AI coding agents, which can correct their own mistakes from `tsc` errors and the `Fix:` hints of every diagnostic.
 
 ## 0.4.0
 

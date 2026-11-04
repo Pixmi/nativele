@@ -8,6 +8,8 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 輕量的 UI 函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。它為型別安全與 AI agent 協作而設計：`tsc` 會檢查 HTML 用到的每個名稱，每則診斷都說明怎麼修。複雜的介面以原生自訂元素組合而成。
 
+**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom gen && tsc`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[給 AI agent 的規則](#給-ai-agent-的規則) 則是可以直接貼進專案 agent 指引檔的清單。
+
 ```html
 <!-- user-card.html：HTML 只描述結構、資料要放的位置、事件要找哪個方法 -->
 <h2>Hello, {{ name }}!</h2>
