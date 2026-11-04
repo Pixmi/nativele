@@ -27,6 +27,8 @@ First prototype.
 - Light DOM `<style>` is injected once per document; `<style scoped>` uses the native `@scope` and falls back to CSS nesting.
 - `createStore` (`get` / `set` / `subscribe`), `bind`, `on`, `onCleanup`.
 
+- Trusted Types compatible: the generated `x.html.ts` holds the parsed markup as data and the runtime builds it with `createElement`, `setAttribute` and `createTextNode`, so no HTML string is parsed and pages that enforce `require-trusted-types-for 'script'` work without a policy (verified in real Chrome).
+
 ### Composition
 
 - Child components used in a template are imported automatically by the generated `x.html.ts`; HTML is the only source of dependencies.
@@ -34,7 +36,7 @@ First prototype.
 
 ### Tooling
 
-- No Vite or bundler required: `ts-dom gen` writes `x.html.ts` (a real TypeScript module with the template string and its types), imported as `./x.html.js`; the compiled JS runs in a browser with an import map. `ts-dom gen --watch` is available.
+- No Vite or bundler required: `ts-dom gen` writes `x.html.ts` (a real TypeScript module with the template markup and its types), imported as `./x.html.js`; the compiled JS runs in a browser with an import map. `ts-dom gen --watch` is available.
 - `ts-dom` CLI: `gen [--watch]`, `lint [--a11y] [--strict] [--json]`, `rules`.
 - `ts-dom/vite`: optional plugin (generate, watch, optional a11y warnings).
 - Every diagnostic has a stable rule id, an HTML location where possible, and says what is wrong and how to fix it. `ts-dom rules` lists them.

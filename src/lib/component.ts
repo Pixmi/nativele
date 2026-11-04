@@ -186,11 +186,10 @@ export function Component(
     const t = typeof propDefaults[k];
     if (t === "string" || t === "number" || t === "boolean") attrProps.set(attrNameOf(k), { key: k, kind: t });
   }
-  const tplEl = document.createElement("template");
-  tplEl.innerHTML = tpl.html;
+  const content = tpl.build();
 
   // Light mode: extract the template's top-level <style> elements and inject them once per document, not once per instance
-  const injectStyles = createInjector(shadow ? [] : extractSheets(tplEl.content));
+  const injectStyles = createInjector(shadow ? [] : extractSheets(content));
 
   // Scan once at definition time: which data-on-* events and methods the template (list items included) uses
   const eventTypes = new Set<string>();
@@ -204,7 +203,7 @@ export function Component(
       }
       if (el instanceof HTMLTemplateElement) scan(el.content);
     }
-  })(tplEl.content);
+  })(content);
   const eventSelector = [...eventTypes].map((t) => `[data-on-${t}]`).join(",");
 
   class Base extends HTMLElement {
@@ -270,7 +269,7 @@ export function Component(
       // Light mode: take the user's child nodes out first and put them back later according to slot names
       const given = shadow ? [] : [...this.childNodes];
       if (!shadow) this.replaceChildren();
-      const frag = tplEl.content.cloneNode(true) as DocumentFragment;
+      const frag = content.cloneNode(true) as DocumentFragment;
       // Handle data-each first (refs inside an item belong to the list)
       for (const t of frag.querySelectorAll<HTMLTemplateElement>("template[data-each]")) {
         const name = t.getAttribute("data-each") as string;
