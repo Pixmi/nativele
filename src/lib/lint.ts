@@ -214,6 +214,7 @@ export const DATA_FLOW_RULES = {
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
   "unknown-event": "the child component does not emit this event",
+  "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
 } as const;
 
 /** Common native events. A data-on-* on a native element whose event is not listed here is treated as a custom event. */
@@ -437,6 +438,26 @@ export function dataFlow(
       const tag = /El<"([^"]+)">/.exec(type)?.[1];
       if (tag?.includes("-")) customRefs.set(name, tag);
     }
+  }
+
+  const formControls = new Set([...a.scope.refs].filter(([, type]) => /El<"(input|textarea|select)">/.test(type)).map(([name]) => name));
+  for (const { body } of classes) {
+    const render = methodBody(body, "render");
+    if (!render || !formControls.size) continue;
+    const lines = render.split("\n");
+    lines.forEach((line, i) => {
+      for (const m of line.matchAll(/\brefs\.(\w+)\.value\s*=(?!=)/g)) {
+        const ref = m[1] as string;
+        if (!formControls.has(ref)) continue;
+        const guarded = [line, lines[i - 1] ?? ""].some((l) => new RegExp(`refs\\.${esc(ref)}\\.value\\s*!==?`).test(l));
+        if (guarded) continue;
+        report(
+          "unguarded-input-value",
+          `render() assigns this.refs.${ref}.value without comparing it first. Writing a form control's value while the user types moves the caret to the end. Fix: if (this.refs.${ref}.value !== next) this.refs.${ref}.value = next;`,
+          `ref:${ref}`,
+        );
+      }
+    });
   }
 
   for (const { call, body } of classes) {
