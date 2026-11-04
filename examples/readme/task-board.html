@@ -1,0 +1,10 @@
+<form data-on-submit="add">
+  <input data-ref="title" aria-label="New task" />
+  <button type="submit">Add</button>
+</form>
+<button type="button" data-on-click="sortByTitle">Sort by title</button>
+<ul>
+  <template data-each="tasks" data-key="id" data-prop="task">
+    <task-row role="listitem" data-on-task-toggle="toggleTask" data-on-task-remove="removeTask"></task-row>
+  </template>
+</ul>

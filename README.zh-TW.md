@@ -6,7 +6,7 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 [English](README.md) | 繁體中文
 
-用 TypeScript 管理 HTML 的小型函式庫（原型）。HTML 描述結構與「資料要放的位置」，TypeScript 負責行為與狀態，DOM 就是唯一的真實呈現。
+輕量的 UI 函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。它為型別安全與 AI agent 協作而設計：`tsc` 會檢查 HTML 用到的每個名稱，每則診斷都說明怎麼修。複雜的介面以原生自訂元素組合而成。
 
 ```html
 <!-- user-card.html：HTML 只描述結構、資料要放的位置、事件要找哪個方法 -->
@@ -62,7 +62,7 @@ npx ts-dom gen      # 為每個 x.html 產生 x.html.ts（含型別）；每次�
 npx tsc             # 型別檢查並編譯；不需要 Vite 或其他 bundler
 ```
 
-下面三個範例都是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
+下面四個範例都是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
 
 ### 範例 1：計數器（state、衍生值、事件、data-if）
 
@@ -228,6 +228,97 @@ define("order-line", OrderLine);
 ```
 
 資料流只有一個方向：父層的 state → 子元件的 props（`this.refs.qty.value = ...`）；子元件的請求 → 事件 → 父層的處理方法。
+
+### 範例 4：元件組成的清單（`items =`、props 往下、事件往上）
+
+項目有自己的東西（狀態、事件、內層清單）時，就把它做成元件，整份清單用一次指派填入。項目元件以 prop 接收自己的 task，用事件把變更往上送：
+
+```html
+<!-- task-row.html -->
+<label><input type="checkbox" data-ref="done" data-on-change="toggle" /> {{ title }}</label>
+<button type="button" data-on-click="drop">Remove</button>
+```
+
+```ts
+// task-row.ts
+import { Component, define, event } from "@nativele/ts-dom";
+import tpl from "./task-row.html.js";
+
+export interface Task {
+  id: number;
+  title: string;
+  done: boolean;
+}
+
+/** One item of the list: it receives its task as a prop and asks the parent for changes through events. */
+export class TaskRow extends Component(tpl, {
+  props: { task: null as Task | null },
+  derive: { title: (s) => s.task?.title ?? "" },
+  emits: { "task-toggle": event(), "task-remove": event() },
+}) {
+  override render(view: { task: Task | null }): void {
+    const done = view.task?.done ?? false;
+    if (this.refs.done.checked !== done) this.refs.done.checked = done;
+  }
+  toggle(): void {
+    this.emit("task-toggle");
+  }
+  drop(): void {
+    this.emit("task-remove");
+  }
+}
+define("task-row", TaskRow);
+```
+
+父元件在 `<template data-each>` 上寫出識別項目的欄位（`data-key`）與接收項目的 prop（`data-prop`），在 `render` 裡指派整份清單：
+
+```html
+<!-- task-board.html -->
+<form data-on-submit="add">
+  <input data-ref="title" aria-label="New task" />
+  <button type="submit">Add</button>
+</form>
+<button type="button" data-on-click="sortByTitle">Sort by title</button>
+<ul>
+  <template data-each="tasks" data-key="id" data-prop="task">
+    <task-row role="listitem" data-on-task-toggle="toggleTask" data-on-task-remove="removeTask"></task-row>
+  </template>
+</ul>
+```
+
+```ts
+// task-board.ts
+import { Component, define } from "@nativele/ts-dom";
+import type { EventHit } from "@nativele/ts-dom";
+import type { Task } from "./task-row.js";
+import tpl from "./task-board.html.js";
+
+export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], nextId: 1 } }) {
+  add(e: Event): void {
+    e.preventDefault();
+    const title = this.refs.title.value.trim();
+    if (!title) return;
+    this.set((s) => ({ tasks: [...s.tasks, { id: s.nextId, title, done: false }], nextId: s.nextId + 1 }));
+    this.refs.title.value = "";
+  }
+  // A changed task is a new object: the list sets the prop only on items that are not the same object as before.
+  toggleTask(_e: Event, hit: EventHit): void {
+    this.set((s) => ({ tasks: s.tasks.map((t) => (t.id === hit.key ? { ...t, done: !t.done } : t)) }));
+  }
+  removeTask(_e: Event, hit: EventHit): void {
+    this.set((s) => ({ tasks: s.tasks.filter((t) => t.id !== hit.key) }));
+  }
+  sortByTitle(): void {
+    this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
+  }
+  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+    if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
+  }
+}
+define("task-board", TaskBoard);
+```
+
+新增、刪除、排序與切換都透過 `this.set()`；清單會保留還在的 task 的元素（所以核取方塊的焦點不會丟）、為新的 task 建立元素、移除消失的，並只對換成新物件的項目設定 `task`。`tsc` 會檢查指派的項目是否符合 `<task-row>` 的 `task` prop 並帶有 `id`。
 
 ## 設計原則
 
@@ -697,7 +788,7 @@ function menuItem(label: string): HTMLLIElement {
 
 ## 清單
 
-填清單有兩種方式。項目有自己的東西（狀態、事件、內層清單）就用元件；只是幾個純元素組成的小項目就用 `replace()`。
+填清單有兩種方式，用一條規則決定：**項目有自己的東西（狀態、事件、內層清單）就是元件，用 `items =` 填入；項目只是幾個文字與 `data-if` 就是純元素，用 `replace()` 填入。** 範例 4 示範前者，範例 2 示範後者。
 
 ### 項目是元件：`items = ...`
 
@@ -759,6 +850,13 @@ this.lists.tags.replace(
 - `data-if` 不能放在項目的根元素上，請多包一層。
 - `data-each` 不能巢狀，要分成兩套模板：把內層清單放進自己的 `.html`（有自己 `data-each` 的子元件），在外層項目裡使用該元件的標籤。
 - `<slot>` 不能放在項目內。
+
+### 項目的搬動、連接與訂閱
+
+- 瀏覽器支援 `moveBefore` 時，被搬動的項目保持連接：`disconnected()` 與 `connected()` 都不會執行，焦點、捲動位置與訂閱都不受影響。
+- 不支援時，被搬動的項目會先移出再放回：`disconnected()` 執行並釋放所有用 `bind`、`on`、`onCleanup` 登記的東西，接著 `connected()` 再執行一次。元素本身、props 與 state 都不變。
+- 所以訂閱要寫在 `connected()`（`this.bind(store, ...)`、`this.on(...)`），不要寫在建構子或欄位初始值：這樣在任何瀏覽器搬動之後都會重新訂閱。寫在建構子的訂閱，第一次搬動就被釋放，之後不會再回來。
+- 每個項目都需要的資料（主題、目前使用者、登記表）放進 `createStore`，由項目元件在 `connected()` 裡 bind，不要複製進每個項目物件。
 
 ### 清單更新的順序
 

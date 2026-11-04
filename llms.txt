@@ -1,6 +1,6 @@
 # Nativele
 
-> A TypeScript-driven, HTML-first UI library. Bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
+> A TypeScript-driven, HTML-first UI library built for type safety and AI agents. Bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
 
 Workflow: write `x.html` + `x.ts`, run `npx ts-dom gen` (writes `x.html.ts`), then `npx tsc`. Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
 
@@ -68,6 +68,9 @@ define("my-counter", MyCounter);
 `const view = tpl.instantiate()` returns `{ root: DocumentFragment, rootElement, refs, lists, text, show }` typed like a component (`rootElement` exists in the type only when the template has exactly one top-level element, `<style>` excluded), for pieces created in code. No host: `data-on-*` is inert (use `refs.x.addEventListener`) and `<slot>` is not projected.
 
 ## Lists
+- Rule: an item with anything of its own (state, events, a nested list) is a component filled with `items =`; an item of a few texts and `data-if` is plain elements filled with `replace()`.
+- Subscribe in `connected()`, never in the constructor: without `moveBefore` a moved item is disconnected (its `bind`/`on`/`onCleanup` released) and connected again. Data every item needs goes in a `createStore` the item binds.
+- Full example (add, remove, sort, toggle, child emit): `examples/readme/task-board.ts` and `task-row.ts` in the repository.
 - Items that are components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row></todo-row></template>`, then `this.lists.todos.items = view.todos` (inside `render`, guarded by `changed.has("todos")`). Keeps the element of each key, creates and removes the rest, sets the `todo` prop of each changed item; `hit.key` in handlers. The item component declares `todo` in its `props`; `tsc` checks the items against that prop type and the `data-key` field; an item component defined in a scanned folder must be exported and listed in `ts-dom-tags.ts` (run `ts-dom gen`), otherwise the assignment is a type error that names the problem.
 - Items that are plain elements: `<template data-each="x">` with `this.lists.x.replace(items, keyFn, (item, { text, show }) => ...)`.
 - `data-each` is never nested: a list inside an item is the item component's own `data-each`.

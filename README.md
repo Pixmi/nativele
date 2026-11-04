@@ -4,7 +4,7 @@ A TypeScript-driven, HTML-first UI library.
 
 Nativele publishes this library as `@nativele/ts-dom` (import it from `@nativele/ts-dom`); its command line tool is `ts-dom`.
 
-A small library (prototype) for managing HTML with TypeScript. HTML describes the structure and "where data goes", TypeScript owns behavior and state, and the DOM is the single source of truth for what is rendered.
+A lightweight UI library: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
 
 English | [繁體中文](README.zh-TW.md)
 
@@ -62,7 +62,7 @@ npx ts-dom gen      # generate x.html.ts (fully typed) for every x.html; run it 
 npx tsc             # type-check and compile; no Vite or other bundler needed
 ```
 
-The three examples below are real, runnable files in `examples/readme/` (type-checked, linted, and tested).
+The four examples below are real, runnable files in `examples/readme/` (type-checked, linted, and tested).
 
 ### Example 1: Counter (state, derived values, events, data-if)
 
@@ -228,6 +228,97 @@ define("order-line", OrderLine);
 ```
 
 The data flow goes in only one direction: the parent's state → the child's props (`this.refs.qty.value = ...`); the child's request → event → the parent's handler method.
+
+### Example 4: A list of components (`items =`, props down, events up)
+
+When an item has anything of its own (state, events, a nested list), make it a component and fill the list with one assignment. The item component receives its task as a prop and sends changes up as events:
+
+```html
+<!-- task-row.html -->
+<label><input type="checkbox" data-ref="done" data-on-change="toggle" /> {{ title }}</label>
+<button type="button" data-on-click="drop">Remove</button>
+```
+
+```ts
+// task-row.ts
+import { Component, define, event } from "@nativele/ts-dom";
+import tpl from "./task-row.html.js";
+
+export interface Task {
+  id: number;
+  title: string;
+  done: boolean;
+}
+
+/** One item of the list: it receives its task as a prop and asks the parent for changes through events. */
+export class TaskRow extends Component(tpl, {
+  props: { task: null as Task | null },
+  derive: { title: (s) => s.task?.title ?? "" },
+  emits: { "task-toggle": event(), "task-remove": event() },
+}) {
+  override render(view: { task: Task | null }): void {
+    const done = view.task?.done ?? false;
+    if (this.refs.done.checked !== done) this.refs.done.checked = done;
+  }
+  toggle(): void {
+    this.emit("task-toggle");
+  }
+  drop(): void {
+    this.emit("task-remove");
+  }
+}
+define("task-row", TaskRow);
+```
+
+The parent names, on the `<template data-each>`, the field that identifies an item (`data-key`) and the prop that receives it (`data-prop`), and assigns the whole list in `render`:
+
+```html
+<!-- task-board.html -->
+<form data-on-submit="add">
+  <input data-ref="title" aria-label="New task" />
+  <button type="submit">Add</button>
+</form>
+<button type="button" data-on-click="sortByTitle">Sort by title</button>
+<ul>
+  <template data-each="tasks" data-key="id" data-prop="task">
+    <task-row role="listitem" data-on-task-toggle="toggleTask" data-on-task-remove="removeTask"></task-row>
+  </template>
+</ul>
+```
+
+```ts
+// task-board.ts
+import { Component, define } from "@nativele/ts-dom";
+import type { EventHit } from "@nativele/ts-dom";
+import type { Task } from "./task-row.js";
+import tpl from "./task-board.html.js";
+
+export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], nextId: 1 } }) {
+  add(e: Event): void {
+    e.preventDefault();
+    const title = this.refs.title.value.trim();
+    if (!title) return;
+    this.set((s) => ({ tasks: [...s.tasks, { id: s.nextId, title, done: false }], nextId: s.nextId + 1 }));
+    this.refs.title.value = "";
+  }
+  // A changed task is a new object: the list sets the prop only on items that are not the same object as before.
+  toggleTask(_e: Event, hit: EventHit): void {
+    this.set((s) => ({ tasks: s.tasks.map((t) => (t.id === hit.key ? { ...t, done: !t.done } : t)) }));
+  }
+  removeTask(_e: Event, hit: EventHit): void {
+    this.set((s) => ({ tasks: s.tasks.filter((t) => t.id !== hit.key) }));
+  }
+  sortByTitle(): void {
+    this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
+  }
+  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+    if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
+  }
+}
+define("task-board", TaskBoard);
+```
+
+Adding, removing, sorting and toggling all go through `this.set()`; the list keeps the element of each task that stays (so a checkbox keeps its focus), creates one for a new task, removes the ones that are gone, and sets `task` only on items that are a new object. `tsc` checks that the assigned items match the `task` prop of `<task-row>` and have an `id`.
 
 ## Design Principles
 
@@ -695,7 +786,7 @@ There is no host element, so `data-on-*` attributes do nothing here (listen on `
 
 ## Lists
 
-There are two ways to fill a list. Use components when an item has anything of its own (state, events, a nested list), and `replace()` for small items made of plain elements.
+There are two ways to fill a list, and one rule decides between them: **an item that has anything of its own (state, events, a nested list) is a component, filled with `items =`; an item that is a few texts and `data-if` is plain elements, filled with `replace()`.** Example 4 shows the first, Example 2 the second.
 
 ### Items as components: `items = ...`
 
@@ -757,6 +848,13 @@ Notes:
 - `data-if` cannot be placed on an item's root element; wrap it in one more layer.
 - `data-each` cannot be nested. Split it into two templates: put the inner list in its own `.html` (a child component with its own `data-each`) and use that component's tag inside the outer item.
 - `<slot>` cannot be placed inside an item.
+
+### Moving items, connecting and subscriptions
+
+- In a browser with `moveBefore`, a moved item stays connected: neither `disconnected()` nor `connected()` runs, and its focus, scroll position and subscriptions are untouched.
+- In a browser without it, a moved item is taken out and put back: `disconnected()` runs and releases everything registered with `bind`, `on` and `onCleanup`, then `connected()` runs again. Its element, props and state stay the same.
+- So subscribe in `connected()` (`this.bind(store, ...)`, `this.on(...)`), not in the constructor or a field initializer: then the subscription is made again after a move in every browser. A subscription made in the constructor is released by the first move and never comes back.
+- Data that every item needs (a theme, the current user, a registry) belongs in a `createStore` that the item component binds in `connected()`, not copied into every item object.
 
 ### Order of list updates
 
