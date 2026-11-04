@@ -8,6 +8,8 @@ export interface TsDomPluginOptions {
   dirs?: string[];
   /** Module name the generated files import the runtime from. Default: "ts-dom" */
   runtime?: string;
+  /** How text nodes keep their whitespace: "preserve" (default) or "collapse" (see `GenerateOptions`). */
+  whitespace?: "preserve" | "collapse";
   /** Show ARIA / accessibility warnings in the terminal during builds. true enables every check; an object can list rule ids to ignore. Default: off. */
   a11y?: boolean | { ignore?: string[] };
 }
@@ -17,7 +19,7 @@ export interface TsDomPluginOptions {
  * ts-dom does not depend on it: `ts-dom gen` (or `--watch`) together with tsc is enough.
  */
 export function tsDom(opts: TsDomPluginOptions = {}) {
-  const runtime = opts.runtime;
+  const generate = { runtime: opts.runtime, whitespace: opts.whitespace };
   const dirs = opts.dirs ?? ["src"];
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
 
@@ -36,7 +38,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     enforce: "pre" as const,
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
       try {
-        for (const d of dirs) if (existsSync(d)) generateAll(d, runtime);
+        for (const d of dirs) if (existsSync(d)) generateAll(d, generate);
       } catch (e) {
         if (e instanceof CodegenError) this.error(e.message);
         throw e;
@@ -53,7 +55,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         if (isFullPage(html)) return;
         if (!dirs.some((d) => file.startsWith(resolve(d) + sep))) return;
         try {
-          generateFile(file, runtime, dirs.find((d) => file.startsWith(resolve(d) + sep)));
+          generateFile(file, generate, dirs.find((d) => file.startsWith(resolve(d) + sep)));
           if (a11y) for (const diag of checkA11y(html, a11y.ignore)) server.config.logger.warn(formatDiagnostics(file, [diag]));
         } catch (e) {
           if (e instanceof CodegenError) server.config.logger.error(e.message);
