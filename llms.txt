@@ -64,6 +64,9 @@ class MyCounter extends Component(tpl, {
 define("my-counter", MyCounter);
 ```
 
+## Template without a component
+`const view = tpl.instantiate()` returns `{ root: DocumentFragment, refs, lists, text, show }` typed like a component, for pieces created in code. No host: `data-on-*` is inert (use `refs.x.addEventListener`) and `<slot>` is not projected.
+
 ## Setup
 ```sh
 npm i -D typescript && npm i ts-dom

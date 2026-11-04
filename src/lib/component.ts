@@ -1,12 +1,11 @@
-import { mountConds } from "./cond.ts";
-import { List } from "./list.ts";
+import type { List } from "./list.ts";
 import type { TextOf } from "./list.ts";
 import { LightSlots } from "./slots.ts";
 import type { Store } from "./store.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
 import type { Schema, Template } from "./template.ts";
-import { mountHoles } from "./text.ts";
+import { mountTemplate } from "./mount.ts";
 
 export interface ComponentOptions {
   /**
@@ -270,23 +269,14 @@ export function Component(
       const given = shadow ? [] : [...this.childNodes];
       if (!shadow) this.replaceChildren();
       const frag = content.cloneNode(true) as DocumentFragment;
-      // Handle data-each first (refs inside an item belong to the list)
-      for (const t of frag.querySelectorAll<HTMLTemplateElement>("template[data-each]")) {
-        const name = t.getAttribute("data-each") as string;
-        const proto = t.content.firstElementChild;
-        if (!proto) throw new Error(`[each-root-count] data-each="${name}" needs exactly one root element. Fix: wrap the item content in a single element such as <li>.`);
-        const anchor = document.createComment(`each:${name}`);
-        t.replaceWith(anchor);
-        this.lists[name] = new List(anchor, proto, (el) => this.#register(el));
-      }
-      for (const el of frag.querySelectorAll("[data-ref]")) {
-        this.refs[el.getAttribute("data-ref") as string] = el;
-      }
+      const mounted = mountTemplate(frag, (el) => this.#register(el));
+      this.lists = mounted.lists;
+      this.refs = mounted.refs;
       this.#register(frag);
-      const conds = mountConds(frag);
+      const conds = mounted.conds;
       this.#show = conds.show;
       this.#condNames = conds.names;
-      this.text = mountHoles(frag);
+      this.text = mounted.text;
       if (!shadow) {
         this.#slots = new LightSlots(this, (name) => this.slotchange(name));
         this.#slots.project(frag, given);

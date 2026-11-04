@@ -643,6 +643,23 @@ const off = store.subscribe((s) => console.log(s)); // 回傳取消函式
 
 沒有依賴追蹤，`set` 後所有訂閱者都會被呼叫；值以 `Object.is` 相同時不通知。它是不使用 `state` 選項時的小工具，你也可以完全不用，自己管理狀態再直接寫入 `refs` / `text`。需要自動綁定與 `render` 時請改用上面的 `state`。
 
+## 不用元件的範本
+
+`tpl.instantiate()` 不需要自訂元素就能建立範本，並回傳與元件相同、有型別的操作介面：`root`（`DocumentFragment`）、`refs`、`lists`、`text`、`show`。適合在程式裡建立的小片段，例如加進清單的選單項目：
+
+```ts
+import itemTpl from "./menu-item.html.js";
+
+function menuItem(label: string): HTMLElement {
+  const view = itemTpl.instantiate();
+  view.text.label = label;
+  view.refs.button.addEventListener("click", () => select(label));
+  return view.root.firstElementChild as HTMLElement;
+}
+```
+
+這種用法沒有宿主元素，所以 `data-on-*` 不會生效（請在 `refs` 上自行監聽），`<slot>` 也不會投影；需要這些時請用元件。
+
 ## 清單
 
 ```html

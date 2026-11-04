@@ -643,6 +643,23 @@ const off = store.subscribe((s) => console.log(s)); // returns an unsubscribe fu
 
 There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.
 
+## Templates Without a Component
+
+`tpl.instantiate()` builds a template without a custom element and returns the same typed handles a component has: `root` (a `DocumentFragment`), `refs`, `lists`, `text` and `show`. Use it for small pieces created in code, such as a menu item added to a list:
+
+```ts
+import itemTpl from "./menu-item.html.js";
+
+function menuItem(label: string): HTMLElement {
+  const view = itemTpl.instantiate();
+  view.text.label = label;
+  view.refs.button.addEventListener("click", () => select(label));
+  return view.root.firstElementChild as HTMLElement;
+}
+```
+
+There is no host element, so `data-on-*` attributes do nothing here (listen on `refs`) and `<slot>` is not projected; use a component when you need those.
+
 ## Lists
 
 ```html
