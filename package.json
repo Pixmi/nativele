@@ -1,6 +1,6 @@
 {
   "name": "@nativele/ts-dom",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A TypeScript-driven, HTML-first UI library. Bind HTML to TypeScript: HTML describes the structure, TypeScript owns behavior and state, and the DOM is the single source of truth. Fully typed, no virtual DOM, no bundler required.",
   "keywords": [
     "html",
