@@ -496,7 +496,7 @@ add(e: Event) { e.preventDefault(); … }
 removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((i) => i.id !== hit.key) })); }
 ```
 
-- 方法收到 `(event, hit)`。`hit.el` 是帶有 `data-on-*` 的元素；事件發生在清單項目內時，`hit.key` 是該項目的 key，`hit.item` 是最近一次傳給 `update` 的資料；放在項目內的子元件發出的事件也一樣。需要額外參數就放 `data-*` 屬性，在方法中讀 `hit.el.dataset`。
+- 方法收到 `(event, hit)`。`hit.el` 是帶有 `data-on-*` 的元素；事件發生在清單項目內時，`hit.key` 是該項目的 key，`hit.item` 是最近一次傳給 `update` 的資料；放在項目內的子元件發出的事件也一樣。`hit.item` 預設是 `unknown`，要有型別就在處理方法上標註，例如 `hit: EventHit<Todo>`。需要額外參數就放 `data-*` 屬性，在方法中讀 `hit.el.dataset`。
 - **事件委派**：每種事件只在元件根節點掛一個監聽器，清單再長也不會增加監聽器數量，項目增減不需要重新綁定。不冒泡的事件（`focus`、`blur`、`mouseenter` 等）改用捕獲階段，只處理 target 本身；冒泡事件會依序呼叫由內而外的處理方法，`stopPropagation()` 會停止。
 - **只認元件自己範本裡的元素**：使用者放進 slot 的內容就算寫了 `data-on-click` 也不會觸發。
 - 只能寫方法名稱，`add(1)`、`a.b` 會在 codegen 時報錯；方法名稱不可與 DOM 內建方法或 ts-dom 成員衝突（例如 `remove`、`click`、`focus`、`set`、`render`），否則會覆蓋它們，codegen 會報錯並建議改名。
@@ -643,7 +643,7 @@ store.set((s) => ({ count: s.count + 1 }));
 const off = store.subscribe((s) => console.log(s)); // 回傳取消函式
 ```
 
-沒有依賴追蹤，`set` 後所有訂閱者都會被呼叫；值以 `Object.is` 相同時不通知。它是不使用 `state` 選項時的小工具，你也可以完全不用，自己管理狀態再直接寫入 `refs` / `text`。需要自動綁定與 `render` 時請改用上面的 `state`。
+`this.bind` 也接受只有 `get` 與 `subscribe` 的唯讀來源。沒有依賴追蹤，`set` 後所有訂閱者都會被呼叫；值以 `Object.is` 相同時不通知。它是不使用 `state` 選項時的小工具，你也可以完全不用，自己管理狀態再直接寫入 `refs` / `text`。需要自動綁定與 `render` 時請改用上面的 `state`。
 
 ## 不用元件的範本
 

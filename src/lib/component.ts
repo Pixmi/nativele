@@ -1,7 +1,7 @@
 import type { List } from "./list.ts";
 import type { TextOf } from "./list.ts";
 import { LightSlots } from "./slots.ts";
-import type { Store } from "./store.ts";
+import type { ReadableStore } from "./store.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
 import type { Schema, Template } from "./template.ts";
@@ -63,13 +63,13 @@ type IsClean<T> = unknown extends T ? true : false;
 type Lists<S extends Schema> = { [K in keyof S["lists"]]: List<S["lists"][K]> };
 
 /** The second argument received by a data-on-* handler method. */
-export interface EventHit {
+export interface EventHit<Item = unknown> {
   /** The element that carries the data-on-* attribute */
   readonly el: Element;
   /** When the event happened inside a list item: the key of that item */
   readonly key?: PropertyKey;
-  /** When the event happened inside a list item: the data last passed to update() for that item */
-  readonly item?: unknown;
+  /** When the event happened inside a list item: the data last passed to update() for that item. Annotate the handler, e.g. `hit: EventHit<Todo>`, to type it. */
+  readonly item?: Item;
 }
 
 export interface ComponentInstance<S extends Schema> extends HTMLElement {
@@ -83,7 +83,7 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
   /** Maps to data-if: hidden by default (removed from the DOM and replaced by a comment); shown when true. */
   show(name: S["ifs"], on: boolean): void;
   /** Subscribe to a store: calls fn immediately once, and unsubscribes automatically when the element is removed. */
-  bind<T>(store: Store<T>, fn: (value: T) => void): void;
+  bind<T>(store: ReadableStore<T>, fn: (value: T) => void): void;
   /** Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually. */
   on<K extends keyof HTMLElementEventMap>(target: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions): () => void;
   on(target: EventTarget, type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions): () => void;
@@ -437,7 +437,7 @@ export function Component(
       this.#show(name, on);
     }
 
-    bind<T>(store: Store<T>, fn: (value: T) => void): void {
+    bind<T>(store: ReadableStore<T>, fn: (value: T) => void): void {
       fn(store.get());
       this.#cleanups.push(store.subscribe(fn));
     }

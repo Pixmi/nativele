@@ -121,7 +121,11 @@ export class List<L extends ListSchema = ListSchema> {
   /** Keyed reconciliation: remove extra items, create missing ones, reorder, and call update() for every item. */
   replace<T>(items: readonly T[], key: (item: T) => PropertyKey, update: Update<L, T>, opts: ReplaceOptions = {}): void {
     const next = new Set<PropertyKey>();
-    for (const it of items) next.add(key(it));
+    for (const it of items) {
+      const k = key(it);
+      if (next.has(k)) throw new Error(`[duplicate-key] replace() received two items with the key ${String(k)}, so one element cannot show both. Fix: make key() return a unique value for each item.`);
+      next.add(k);
+    }
     for (const k of this.#items.keys()) if (!next.has(k)) this.remove(k);
 
     const parent = this.anchor.parentNode;

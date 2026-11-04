@@ -1,3 +1,6 @@
+/** What `bind` needs from a store: the current value and a subscription. A read-only source can be bound too. */
+export type ReadableStore<T> = Pick<Store<T>, "get" | "subscribe">;
+
 export interface Store<T> {
   get(): T;
   set(next: T | ((prev: T) => T)): void;
