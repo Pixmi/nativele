@@ -398,6 +398,20 @@ describe("scanDefines ignores define() calls inside strings and comments", () =>
   });
 });
 
+describe("data-key and data-prop", () => {
+  const list = (item: string) => `<template data-each="a" data-key="id" data-prop="item">${item}</template>`;
+  it("accepts a custom element and rejects other tags, including reserved hyphenated names", () => {
+    expect(ruleIds(list(`<x-row></x-row>`))).toEqual([]);
+    expect(ruleIds(list(`<li></li>`))).toContain("each-binding-root");
+    expect(ruleIds(list(`<font-face></font-face>`))).toContain("each-binding-root");
+  });
+  it("lint hint for a list that is never assigned points to items", async () => {
+    const { analyze: run } = await import("../src/lib/codegen.ts");
+    expect(run(list(`<x-row></x-row>`)).boundLists.has("a")).toBe(true);
+    expect(run(`<template data-each="a"><li></li></template>`).boundLists.has("a")).toBe(false);
+  });
+});
+
 describe("whitespace option", () => {
   const html = `<ul>\n  <li>a  b</li>\n  <li>c</li>\n</ul><b>x</b> <i>y</i><pre>  keep\n</pre>`;
   it("preserves whitespace by default", () => {

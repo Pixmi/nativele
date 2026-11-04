@@ -82,9 +82,60 @@ describe("list items assignment (data-key and data-prop)", () => {
     expect(() => (list.lists.plain.items = [])).toThrow(/list-not-bound/);
   });
 
+  it("reading items follows the elements, even after remove() or replace()", () => {
+    const list = mount();
+    const a = { id: 1, title: "a" };
+    const b = { id: 2, title: "b" };
+    list.lists.todos.items = [a, b];
+    list.lists.todos.remove(1);
+    expect(list.lists.todos.items).toEqual([b]);
+    list.lists.todos.items = [b, a];
+    expect(list.lists.todos.items).toEqual([b, a]);
+  });
+
+  it("a failed update does not mark the item as shown, so assigning the same objects again retries", () => {
+    const list = mount();
+    const a = { id: 1, title: "a" };
+    let fail = true;
+    const original = list.lists.todos.replace.bind(list.lists.todos);
+    expect(() =>
+      original([a], (i) => (i as Todo).id, () => {
+        if (fail) throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    fail = false;
+    list.lists.todos.items = [a];
+    expect(rows(list)[0]?.textContent).toContain("a");
+  });
+
   it("replace() still works on any list", () => {
     const list = mount();
     list.lists.plain.replace(["x", "y"], (s) => s, (s, { text }) => (text.n = s));
     expect([...list.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["x", "y"]);
+  });
+});
+
+import paddedTpl from "./bind-padded.html.js";
+
+class PaddedList extends Component(paddedTpl) {}
+define("t-padded-list", PaddedList);
+class ShadowPaddedList extends Component(paddedTpl, { shadow: true }) {}
+define("t-shadow-padded-list", ShadowPaddedList);
+
+describe("data-key and data-prop values", () => {
+  it("ignore surrounding spaces", () => {
+    const list = document.createElement("t-padded-list") as PaddedList;
+    document.body.append(list);
+    list.lists.good.items = [{ id: 1, title: "a" }];
+    expect(list.querySelectorAll("t-bind-row")).toHaveLength(1);
+  });
+
+  it("report a property the item component does not have, connected or not", () => {
+    const connected = document.createElement("t-padded-list") as PaddedList;
+    document.body.append(connected);
+    expect(() => (connected.lists.rows.items = [{ id: 1 }])).toThrow(/unknown-prop/);
+    const loose = document.createElement("t-shadow-padded-list") as ShadowPaddedList;
+    expect(loose.isConnected).toBe(false);
+    expect(() => (loose.lists.rows.items = [{ id: 1 }])).toThrow(/unknown-prop/);
   });
 });

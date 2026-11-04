@@ -154,7 +154,8 @@ export function unusedMarkup(html: string, code: string): Diagnostic[] {
   }
   for (const [list, s] of a.lists) {
     if (!dynLists && !used(`lists\\.${esc(list)}\\b|lists\\[\\s*["']${esc(list)}["']`)) {
-      add("unused-list", `data-each="${list}" is never rendered, so the list stays empty. Fix: call this.lists.${list}.replace(items, (item) => item.id, (item, ctx) => { ... }), for example inside render().`, `each:${list}`);
+      const fix = a.boundLists.has(list) ? `assign this.lists.${list}.items = items` : `call this.lists.${list}.replace(items, (item) => item.id, (item, ctx) => { ... })`;
+      add("unused-list", `data-each="${list}" is never rendered, so the list stays empty. Fix: ${fix}, for example inside render().`, `each:${list}`);
       continue;
     }
     // Names inside a list item: any appearance of the identifier counts as use (lenient on purpose, to avoid false positives).

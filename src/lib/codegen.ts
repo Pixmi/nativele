@@ -63,6 +63,8 @@ export interface Analysis {
   scope: Scope;
   lists: Map<string, Scope>;
   slots: Set<string>;
+  /** The `data-each` lists that have `data-key` and `data-prop`: their items are components assigned through `items`. */
+  boundLists: Set<string>;
   /** Method names referenced by data-on-* (including inside list items). */
   events: Set<string>;
   /** Every data-on-* occurrence: event type, handler method, element tag (used by data-flow checks). */
@@ -79,6 +81,8 @@ export interface Analysis {
   diagnostics: Diagnostic[];
 }
 
+const RESERVED_ELEMENT_NAMES = new Set(["annotation-xml", "color-profile", "font-face", "font-face-src", "font-face-uri", "font-face-format", "font-face-name", "missing-glyph"]);
+const isCustomElementName = (tag: string): boolean => /^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(tag) && !RESERVED_ELEMENT_NAMES.has(tag);
 const URL_ATTRS = /^(href|src|action|formaction|xlink:href)$/i;
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const newScope = (): Scope => ({ refs: new Map(), text: new Set(), ifs: new Set() });
@@ -97,6 +101,7 @@ export function analyze(html: string): Analysis {
     scope: newScope(),
     lists: new Map(),
     slots: new Set(),
+    boundLists: new Set(),
     events: new Set(),
     eventSites: [],
     customTags: new Set(),
@@ -264,11 +269,12 @@ export function analyze(html: string): Analysis {
           if ((key === undefined) !== (prop === undefined)) {
             report("each-binding-incomplete", "error", `data-each="${each}" has ${key === undefined ? "data-prop" : "data-key"} but not ${key === undefined ? "data-key" : "data-prop"}. Fix: write both, e.g. <template data-each="${each}" data-key="id" data-prop="item">, or neither to fill the items yourself with replace().`, n);
           } else if (key !== undefined && prop !== undefined) {
+            a.boundLists.add(each);
             if (!IDENT.test(key.trim()) || !IDENT.test(prop.trim())) {
               report("invalid-each-binding", "error", `data-key="${key}" and data-prop="${prop}" must each be a single identifier: the item field that identifies it, and the property of the item element that receives the item. Fix: write data-key="id" data-prop="item".`, n);
             } else if (items.length === 1 && isEl(items[0] as Node)) {
               const root = items[0] as Element;
-              if (!(root.tagName.includes("-") && root.namespaceURI === HTML_NS)) {
+              if (!(root.namespaceURI === HTML_NS && isCustomElementName(root.tagName))) {
                 report("each-binding-root", "error", `data-each="${each}" has data-key and data-prop, so each item is one component that receives the item as a property, but its root is <${root.tagName}>. Fix: make the item a custom element such as <${each}-row></${each}-row> and put the item's markup in that component's own .html.`, n);
               }
             }
