@@ -2,7 +2,7 @@
 
 > A TypeScript-driven, HTML-first UI library built for type safety and AI agents. Bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
 
-Workflow: write `x.html` + `x.ts`, run `npx ts-dom gen` (writes `x.html.ts`), then `npx tsc`. Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
+Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.ts`, runs tsc and lint, points errors at the template). Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
 
 ## Template syntax (HTML only names things; no expressions)
 - `{{ name }}`: text hole, a single identifier only. NOT `{{ a.b }}` / `{{ a + 1 }}`. Not allowed in attributes.
@@ -78,7 +78,7 @@ define("my-counter", MyCounter);
 
 ## Rules for agents
 - `npx ts-dom gen --check` (writes nothing, exit 1) tells whether the generated files are stale before you trust `tsc` errors.
-- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` change run `npx ts-dom gen && npx tsc` and fix every type error instead of casting it away. Until `gen` has run, `tsc` only reports that `./x.html.js` is missing.
+- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` or component change run `npx ts-dom check --json`: it regenerates, runs tsc, maps template contract errors to the template line/col (`missing-binding`, `missing-handler`, item rules), and runs lint. Fix every issue by its `Fix:` hint; never cast a type error away.
 - No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list.
 - Props go down (parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `data-each` cannot be nested: make the inner list its own component.
 

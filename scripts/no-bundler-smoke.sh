@@ -83,6 +83,7 @@ HTML
 
 echo "[no-bundler] gen";  npx ts-dom gen
 echo "[no-bundler] tsc";  npx tsc
+echo "[no-bundler] check"; npx ts-dom check
 test -s out/hello.js && test -s out/hello.html.js
 echo "[no-bundler] the type check rejects wrong names"
 bad() { # $1=description $2=code that must make tsc fail

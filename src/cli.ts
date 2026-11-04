@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
+import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { CODEGEN_RULES, CodegenError, generateAll, listHtml, staleGenerated, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
@@ -19,6 +20,13 @@ Commands
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text (also for gen --check)
+  check [dirs...]   One pass for agents and CI: template diagnostics, generated files, tsc errors mapped back
+                    to the templates, and the lint rules (default dir: src)
+        --no-write        do not regenerate; report stale generated files instead
+        --project=<path>  tsconfig for tsc (default: tsc's own lookup)
+        --a11y            also check ARIA / accessibility (warnings)
+        --strict          exit with code 1 on warnings too (errors always do)
+        --json            print the issues as JSON instead of text
   rules             List every rule id with its description
 
 Output format: file:line:col severity [rule-id] message. Each message says what is wrong and how to fix it.
@@ -37,6 +45,7 @@ function tsFiles(dir: string): string[] {
 function printRules(): void {
   const groups: [string, string, Record<string, string>][] = [
     ["gen", "reported by `ts-dom gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
+    ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state)", CHECK_RULES],
     ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup", UNUSED_MARKUP_RULES],
     ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow", DATA_FLOW_RULES],
     ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
@@ -83,6 +92,14 @@ try {
       });
       await new Promise(() => {}); // keep running until interrupted
     }
+  } else if (cmd === "check") {
+    const project = args.find((a) => a.startsWith("--project="))?.slice("--project=".length);
+    const issues = runCheck({ dirs, generate, write: !flags.has("--no-write"), a11y: flags.has("--a11y"), ...(project ? { project } : {}) });
+    if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
+    else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
+    const errors = issues.filter((i) => i.severity === "error").length;
+    if (errors || (flags.has("--strict") && issues.length)) process.exitCode = 1;
+    if (!flags.has("--json") && !issues.length) console.log("ts-dom check: no issues");
   } else if (cmd === "lint") {
     const files = dirs.flatMap(tsFiles);
     const issues: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
