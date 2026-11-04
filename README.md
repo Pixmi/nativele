@@ -434,6 +434,10 @@ lint: {
 },
 ```
 
+Each rule id is also a rule of its own, so a project can enable rules one by one and give each its own severity, for example `"ts-dom/unused-ref": "warn"` or `"ts-dom/missing-handler": "error"` instead of the whole `ts-dom/unused-markup` group. `ts-dom rules` lists the ids.
+
+**In the editor.** The plugin follows the ESLint rule API, so it also loads in ESLint 9 and 10: register it in `eslint.config.js` with `plugins: { "ts-dom": tsDom }` (`import tsDom from "@nativele/ts-dom/oxlint"`) and the VS Code ESLint extension shows the findings on the template's import line, with no extension of its own. For `missing-handler` it offers a quick fix that adds the method to the component class. A fix can only change the file being linted, so problems that live in the HTML (an unused `data-ref`, broken markup) are reported but not fixed there. ESLint needs `@typescript-eslint/parser` to read TypeScript files, and that parser does not support TypeScript 7 yet; with TypeScript 7 use oxlint, whose editor integration runs the same plugin.
+
 Without oxlint, the same checks are available through the CLI:
 
 ```sh

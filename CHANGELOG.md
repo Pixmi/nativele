@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.4.5
+
+Not published on its own; it ships with the last 0.4.x version.
+
+- Every rule id of `unused-markup`, `data-flow` and `a11y` is also a lint rule of its own (`ts-dom/unused-ref`, `ts-dom/missing-handler`, ...), so a project can enable rules one by one with their own severity. The three group rules stay.
+- `missing-handler` offers a suggestion that adds the method to the component class.
+- The plugin loads in ESLint 9 and 10 as well as oxlint (tested with ESLint's `Linter`), so the VS Code ESLint extension shows the findings and the quick fix. ESLint reads TypeScript only through `@typescript-eslint/parser`, which does not support TypeScript 7 yet.
+- Each template is analyzed once per file text and template text, however many rules ask for it.
+
 ## 0.4.4
 
 Not published on its own; it ships with the last 0.4.x version.
