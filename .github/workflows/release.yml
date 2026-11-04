@@ -78,7 +78,7 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      # A prerelease version (one with a "-") is published under the "next" tag so that "npm i nativele" keeps installing the latest stable release.
+      # A prerelease version (one with a "-") is published under the "next" tag so that "npm i @nativele/ts-dom" keeps installing the latest stable release.
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

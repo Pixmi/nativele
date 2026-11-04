@@ -43,7 +43,7 @@ try {
   check("child component is imported and rendered (props flow down)", (await page.textContent("x-hello .kid")) === "k0", await page.textContent("x-hello .kid"));
   await page.click("x-hello x-kid button");
   check("child event flows up, then the parent updates the props again", (await page.textContent("x-hello .pings")) === "1" && (await page.textContent("x-hello .kid")) === "k1", [await page.textContent("x-hello .pings"), await page.textContent("x-hello .kid")]);
-  check("scoped style is injected", (await page.$$("style[data-nativele='x-hello']")).length === 1);
+  check("scoped style is injected", (await page.$$("style[data-ts-dom='x-hello']")).length === 1);
 } finally {
   await browser.close();
   server.close();

@@ -4,6 +4,8 @@
 
 給想用 TypeScript 加 HTML 做輕量開發的人。HTML 描述結構與資料落點，TypeScript 擁有行為與狀態，DOM 是畫面的唯一事實來源。庫會公開給各種專案使用，不為任何單一專案調整設計。
 
+名稱：品牌與 GitHub 倉庫是 Nativele（`Pixmi/nativele`），npm 套件是 `@nativele/ts-dom`（帶 scope，因為不帶 scope 的 `ts-dom` 會被 npm 判定與既有套件太相似），命令列工具與 lint 規則命名空間是 `ts-dom`。匯入路徑一律寫 `@nativele/ts-dom`。
+
 ## 核心精神
 
 判斷新功能或改動該不該做的依據：
@@ -17,7 +19,7 @@
 - 不做細粒度響應式系統，換取可預期、沒有依賴追蹤的魔法。
 - `state` 是選用功能；共用資料走 `createStore`，訂閱只發生在呼叫 `bind` 的地方。
 - 不管理圖示、不內建 i18n、不帶 UI 元件，這些由使用者以自己的元件或 `this.text` 處理，庫只提供能接上的介面。
-- 沒有 bundler 時只靠 `nativele gen` 加 `tsc` 也要能用；匯入範本一律寫 `./x.html.js`，有無 Vite 都通。Vite 外掛只是方便，不是必要條件。
+- 沒有 bundler 時只靠 `ts-dom gen` 加 `tsc` 也要能用；匯入範本一律寫 `./x.html.js`，有無 Vite 都通。Vite 外掛只是方便，不是必要條件。
 - 頁面啟用 Trusted Types 時要能直接運作：執行期不解析 HTML 字串，範本由產生的節點資料用 DOM 呼叫建立；任何新功能都不得使用 `innerHTML` 之類的解析 API。
 - 依賴越少越好，執行期零依賴；`parse5` 只用於 codegen 與 lint。
 
@@ -36,5 +38,5 @@
 - 診斷訊息格式為 `file:line:col severity [rule-id] message`，結尾附 `Fix:` 提示，新增的規則要照做。
 - 新增規則或公開 API 要同步更新 `README.md`、`README.zh-TW.md`、`llms.txt` 與 `CHANGELOG.md`。
 - 公開 API 的破壞性變更要寫進 `CHANGELOG.md` 的對應版本，版本規則見該檔的 Versioning policy。
-- 產生的 `*.html.ts` 與 `nativele-tags.ts` 不提交。
+- 產生的 `*.html.ts` 與 `ts-dom-tags.ts` 不提交。
 - 發布：版本只寫在 `package.json` 的 `version`；改了版本的提交合併到 main 後，`.github/workflows/release.yml` 檢查版本格式與 `CHANGELOG.md` 對應標題，驗證通過就發布到 npm，並建立 `v<版本>` 的 tag 與 GitHub Release（版本已有 tag 時不動作；含 `-` 的是預先發布，npm 標 `next`）。Release 說明取自改版本那個 PR 的描述，所以改版本的 PR 描述要寫成 Release 內容（Summary、Changes、Breaking Changes）。

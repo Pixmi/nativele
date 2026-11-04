@@ -3,10 +3,10 @@ import { resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
 
-export interface NativelePluginOptions {
+export interface TsDomPluginOptions {
   /** Directories to scan for .html files and generate .html.ts into. Default: ["src"] */
   dirs?: string[];
-  /** Module name the generated files import the runtime from. Default: "nativele" */
+  /** Module name the generated files import the runtime from. Default: "@nativele/ts-dom" */
   runtime?: string;
   /** How text nodes keep their whitespace: "preserve" (default) or "collapse" (see `GenerateOptions`). */
   whitespace?: "preserve" | "collapse";
@@ -20,9 +20,9 @@ export interface NativelePluginOptions {
 
 /**
  * Optional Vite plugin: generates `.html.ts` when the build starts and regenerates it while the dev server runs.
- * nativele does not depend on it: `nativele gen` (or `--watch`) together with tsc is enough.
+ * ts-dom does not depend on it: `ts-dom gen` (or `--watch`) together with tsc is enough.
  */
-export function nativele(opts: NativelePluginOptions = {}) {
+export function tsDom(opts: TsDomPluginOptions = {}) {
   const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const dirs = opts.dirs ?? ["src"];
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
@@ -39,7 +39,7 @@ export function nativele(opts: NativelePluginOptions = {}) {
   };
 
   return {
-    name: "nativele",
+    name: "ts-dom",
     enforce: "pre" as const,
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
       try {

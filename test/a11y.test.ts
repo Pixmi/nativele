@@ -192,13 +192,13 @@ describe("Vite plugin", () => {
     const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { nativele } = await import("../src/lib/vite-plugin.ts");
-    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    const { tsDom } = await import("../src/lib/vite-plugin.ts");
+    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
     mkdirSync(join(dir, "src"));
     for (const [n, c] of Object.entries(files)) writeFileSync(join(dir, "src", n), c);
     const warns: string[] = [];
     const ctx = { warn: (m: string) => warns.push(m), error: (m: string): never => { throw new Error(m); } };
-    return { dir, warns, ctx, plugin: nativele({ dirs: [join(dir, "src")], ...opts }) };
+    return { dir, warns, ctx, plugin: tsDom({ dirs: [join(dir, "src")], ...opts }) };
   };
   it("buildStart generates .html.ts; a11y does not warn by default", async () => {
     const { existsSync } = await import("node:fs");

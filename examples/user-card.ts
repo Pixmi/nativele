@@ -1,4 +1,4 @@
-import { Component, define } from "nativele";
+import { Component, define } from "@nativele/ts-dom";
 import tpl from "./user-card.html.js";
 
 export interface Tag {

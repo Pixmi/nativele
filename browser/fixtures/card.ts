@@ -1,4 +1,4 @@
-import { Component, define } from "nativele";
+import { Component, define } from "@nativele/ts-dom";
 import tpl from "./card.html.js";
 
 export class LightCard extends Component(tpl) {
