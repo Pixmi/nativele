@@ -29,7 +29,7 @@ export class ParentForm extends Component(tpl, {
   onWrapper(): void {
     this.wrapperHits++;
   }
-  override render(v: { name: string; email: string; rows: Row[] }): void {
+  override render(v: { name: string; email: string; rows: readonly Row[] }): void {
     // The child's props are fully typed: the assigned name and type are checked by tsc
     this.refs.name.value = v.name;
     this.refs.name.error = v.name.length > 3 ? "Too long" : "";

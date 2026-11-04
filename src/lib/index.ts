@@ -1,5 +1,5 @@
 export { Component, define, event } from "./component.ts";
-export type { ComponentInstance, ComponentOptions, DataOptions, EmitEvent, EventDecl, EventHit, StatefulInstance, View } from "./component.ts";
+export type { ComponentInstance, ComponentOptions, DataOptions, DeepReadonly, EmitEvent, EventDecl, EventHit, PropAccessors, StatefulInstance, View } from "./component.ts";
 export { List } from "./list.ts";
 export type { ListSchema, ListItem, ItemContext, ReplaceOptions, Update, TextOf } from "./list.ts";
 export type { TextValue } from "./text.ts";

@@ -21,7 +21,7 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }

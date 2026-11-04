@@ -10,11 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.4.1
+
+Not published on its own; it ships with 0.4.2.
 
 - `npm run bench` measures lists of 1,000 to 10,000 items in real Chrome (create, update 10%, reverse, remove half, append) for component items, plain elements and a direct DOM baseline; the README's Performance section shows the results and when to choose which.
 - Assigning `items` sets the prop of a new item before its element goes into the document, so the item component is connected with its item already set and renders once instead of first rendering without it. `replace()` and `upsert()` keep inserting first.
 - README: a fourth example, a list of components (add, remove, sort, toggle, events up from the item), the one-line rule for choosing between `items =` and `replace()`, and how moving an item affects `connected()` and subscriptions with and without `moveBefore`. The introduction and the package description say what the library is built for: type safety and AI coding agents, which can correct their own mistakes from `tsc` errors and the `Fix:` hints of every diagnostic.
+- `state`, `props`, the `view` passed to `render` and the argument of `derive` functions are typed `DeepReadonly` (exported, with `PropAccessors`): changing an array or object inside them in place is a `tsc` error, since the list and child props compare by reference and would not update. `set()` accepts read-only values. A parent can still assign a child's props.
+
+### Breaking changes
+
+- Code that annotates `render`'s `view`, or a helper that takes the state, with mutable array types (`Item[]`) must use read-only ones (`readonly Item[]` or `DeepReadonly<State>`), and code that changes state objects in place no longer compiles.
 
 ## 0.4.0
 

@@ -1,5 +1,5 @@
 import { Component, define } from "@nativele/ts-dom";
-import type { EventHit } from "@nativele/ts-dom";
+import type { DeepReadonly, EventHit } from "@nativele/ts-dom";
 import tpl from "./todo-app.html.js";
 
 export interface Todo {
@@ -14,7 +14,7 @@ interface State {
 }
 
 const FILTERS = ["all", "active", "done"] as const;
-const visibleOf = (s: Readonly<State>) =>
+const visibleOf = (s: DeepReadonly<State>) =>
   s.items.filter((t) => s.filter === "all" || (s.filter === "active" ? !t.done : t.done));
 
 export class TodoApp extends Component(tpl, {
@@ -46,7 +46,7 @@ export class TodoApp extends Component(tpl, {
   }
 
   // ---- View: what automatic binding cannot do (attributes, lists) lives here ----
-  override render(v: State, changed: ReadonlySet<string>): void {
+  override render(v: DeepReadonly<State>, changed: ReadonlySet<string>): void {
     if (changed.has("filter")) {
       for (const f of FILTERS) this.refs[f].setAttribute("aria-pressed", String(f === v.filter));
     }

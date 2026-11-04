@@ -149,7 +149,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
@@ -313,7 +313,7 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -605,6 +605,8 @@ class Counter extends Component(tpl, {
 - **沒有細粒度更新**：每次有變動就整體重跑一次 `render`，成本取決於你在裡面寫了什麼。大清單請用 `changed` 略過不必要的重繪，並對 `replace` 開 `skipUnchanged`（見「清單」）。
 - `render` 內可以呼叫 `set`，會在當次結束後再處理一輪；連續 50 輪還沒穩定會丟出「疑似無限迴圈」錯誤。
 - 不使用 `state` 時，原本的 `refs`、`text`、`show`、`bind`、`createStore` 照常可用，完全向下相容。
+
+**一路唯讀到底**：`state`、`props`、傳給 `render` 的 `view` 以及每個 `derive` 函式的參數，型別都是 `DeepReadonly`：裡面的陣列與物件都不能就地修改。`this.state.items[0].done = true` 或 `this.state.items.push(x)` 都是 `tsc` 錯誤，因為就地修改的物件保有原本的參考，以參考比較的清單與子元件 props 不會更新。請改成傳入新物件：`this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`。替 `render` 的 `view` 或接收 state 的輔助函式標註型別時，請用唯讀型別（`readonly Item[]`，或從 `@nativele/ts-dom` 匯入的 `DeepReadonly<State>`）。
 
 ## 事件：data-on-*
 

@@ -149,7 +149,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
@@ -313,7 +313,7 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -603,6 +603,8 @@ Design trade-offs:
 - **No fine-grained updates**: on every change, `render` re-runs as a whole, and its cost depends on what you write in it. For large lists, use `changed` to skip unnecessary redraws and enable `skipUnchanged` on `replace` (see "Lists").
 - `set` may be called inside `render`; it is processed in another round after the current one ends. If it has not stabilized after 50 consecutive rounds, a "suspected infinite loop" error is thrown.
 - When `state` is not used, the original `refs`, `text`, `show`, `bind`, and `createStore` work as before, fully backward compatible.
+
+**Read-only all the way down**: `state`, `props`, the `view` passed to `render` and the argument of each `derive` function are typed `DeepReadonly`: arrays and objects inside them cannot be changed in place. `this.state.items[0].done = true` or `this.state.items.push(x)` is a `tsc` error, because an object changed in place keeps its identity and the list and child props, which compare by reference, would not update. Pass new objects instead: `this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`. When you annotate `render`'s `view` or a helper that takes the state, use read-only types (`readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`).
 
 ## Events: data-on-*
 

@@ -28,7 +28,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
