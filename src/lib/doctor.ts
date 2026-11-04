@@ -1,10 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
-import { staleGenerated } from "./codegen.ts";
+import { listHtml, listTs, staleGenerated } from "./codegen.ts";
+import { projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
 
 export const DOCTOR_RULES = {
+  "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
   "no-tsconfig": "there is no tsconfig.json, so tsc cannot check the templates against the components",
   "tsconfig-not-strict": "strict is off, so tsc lets wrong names and null values through",
   "tsconfig-no-dom-lib": "lib leaves out DOM, so element types are missing",
@@ -36,51 +38,6 @@ export interface DoctorOptions {
 
 const readText = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
 
-/** tsconfig is JSONC: drop comments and trailing commas before parsing. */
-function parseJsonc(text: string): Record<string, unknown> {
-  const noComments = text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str: string | undefined) => str ?? "");
-  return JSON.parse(noComments.replace(/,(\s*[}\]])/g, "$1")) as Record<string, unknown>;
-}
-
-interface TsConfig {
-  compilerOptions: Record<string, unknown>;
-  /** include patterns made absolute against the folder of the config that declared them */
-  include?: string[];
-}
-
-function resolveExtends(from: string, ext: string): string | null {
-  const dir = dirname(from);
-  if (ext.startsWith(".")) {
-    const target = resolve(dir, ext);
-    return existsSync(target) ? target : existsSync(`${target}.json`) ? `${target}.json` : null;
-  }
-  const req = createRequire(from);
-  for (const spec of [ext, `${ext}.json`, `${ext}/tsconfig.json`]) {
-    try {
-      return req.resolve(spec);
-    } catch {
-      /* try the next form */
-    }
-  }
-  return null;
-}
-
-/** Read a tsconfig and the ones it extends (a relative path, a package, or an array of them), the later and nearer one winning. */
-function readTsConfig(file: string, depth = 0): TsConfig {
-  const json = parseJsonc(readFileSync(file, "utf8"));
-  let merged: TsConfig = { compilerOptions: {} };
-  const exts = typeof json.extends === "string" ? [json.extends] : Array.isArray(json.extends) ? (json.extends as string[]) : [];
-  for (const ext of depth < 5 ? exts : []) {
-    const target = resolveExtends(file, ext);
-    if (!target) continue;
-    const base = readTsConfig(target, depth + 1);
-    merged = { compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions }, ...(base.include ?? merged.include ? { include: base.include ?? merged.include } : {}) };
-  }
-  const own = json.include as string[] | undefined;
-  const include = own ? own.map((p) => resolve(dirname(file), p).split("\\").join("/")) : merged.include;
-  return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}) };
-}
-
 /** Whether an include pattern (absolute, forward slashes) makes tsc read the files directly in `dir`. */
 function covers(pattern: string, dir: string): boolean {
   const d = dir.split("\\").join("/");
@@ -92,67 +49,49 @@ function covers(pattern: string, dir: string): boolean {
   return d === prefix;
 }
 
-const templateFolders = (dir: string): string[] => {
-  const out = new Set<string>();
-  const walk = (d: string) => {
-    for (const n of readdirSync(d)) {
-      if (n === "node_modules") continue;
-      const f = join(d, n);
-      if (statSync(f).isDirectory()) walk(f);
-      else if (n.endsWith(".html")) out.add(d);
-    }
-  };
-  walk(dir);
-  return [...out];
-};
-
-function listTs(dir: string): string[] {
-  return readdirSync(dir).flatMap((n) => {
-    if (n === "node_modules" || n === "dist") return [];
-    const f = join(dir, n);
-    if (statSync(f).isDirectory()) return listTs(f);
-    return n.endsWith(".ts") && !n.endsWith(".d.ts") && !n.endsWith(".html.ts") ? [f] : [];
-  });
-}
-
-const hasHtml = (dir: string): boolean =>
-  readdirSync(dir).some((n) => {
-    if (n === "node_modules") return false;
-    const f = join(dir, n);
-    return statSync(f).isDirectory() ? hasHtml(f) : n.endsWith(".html");
-  });
+const templateFolders = (dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
+const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
 
 /** Check the project set-up an agent or a developer could get wrong; every issue names its rule and ends with a Fix hint. */
 export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   const cwd = options.cwd ?? process.cwd();
   const generate = options.generate ?? {};
   const runtime = generate.runtime ?? "@nativele/ts-dom";
-  const dirs = options.dirs.map((d) => resolve(cwd, d)).filter((d) => existsSync(d));
   const rel = (f: string) => relative(cwd, f) || ".";
   const issues: DoctorIssue[] = [];
   const add = (rule: DoctorRule, severity: DoctorIssue["severity"], message: string, at: { file?: string; line?: number } = {}) => issues.push({ rule, severity, message, ...at });
+  const dirs: string[] = [];
+  for (const d of options.dirs.map((x) => resolve(cwd, x))) {
+    if (existsSync(d)) dirs.push(d);
+    else add("dir-not-found", "error", `The folder ${rel(d)} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).`, { file: rel(d) });
+  }
 
-  const tsconfigPath = join(cwd, "tsconfig.json");
+  const configs = projectConfigs(cwd);
   let paths: Record<string, unknown> = {};
-  if (!existsSync(tsconfigPath)) {
+  if (!configs.length) {
     add("no-tsconfig", "error", 'There is no tsconfig.json. Fix: add one with "strict": true, "lib": ["ES2022", "DOM"] and "moduleResolution": "bundler" (or "NodeNext").');
-  } else {
-    const config = readTsConfig(tsconfigPath);
+  }
+  const includes: string[] = [];
+  let everyConfigIncludes = true;
+  for (const configPath of configs) {
+    const config = readTsConfig(configPath);
     const o = config.compilerOptions;
-    const file = rel(tsconfigPath);
-    paths = (o.paths as Record<string, unknown> | undefined) ?? {};
+    const file = rel(configPath);
+    paths = { ...paths, ...(o.paths as Record<string, unknown> | undefined) };
     if (o.strict !== true) add("tsconfig-not-strict", "warning", 'compilerOptions.strict is not true, so tsc lets wrong names and null values through. Fix: set "strict": true.', { file });
     const lib = o.lib as string[] | undefined;
     if (lib && !lib.some((l) => l.toLowerCase() === "dom")) add("tsconfig-no-dom-lib", "error", 'compilerOptions.lib leaves out DOM, so element types such as HTMLButtonElement are missing. Fix: add "DOM" to lib.', { file });
     if (String(o.moduleResolution ?? "").toLowerCase() === "classic") {
       add("tsconfig-classic-resolution", "error", 'moduleResolution "classic" cannot resolve ./x.html.js to the generated x.html.ts. Fix: use "bundler" or "NodeNext".', { file });
     }
-    if (config.include) {
-      const missed = new Set<string>();
-      for (const d of dirs) for (const folder of templateFolders(d)) if (!config.include.some((p) => covers(p, folder))) missed.add(rel(folder));
-      for (const folder of missed) {
-        add("tsconfig-misses-templates", "error", `tsconfig include leaves out ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file });
-      }
+    if (config.include) includes.push(...config.include);
+    else everyConfigIncludes = false;
+  }
+  if (configs.length && everyConfigIncludes) {
+    const missed = new Set<string>();
+    for (const d of dirs) for (const folder of templateFolders(d)) if (!includes.some((p) => covers(p, folder))) missed.add(rel(folder));
+    for (const folder of missed) {
+      add("tsconfig-misses-templates", "error", `No tsconfig include covers ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file: rel(configs[0] as string) });
     }
   }
 
@@ -204,8 +143,11 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     (vite !== null && /\bfmt\s*:/.test(vite)) ||
     (!ignoredHtml &&
       ([".prettierrc", ".prettierrc.json", ".prettierrc.js", "prettier.config.js", "prettier.config.mjs"].some((n) => existsSync(join(cwd, n))) || "prettier" in deps || scripts.some((c) => /(^|[\s;&|])prettier(\s|$)/.test(c))));
-  const collapsed = scripts.some((c) => c.includes("--whitespace=collapse")) || (vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite));
-  if (formatter && !collapsed && dirs.some(hasHtml)) {
+  const collapsed =
+    scripts.some((c) => c.includes("--whitespace=collapse")) ||
+    (vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite)) ||
+    dirs.some((d) => listHtml(d).some((f) => (readText(`${f}.ts`) ?? "").split("\n", 3).includes("// whitespace: collapse")));
+  if (formatter && !collapsed && dirs.some(hasTemplates)) {
     add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).');
   }
   return issues;

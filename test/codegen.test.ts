@@ -497,3 +497,21 @@ describe("gen --check and gen with errors and orphans", () => {
     expect(result.errors.join("\n")).toContain("[invalid-hole]");
   });
 });
+
+describe("the whitespace mode is kept from the generated files", () => {
+  it("gen without the option keeps collapse; gen --check agrees", async () => {
+    const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "a.html"), `<p>\n  a  b\n</p>`);
+    generateAll(dir, { whitespace: "collapse" });
+    const collapsed = readFileSync(join(dir, "a.html.ts"), "utf8");
+    expect(collapsed).toContain("// whitespace: collapse");
+    expect(staleGenerated(dir)).toEqual([]);
+    generateAll(dir);
+    expect(readFileSync(join(dir, "a.html.ts"), "utf8")).toBe(collapsed);
+    generateAll(dir, { whitespace: "preserve" });
+    expect(readFileSync(join(dir, "a.html.ts"), "utf8")).not.toContain("whitespace: collapse");
+  });
+});

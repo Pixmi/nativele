@@ -23,27 +23,27 @@ Not published on its own; it ships with the last 0.4.x version.
 
 - Every rule id of `unused-markup`, `data-flow` and `a11y` is also a lint rule of its own (`ts-dom/unused-ref`, `ts-dom/missing-handler`, ...), so a project can enable rules one by one with their own severity. The three group rules stay.
 - `missing-handler` offers a suggestion that adds the method to the component class.
-- The plugin loads in ESLint 9 and 10 as well as oxlint (tested with ESLint's `Linter`), so the VS Code ESLint extension shows the findings and the quick fix. ESLint reads TypeScript only through `@typescript-eslint/parser`, which does not support TypeScript 7 yet.
+- In the editor, the Oxc extension for VS Code (`oxlint --lsp`) shows the findings and offers the quick fix; `oxlint --fix-suggestions` applies it from the command line. Both are covered by tests that run the oxlint shipped with Vite+.
 - Each template is analyzed once per file text and template text, however many rules ask for it.
 
 ## 0.4.4
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom doctor [dirs...]` checks the project set-up: a tsconfig with `strict`, the DOM lib, a module resolution other than `classic` and an `include` covering the template folders (read through `extends`: relative paths, packages and arrays); the runtime package being resolvable; templates imported as `./x.html` instead of `./x.html.js`; stale generated files; the Vite and oxlint plugins being configured; and a formatter (oxfmt, Prettier) set up while templates keep their whitespace. Stable rule ids, a `Fix:` per issue, `--json`, exit code 1 on errors.
+- `ts-dom doctor [dirs...]` checks the project set-up: a tsconfig with `strict`, the DOM lib, a module resolution other than `classic` and an `include` covering the template folders (read through `extends`: relative paths, packages and arrays; a solution-style tsconfig through its references); the runtime package being resolvable; templates imported as `./x.html` instead of `./x.html.js`; stale generated files; the Vite and oxlint plugins being configured; and a formatter (oxfmt, Prettier) set up while templates keep their whitespace. Page entries and `dist` are not counted as templates, and a folder that does not exist is reported. Stable rule ids, a `Fix:` per issue, `--json`, exit code 1 on errors.
 
 ## 0.4.3
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom check [dirs...]` runs everything in one pass for agents and CI: template diagnostics, generated files (regenerated, or reported as stale with `--no-write`), the project's own `tsc` (TypeScript 5, 6 or 7), and the lint rules (`--a11y` adds accessibility). TypeScript errors from the template contract point at the template line and column (`missing-binding`, `missing-handler`), item component problems get their own rule ids, and errors that only follow from a broken class (the ones naming that class) are left out. A tag defined twice is reported, and a tsc that does not run to completion (no tsconfig, a bad option) is reported as `tsc-failed` instead of passing silently. `--json` prints the issues as data; `--strict` fails on warnings.
+- `ts-dom check [dirs...]` runs everything in one pass for agents and CI: template diagnostics, generated files (regenerated, or reported as stale with `--no-write`), the project's own `tsc` (TypeScript 5, 6 or 7), and the lint rules (`--a11y` adds accessibility). TypeScript errors from the template contract point at the template line and column (`missing-binding`, `missing-handler`), item component problems get their own rule ids, and errors that only follow from a broken class (the ones naming that class) are left out. A tag defined twice is reported, and a tsc that does not run to completion (no tsconfig, a bad option) is reported as `tsc-failed` instead of passing silently. A solution-style tsconfig (`"files": []` with `references`) is checked through its referenced projects, a folder that does not exist is reported as `dir-not-found`, and every plain tsc error carries a `Fix:` hint. `--json` prints the issues as data; `--strict` fails on warnings.
 - The README, the rules for AI agents and `llms.txt` use `ts-dom check` as the command to run after a change.
 
 ## 0.4.2
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template) and the errors that would make `ts-dom gen` fail, with exit code 1 if there are any; `--json` prints them as data. `ts-dom gen` removes an orphaned generated module. Codegen exposes `renderFile`, `renderTags`, `planGenerated` and `staleGenerated` for tools that need the generated output without writing it.
+- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template) and the errors that would make `ts-dom gen` fail, with exit code 1 if there are any; `--json` prints them as data. `ts-dom gen` removes an orphaned generated module. A module generated with whitespace `collapse` records it, and a later `gen`, `gen --check`, `check` or `doctor` without the option keeps that mode (`--whitespace=preserve` switches back).
 
 ## 0.4.1
 

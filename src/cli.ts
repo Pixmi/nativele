@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { relative } from "node:path";
 import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, generateAll, listHtml, watchAll } from "./lib/codegen.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, generateAll, listHtml, listTs, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
@@ -18,6 +18,8 @@ Commands
         --include=<glob>  only these templates (repeatable; relative to each dir, ** crosses folders)
         --exclude=<glob>  leave these templates out (repeatable)
         --whitespace=collapse   collapse whitespace in text and drop line-break-only text between tags
+        --whitespace=preserve   keep whitespace as written; without either, the mode the generated files were
+                                last written with is kept (gen, gen --check, check and doctor all follow it)
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
@@ -40,14 +42,6 @@ Output format: file:line:col severity [rule-id] message. Each message says what 
 Exit code: 0 = clean, 1 = errors found (or warnings with --strict).
 `;
 
-function tsFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((n) => {
-    if (n === "node_modules") return [];
-    const f = join(dir, n);
-    if (statSync(f).isDirectory()) return tsFiles(f);
-    return n.endsWith(".ts") && !n.endsWith(".d.ts") && !n.endsWith(".html.ts") && n !== "ts-dom-tags.ts" ? [f] : [];
-  });
-}
 
 function ruleGroups(): [string, string, Record<string, string>][] {
   return [
@@ -88,7 +82,8 @@ function printRules(): void {
 const [cmd, ...args] = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
 const globs = (name: string) => args.filter((a) => a.startsWith(`--${name}=`)).map((a) => a.slice(name.length + 3));
-const generate = { include: globs("include"), exclude: globs("exclude"), whitespace: flags.has("--whitespace=collapse") ? ("collapse" as const) : ("preserve" as const) };
+const whitespace = flags.has("--whitespace=collapse") ? ("collapse" as const) : flags.has("--whitespace=preserve") ? ("preserve" as const) : undefined;
+const generate = { include: globs("include"), exclude: globs("exclude"), ...(whitespace ? { whitespace } : {}) };
 const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
 
@@ -139,7 +134,7 @@ try {
     if (issues.some((i) => i.severity === "error")) process.exitCode = 1;
     if (!flags.has("--json") && !issues.length) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
-    const files = dirs.flatMap(tsFiles);
+    const files = dirs.flatMap(listTs);
     const issues: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
     if (flags.has("--a11y")) {
       for (const dir of dirs) {

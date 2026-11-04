@@ -438,7 +438,7 @@ lint: {
 
 每個規則代號也各自是一條規則，所以專案可以逐條啟用、各自設定嚴重程度，例如用 `"ts-dom/unused-ref": "warn"` 或 `"ts-dom/missing-handler": "error"`，而不是整組 `ts-dom/unused-markup`。`ts-dom rules` 會列出所有代號。
 
-**在編輯器裡。** 這個外掛遵循 ESLint 的規則 API，所以也能載入 ESLint 9 與 10：在 `eslint.config.js` 以 `plugins: { "ts-dom": tsDom }` 註冊（`import tsDom from "@nativele/ts-dom/oxlint"`），VS Code 的 ESLint 擴充就會在範本的 import 那一行顯示問題，不需要另外的擴充。`missing-handler` 會提供快速修正，把方法加進元件類別。修正只能改動正在檢查的檔案，所以出在 HTML 裡的問題（沒用到的 `data-ref`、壞掉的標記）只會回報、不會在那裡修正。ESLint 要讀 TypeScript 檔需要 `@typescript-eslint/parser`，而它目前還不支援 TypeScript 7；用 TypeScript 7 時請改用 oxlint，它的編輯器整合會跑同一個外掛。
+**在編輯器裡。** 在 VS Code 安裝 Oxc 擴充（它執行 `oxlint --lsp`），並在 oxlint 設定裡保留這個外掛：輸入時問題就會顯示在範本的 import 那一行，`missing-handler` 會提供快速修正，把方法加進元件類別。命令列可用 `oxlint --fix-suggestions` 套用同樣的修正。修正只能改動正在檢查的檔案，所以出在 HTML 裡的問題（沒用到的 `data-ref`、壞掉的標記）只會回報、不會在那裡修正；標記結構與排版請交給 oxfmt 這類格式化工具。
 
 不用 oxlint 時，同樣的檢查可用 CLI：
 

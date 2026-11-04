@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
-import { analyze, CodegenError, generateAll, isSelected, listHtml, renderTags, staleGenerated } from "./codegen.ts";
+import { analyze, CodegenError, generateAll, isSelected, listHtml, listTs, renderTags, staleGenerated } from "./codegen.ts";
+import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
 import { lintDataFlow, lintUsage } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
@@ -19,6 +20,7 @@ export const CHECK_RULES = {
   "item-class-not-exported": "the item component class passed to define() is not exported (found by tsc)",
   tsc: "any other TypeScript error, as tsc reports it",
   "tsc-not-found": "TypeScript is not installed in the project, so types were not checked",
+  "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
   "tsc-failed": "tsc did not run to completion (no tsconfig, a bad option, a crash), so types were not checked",
 } as const;
 
@@ -52,6 +54,15 @@ export function parseTscOutput(out: string): TscError[] {
   }
   return errors;
 }
+
+const CONTRACT: [string, string, string][] = [
+  ["conflictingKeys", "conflicting-keys", "keep each name in only one of state, props and derive"],
+  ["reservedPropNames", "reserved-prop", "rename the prop (for example title -> titleText)"],
+  ["nativeEventNames", "native-event-name", "rename the event, for example with a prefix such as item-"],
+  ["dataPropNotOnItemComponent", "item-prop-missing", "declare the property in the item component's props, or change data-prop"],
+  ["itemComponentMissingFromTagMap", "item-not-in-tag-map", "run ts-dom gen so ts-dom-tags.ts lists the item component"],
+  ["itemComponentClassNotExported", "item-class-not-exported", "export the class passed to define() so its prop types can be read"],
+];
 
 const namesAfter = (message: string, key: string): string[] => {
   const m = new RegExp(`${key}: ((?:"[^"]+"(?:\\s*\\|\\s*)?)+)`).exec(message);
@@ -94,50 +105,37 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     const name = /class\s+([A-Za-z_$][\w$]*)\s+extends\s+Component\s*\(/.exec(line)?.[1];
     if (name) brokenClasses.add(name);
   }
-  const followsBroken = (message: string) => [...brokenClasses].some((c) => new RegExp(`'(typeof )?${c}'`).test(message));
+  const followsBroken = (message: string) => [...brokenClasses].some((c) => message.includes(`'${c}'`) || message.includes(`'typeof ${c}'`));
   for (const e of errors) {
     const file = resolve(cwd, e.file);
     const where = `${rel(file)}:${e.line}:${e.col}`;
     const issue = (rule: string, message: string, at?: { file: string; line: number; col: number }) =>
       out.push({ ...(at ?? { file: rel(file), line: e.line, col: e.col }), rule, severity: "error", message });
-    const missing = namesAfter(e.message, "missingStateKeys");
-    if (missing.length) {
-      for (const name of missing) {
-        const found = locate(file, [`text:${name}`, `if:${name}`]);
-        issue(
-          "missing-binding",
-          `"${name}" is used by {{ ${name} }} or data-if="${name}" but the component declares no state, prop or derived value of that name (tsc at ${where}). Fix: add "${name}" to state, props or derive, or remove it from the template.`,
-          found && { file: rel(found.file), line: found.line, col: found.col },
-        );
-      }
-      continue;
+    let named = false;
+    for (const name of namesAfter(e.message, "missingStateKeys")) {
+      named = true;
+      const found = locate(file, [`text:${name}`, `if:${name}`]);
+      issue(
+        "missing-binding",
+        `"${name}" is used by {{ ${name} }} or data-if="${name}" but the component declares no state, prop or derived value of that name (tsc at ${where}). Fix: add "${name}" to state, props or derive, or remove it from the template.`,
+        found && { file: rel(found.file), line: found.line, col: found.col },
+      );
     }
-    const handlers = namesAfter(e.message, "missingHandlers");
-    if (handlers.length) {
-      for (const name of handlers) {
-        const found = locate(file, [`event:${name}`]);
-        issue(
-          "missing-handler",
-          `data-on-*="${name}" refers to a method the component class does not define (tsc at ${where}). Fix: add a public method \`${name}(e: Event, hit: EventHit)\` to the class.`,
-          found && { file: rel(found.file), line: found.line, col: found.col },
-        );
-      }
-      continue;
+    for (const name of namesAfter(e.message, "missingHandlers")) {
+      named = true;
+      const found = locate(file, [`event:${name}`]);
+      issue(
+        "missing-handler",
+        `data-on-*="${name}" refers to a method the component class does not define (tsc at ${where}). Fix: add a public method \`${name}(e: Event, hit: EventHit)\` to the class.`,
+        found && { file: rel(found.file), line: found.line, col: found.col },
+      );
     }
-    const contract: [string, string, string][] = [
-      ["conflictingKeys", "conflicting-keys", "keep each name in only one of state, props and derive"],
-      ["reservedPropNames", "reserved-prop", "rename the prop (for example title -> titleText)"],
-      ["nativeEventNames", "native-event-name", "rename the event, for example with a prefix such as item-"],
-      ["dataPropNotOnItemComponent", "item-prop-missing", "declare the property in the item component's props, or change data-prop"],
-      ["itemComponentMissingFromTagMap", "item-not-in-tag-map", "run ts-dom gen so ts-dom-tags.ts lists the item component"],
-      ["itemComponentClassNotExported", "item-class-not-exported", "export the class passed to define() so its prop types can be read"],
-    ];
-    const hit = contract.find(([key]) => e.message.includes(key));
-    if (hit) {
-      issue(hit[1], `${e.message.split("\n")[0]} Fix: ${hit[2]}.`);
-      continue;
+    for (const [key, rule, fix] of CONTRACT) {
+      if (!e.message.includes(key)) continue;
+      named = true;
+      issue(rule, `${e.message.split("\n")[0]} Fix: ${fix}.`);
     }
-    issue("tsc", `${e.code}: ${e.message}`);
+    if (!named) issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
   return out.filter((i) => i.rule !== "tsc" || !followsBroken(i.message));
 }
@@ -160,9 +158,13 @@ function findTsc(cwd: string): string | null {
 export function runCheck(options: CheckOptions): LintIssue[] {
   const cwd = options.cwd ?? process.cwd();
   const generate = options.generate ?? {};
-  const dirs = options.dirs.map((d) => resolve(cwd, d)).filter((d) => existsSync(d));
   const issues: LintIssue[] = [];
   const rel = (f: string) => relative(cwd, f);
+  const dirs: string[] = [];
+  for (const d of options.dirs.map((x) => resolve(cwd, x))) {
+    if (existsSync(d)) dirs.push(d);
+    else issues.push({ file: rel(d) || ".", line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${rel(d) || "."} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
+  }
 
   for (const dir of dirs) {
     for (const f of listHtml(dir)) {
@@ -200,17 +202,24 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   if (!tsc) {
     issues.push({ file: ".", line: 1, col: 1, rule: "tsc-not-found", severity: "warning", message: "TypeScript is not installed in this project, so types were not checked. Fix: npm i -D typescript." });
   } else {
-    const run = spawnSync(process.execPath, [tsc, "--noEmit", "--pretty", "false", ...(options.project ? ["-p", options.project] : [])], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
-    const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
-    const parsed = parseTscOutput(output);
-    issues.push(...mapTscErrors(parsed, cwd));
-    if (run.error || (run.status !== 0 && !parsed.length)) {
-      const detail = run.error ? String(run.error.message) : output.trim().split("\n").slice(0, 5).join(" ");
-      issues.push({ file: ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `tsc did not check the types: ${detail} Fix: make \`npx tsc --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
+    // A solution-style tsconfig checks nothing itself: check each referenced project instead.
+    const configs = projectConfigs(cwd, options.project);
+    const runs = configs.length ? configs.map((c) => ["-p", c]) : [options.project ? ["-p", options.project] : []];
+    const parsed: TscError[] = [];
+    for (const extra of runs) {
+      const run = spawnSync(process.execPath, [tsc, "--noEmit", "--pretty", "false", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+      const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+      const errors = parseTscOutput(output);
+      parsed.push(...errors);
+      if (run.error || (run.status !== 0 && !errors.length)) {
+        const detail = run.error ? String(run.error.message) : output.trim().split("\n").slice(0, 5).join(" ");
+        issues.push({ file: extra[1] ? rel(extra[1]) : ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `tsc did not check the types: ${detail} Fix: make \`npx tsc --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
+      }
     }
+    issues.push(...mapTscErrors(parsed, cwd));
   }
 
-  const tsFiles = dirs.flatMap(listSourceTs);
+  const tsFiles = dirs.flatMap(listTs);
   const lint = [...lintUsage(dirs, tsFiles), ...lintDataFlow(dirs, tsFiles)].map((i) => ({ ...i, file: rel(resolve(cwd, i.file)) }));
   for (const i of lint) {
     if (i.rule === "missing-handler" && issues.some((x) => x.rule === "missing-handler" && x.file === i.file && x.line === i.line && x.col === i.col)) continue;
@@ -230,12 +239,4 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     .sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
 }
 
-function listSourceTs(dir: string): string[] {
-  return readdirSync(dir).flatMap((n) => {
-    if (n === "node_modules") return [];
-    const f = join(dir, n);
-    if (statSync(f).isDirectory()) return listSourceTs(f);
-    return n.endsWith(".ts") && !n.endsWith(".d.ts") && !n.endsWith(".html.ts") && n !== "ts-dom-tags.ts" ? [f] : [];
-  });
-}
 

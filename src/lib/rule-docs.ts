@@ -39,10 +39,10 @@ save(e: Event): void { e.preventDefault(); }`,
   },
   "invalid-handler": {
     why: "data-on-* only names a method; HTML holds no expressions or calls. A call such as save(1) would not be run, and the type of the method could not be checked.",
-    bad: `<button data-on-click="remove(item.id)">x</button>`,
-    good: `<button data-on-click="remove">x</button>
-// card.ts
-remove() { /* read what you need from state or props here */ }`,
+    bad: `<button data-on-click="removeItem(item.id)">x</button>`,
+    good: `<button data-on-click="removeItem">x</button>
+// card.ts: inside a list, hit.key is the item's key
+removeItem(_e: Event, hit: EventHit) { this.set((s) => ({ rows: s.rows.filter((r) => r.id !== hit.key) })); }`,
   },
   "reserved-handler": {
     why: "A handler becomes a method on the component class. A name such as render, click or remove would override a member of HTMLElement or ts-dom and break the component in ways tsc cannot always see.",
@@ -250,7 +250,7 @@ this.set({ title: "Hello" });`,
 // card.ts never uses this.lists.rows`,
     good: `<template data-each="rows"><li>{{ label }}</li></template>
 // card.ts
-this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
   },
   "unused-item-name": {
     why: "A name inside a list item that no code fills or reads is dead markup, usually left over after the item shape changed.",
@@ -513,7 +513,7 @@ define("task-row", TaskRow);`,
 define("task-row", TaskRow);`,
   },
   tsc: {
-    why: "Any TypeScript error that none of the specific rules recognizes is passed through as tsc prints it, with the location moved to the template where it applies.",
+    why: "Any TypeScript error that none of the specific rules recognizes is passed through as tsc prints it, at its TypeScript location, so one command shows every problem.",
     bad: `// card.ts
 const n: number = "1";`,
     good: `// card.ts
@@ -523,6 +523,11 @@ const n: number = 1;`,
     why: "When tsc stops before checking (no tsconfig, a bad option, a crash), a check that only looked for type errors would pass with none. This rule makes that visible.",
     bad: `npx ts-dom check --project=tsconfig.app.json   # the file does not exist`,
     good: `npx ts-dom check --project=tsconfig.json`,
+  },
+  "dir-not-found": {
+    why: "A folder given to ts-dom check or doctor that does not exist would otherwise be skipped silently, and a clean result would only mean that nothing was looked at.",
+    bad: `npx ts-dom check ap   # the templates live in app/`,
+    good: `npx ts-dom check app`,
   },
   "tsc-not-found": {
     why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",
