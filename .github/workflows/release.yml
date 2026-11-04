@@ -78,19 +78,17 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci
+      # npm stage publish needs npm 11.15 or later; trusted publishing needs no token, the workflow's OIDC identity is the credential.
+      - run: npm install -g npm@^11.15.0
+      # The version waits in npm's staging area until a maintainer approves it (with 2FA) on npmjs.com or with `npm stage approve`.
       # A prerelease version (one with a "-") is published under the "next" tag so that "npm i @nativele/ts-dom" keeps installing the latest stable release.
-      - name: Publish to npm
+      - name: Stage on npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
-            echo "::error::The NPM_TOKEN secret is not set, so nothing was published"
-            exit 1
-          fi
-          tag=latest
-          if [[ "$PRERELEASE" == 'true' ]]; then tag=next; fi
-          npm publish --tag "$tag"
+          flags=()
+          if [[ "$PRERELEASE" == 'true' ]]; then flags+=(--tag next); fi
+          npm stage publish "${flags[@]}"
       - env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}

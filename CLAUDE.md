@@ -39,4 +39,4 @@
 - 新增規則或公開 API 要同步更新 `README.md`、`README.zh-TW.md`、`llms.txt` 與 `CHANGELOG.md`。
 - 公開 API 的破壞性變更要寫進 `CHANGELOG.md` 的對應版本，版本規則見該檔的 Versioning policy。
 - 產生的 `*.html.ts` 與 `ts-dom-tags.ts` 不提交。
-- 發布：版本只寫在 `package.json` 的 `version`；改了版本的提交合併到 main 後，`.github/workflows/release.yml` 檢查版本格式與 `CHANGELOG.md` 對應標題，驗證通過就發布到 npm，並建立 `v<版本>` 的 tag 與 GitHub Release（版本已有 tag 時不動作；含 `-` 的是預先發布，npm 標 `next`）。Release 說明取自改版本那個 PR 的描述，所以改版本的 PR 描述要寫成 Release 內容（Summary、Changes、Breaking Changes）。
+- 發布：版本只寫在 `package.json` 的 `version`；改了版本的提交合併到 main 後，`.github/workflows/release.yml` 檢查版本格式與 `CHANGELOG.md` 對應標題，驗證通過就以 npm Trusted Publishing（OIDC，不使用 token）執行 `npm stage publish` 把版本送進 npm 暫存區，並建立 `v<版本>` 的 tag 與 GitHub Release（版本已有 tag 時不動作；含 `-` 的是預先發布，npm 標 `next`）。版本要到 npmjs.com 的 Staged Packages 或用 `npm stage approve` 由維護者以 2FA 核准後才公開。Release 說明取自改版本那個 PR 的描述，所以改版本的 PR 描述要寫成 Release 內容（Summary、Changes、Breaking Changes）。
