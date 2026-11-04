@@ -29,7 +29,7 @@ export const A11Y_RULES = {
   "aria-idref": "This ARIA attribute refers to an id that does not exist in this template. Fix: add the id, or ignore this rule if it refers to an element outside the component.",
   "heading-order": "Heading levels are skipped. Fix: do not jump levels (for example h1 straight to h3); use the next level down.",
   "table-header": "<table> has no <th> header cells. Fix: add <th> cells, or set role=\"presentation\" if the table is only used for layout.",
-  "list-structure": "Invalid list structure. Fix: <ul>/<ol> may only contain <li>, and <li> must be inside <ul>, <ol> or <menu>.",
+  "list-structure": "Invalid list structure. Fix: <ul>/<ol> may only contain <li> (or a custom element with role=\"listitem\"), and <li> must be inside <ul>, <ol> or <menu>.",
   "landmark-label": "There are several landmarks of the same kind. Fix: give each <nav> / <aside> a distinct aria-label.",
   "redundant-role": "The role repeats the element's native role. Fix: remove the role attribute.",
   "click-semantics": "data-on-click is on an element that is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
@@ -189,10 +189,18 @@ export function checkA11y(html: string, ignore: readonly string[] = []): A11yDia
         if (c.tagName === "template") {
           if (!has(c, "data-each")) continue;
           for (const item of (c as Template).content.childNodes) {
-            if (isEl(item) && item.tagName !== "li") report("list-structure", item, `The root element of a data-each item inside <${tag}> must be <li>, found <${item.tagName}>. Fix: use <li> as the item root.`);
+            if (isEl(item)) listItemProblem(item, tag, "The root element of a data-each item");
           }
-        } else if (c.tagName !== "li") report("list-structure", c, `<${tag}> may only contain <li> children, found <${c.tagName}>. Fix: wrap the content in <li>.`);
+        } else listItemProblem(c, tag, `A child of <${tag}>`);
       }
+    }
+    function listItemProblem(item: Element, listTag: string, what: string): void {
+      if (item.tagName === "li") return;
+      if (item.tagName.includes("-")) {
+        if (attr(item, "role") !== "listitem") report("list-structure", item, `${what} inside <${listTag}> is the component <${item.tagName}>, which has no list item role. Fix: add role="listitem" to <${item.tagName}>, or make its root an <li>.`);
+        return;
+      }
+      report("list-structure", item, `${what} inside <${listTag}> must be <li> or a custom element with role="listitem", found <${item.tagName}>. Fix: use <li> as the item root.`);
     }
     if (tag === "li" && parent && !["ul", "ol", "menu", "slot"].includes(parent.tagName) && !["list", "menu"].includes(attr(parent, "role") ?? "")) {
       report("list-structure", el, `<li> must be inside <ul>, <ol> or <menu>, found inside <${parent.tagName}>. Fix: change the parent element, or use a different element instead of <li>.`);

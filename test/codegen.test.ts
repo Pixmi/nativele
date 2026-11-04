@@ -202,6 +202,9 @@ const RULE_INPUTS: Record<string, string> = {
   "empty-each": `<template data-each=""><i></i></template>`,
   "nested-each": `<template data-each="a"><i><template data-each="b"><u></u></template></i></template>`,
   "duplicate-each": `<template data-each="a"><i></i></template><template data-each="a"><i></i></template>`,
+  "each-binding-incomplete": `<template data-each="a" data-key="id"><x-row></x-row></template>`,
+  "invalid-each-binding": `<template data-each="a" data-key="a.b" data-prop="item"><x-row></x-row></template>`,
+  "each-binding-root": `<template data-each="a" data-key="id" data-prop="item"><li></li></template>`,
   "each-root-count": `<template data-each="a"><i></i><i></i></template>`,
   "document-tag": `<body class="app"><p></p></body>`,
   "forbidden-tag": `<script>alert(1)</script>`,
@@ -392,6 +395,20 @@ describe("scanDefines ignores define() calls inside strings and comments", () =>
     const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(dir, "a.ts"), 'const s = "export class A {}";\nclass A {}\ndefine("x-a", A);');
     expect(scanDefines(dir)).toMatchObject([{ tag: "x-a", exported: false }]);
+  });
+});
+
+describe("data-key and data-prop", () => {
+  const list = (item: string) => `<template data-each="a" data-key="id" data-prop="item">${item}</template>`;
+  it("accepts a custom element and rejects other tags, including reserved hyphenated names", () => {
+    expect(ruleIds(list(`<x-row></x-row>`))).toEqual([]);
+    expect(ruleIds(list(`<li></li>`))).toContain("each-binding-root");
+    expect(ruleIds(list(`<font-face></font-face>`))).toContain("each-binding-root");
+  });
+  it("lint hint for a list that is never assigned points to items", async () => {
+    const { analyze: run } = await import("../src/lib/codegen.ts");
+    expect(run(list(`<x-row></x-row>`)).boundLists.has("a")).toBe(true);
+    expect(run(`<template data-each="a"><li></li></template>`).boundLists.has("a")).toBe(false);
   });
 });
 

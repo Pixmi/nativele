@@ -38,6 +38,9 @@ export const CODEGEN_RULES = {
   "empty-each": "data-each must not be empty",
   "nested-each": "data-each templates cannot be nested",
   "duplicate-each": "data-each names must be unique",
+  "each-binding-incomplete": "data-key and data-prop go together on a data-each template",
+  "invalid-each-binding": "data-key and data-prop must each be a single identifier",
+  "each-binding-root": "with data-key and data-prop the item must be one custom element",
   "each-root-count": "a data-each template needs exactly one root element",
   "document-tag": "<html>, <head> and <body> cannot be in a template (the browser drops them from fragments)",
   "forbidden-tag": "<script> cannot be in a template (it would run code)",
@@ -60,6 +63,8 @@ export interface Analysis {
   scope: Scope;
   lists: Map<string, Scope>;
   slots: Set<string>;
+  /** The `data-each` lists that have `data-key` and `data-prop`: their items are components assigned through `items`. */
+  boundLists: Map<string, { tag: string; prop: string; key: string }>;
   /** Method names referenced by data-on-* (including inside list items). */
   events: Set<string>;
   /** Every data-on-* occurrence: event type, handler method, element tag (used by data-flow checks). */
@@ -76,6 +81,8 @@ export interface Analysis {
   diagnostics: Diagnostic[];
 }
 
+const RESERVED_ELEMENT_NAMES = new Set(["annotation-xml", "color-profile", "font-face", "font-face-src", "font-face-uri", "font-face-format", "font-face-name", "missing-glyph"]);
+const isCustomElementName = (tag: string): boolean => /^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(tag) && !RESERVED_ELEMENT_NAMES.has(tag);
 const URL_ATTRS = /^(href|src|action|formaction|xlink:href)$/i;
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const newScope = (): Scope => ({ refs: new Map(), text: new Set(), ifs: new Set() });
@@ -94,6 +101,7 @@ export function analyze(html: string): Analysis {
     scope: newScope(),
     lists: new Map(),
     slots: new Set(),
+    boundLists: new Map(),
     events: new Set(),
     eventSites: [],
     customTags: new Set(),
@@ -256,6 +264,22 @@ export function analyze(html: string): Analysis {
           if (items.length !== 1 || !isEl(items[0] as Node)) {
             report("each-root-count", "error", `data-each="${each}" must contain exactly one root element (found ${items.length} root nodes). Fix: wrap the item content in a single element such as <li>.`, n);
           }
+          const key = attr(n, "data-key");
+          const prop = attr(n, "data-prop");
+          if ((key === undefined) !== (prop === undefined)) {
+            report("each-binding-incomplete", "error", `data-each="${each}" has ${key === undefined ? "data-prop" : "data-key"} but not ${key === undefined ? "data-key" : "data-prop"}. Fix: write both, e.g. <template data-each="${each}" data-key="id" data-prop="item">, or neither to fill the items yourself with replace().`, n);
+          } else if (key !== undefined && prop !== undefined) {
+            if (!IDENT.test(key.trim()) || !IDENT.test(prop.trim())) {
+              report("invalid-each-binding", "error", `data-key="${key}" and data-prop="${prop}" must each be a single identifier: the item field that identifies it, and the property of the item element that receives the item. Fix: write data-key="id" data-prop="item".`, n);
+            } else if (items.length === 1 && isEl(items[0] as Node)) {
+              const root = items[0] as Element;
+              if (root.namespaceURI === HTML_NS && isCustomElementName(root.tagName)) {
+                a.boundLists.set(each, { tag: root.tagName, prop: prop.trim(), key: key.trim() });
+              } else {
+                report("each-binding-root", "error", `data-each="${each}" has data-key and data-prop, so each item is one component that receives the item as a property, but its root is <${root.tagName}>. Fix: make the item a custom element such as <${each}-row></${each}-row> and put the item's markup in that component's own .html.`, n);
+              }
+            }
+          }
           const s = newScope();
           a.lists.set(each, s);
           mark(`each:${each}`, n);
@@ -353,7 +377,11 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
   const runtime = options.runtime ?? "@nativele/ts-dom";
   const a = analyze(html);
   const lists = [...a.lists]
-    .map(([n, s]) => `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)} }`)
+    .map(([n, s]) => {
+      const bound = a.boundLists.get(n);
+      const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)} }` : "";
+      return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}${item} }`;
+    })
     .join("; ");
   const type = `{
   refs: ${obj(a.scope.refs)};

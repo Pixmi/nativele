@@ -694,6 +694,33 @@ There is no host element, so `data-on-*` attributes do nothing here (listen on `
 
 ## Lists
 
+There are two ways to fill a list. Use components when an item has anything of its own (state, events, a nested list), and `replace()` for small items made of plain elements.
+
+### Items as components: `items = ...`
+
+Name the field that identifies an item and the property that receives it, on the `<template data-each>`; the item is one custom element:
+
+```html
+<ul>
+  <template data-each="todos" data-key="id" data-prop="todo">
+    <todo-row role="listitem" data-on-toggled="toggle"></todo-row>
+  </template>
+</ul>
+```
+
+```ts
+render(view, changed) {
+  if (changed.has("todos")) this.lists.todos.items = view.todos;
+}
+toggle(_e: Event, hit: EventHit) { /* hit.key is the item's id */ }
+```
+
+Assigning `items` keeps the element of each key that stays (moved with `moveBefore` where the browser has it, so focus and state survive), creates one for a new key, removes the ones that are gone, and sets `todo` on each element whose item is not the same object as last time. Use immutable updates: changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, for example `{ ...todo, done: true }`. The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned. `tsc` checks the assignment: each item must have the type of the `todo` property that `<todo-row>` declares and a `data-key` field (`id`), and the item component must declare the `data-prop` property; a list without `data-key` and `data-prop` takes no items. This relies on the component being registered in `ts-dom-tags.ts` (an exported `define("todo-row", TodoRow)` in a scanned directory); for a component outside it, any item with the `id` field is accepted. At runtime, assigning throws when the value is not an array of objects, when an item has no string or number `id`, when two items share one, or when the template has no `data-key` and `data-prop`.
+
+Inside a `<ul>` or `<ol>` the item component needs `role="listitem"`, because a custom element is not an `<li>`; the accessibility check (`list-structure`) asks for it. `data-each` cannot be nested, on purpose: an item is one component, so a list inside an item is that component's own `data-each`. Every template then holds one level, with its own `refs`, `text` and event handling.
+
+### Items as plain elements: `replace()`
+
 ```html
 <ul>
   <template data-each="tags">
@@ -750,7 +777,7 @@ Notes:
 
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
 
-1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
+1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, an incomplete or invalid `data-key` / `data-prop`, a `data-key` list whose item is not one custom element, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
 2. **tsc**: an error when TypeScript uses a name the HTML does not declare (`this.refs.nope`, `this.show("nope", true)`); all constraints between `state`, `props`, `derive`, `emits` and the HTML (see "Data Flow"); child component prop names and types; `define()` checks that the methods for `data-on-*` exist.
 3. **Runtime**: `Component()` and components, at definition, connection, and use, throw errors that carry a `[rule id]` and a fix for the same problems.
 4. **lint** (`ts-dom/unused-markup`, `ts-dom/data-flow`, `ts-dom/a11y`): markup declared in the HTML but never used (errors, with the HTML location), data flow suggestions and child component contracts (warnings), ARIA (warnings).

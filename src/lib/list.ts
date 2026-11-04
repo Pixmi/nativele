@@ -6,7 +6,21 @@ export interface ListSchema {
   refs: Record<string, Element>;
   text: string;
   ifs: string;
+  /** Set for a list whose items are components (`data-key` and `data-prop`): the item tag, the property that receives the item and the field that identifies it. */
+  item?: { tag: string; prop: string; key: string };
 }
+
+type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
+  ? T extends keyof HTMLElementTagNameMap
+    ? P extends keyof HTMLElementTagNameMap[T]
+      ? NonNullable<HTMLElementTagNameMap[T][P]>
+      : { dataPropNotOnItemComponent: P }
+    : { [field: string]: unknown }
+  : never;
+type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: string | number } : unknown;
+
+/** What `items` takes for a list: the type of the item component's `data-prop` property, with the `data-key` field. */
+export type ListItem<L> = ItemOf<L> & KeyField<L>;
 export type TextOf<N extends string> = { [K in N]: TextValue };
 
 interface Entry<L extends ListSchema> extends ItemContext<L> {
@@ -45,7 +59,49 @@ export class List<L extends ListSchema = ListSchema> {
     private readonly proto: Element,
     /** Called when a new item is created (the component uses it to register data-on-* inside the item) */
     private readonly onCreate?: (el: Element) => void,
+    private readonly binding?: { readonly key: string; readonly prop: string },
   ) {}
+
+  /**
+   * The items shown, in order. Assigning shows them: an element is kept for each key that stays, created for a new key and removed for a key that is gone, and the `data-prop` property receives each item that is not the same object as last time.
+   * @throws When the template has no `data-key` and `data-prop`, when the value is not an array of objects, when an item has no string or number `data-key` field, or when two items have the same key
+   */
+  get items(): readonly ListItem<L>[] {
+    return [...this.#items.values()]
+      .sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((entry) => entry.item as ListItem<L>);
+  }
+
+  set items(items: readonly ListItem<L>[]) {
+    if (!this.binding) {
+      throw new Error("[list-not-bound] this list has no data-key and data-prop, so its items cannot be assigned. Fix: add them to the <template data-each>, e.g. data-key=\"id\" data-prop=\"item\", or call replace().");
+    }
+    if (!Array.isArray(items)) {
+      throw new Error(`[invalid-items] items must be an array of objects, but got ${items === null ? "null" : typeof items}. Fix: assign an array, for example items = view.todos ?? [].`);
+    }
+    this.replace(items, this.#keyOf, this.#assign, { skipUnchanged: true });
+  }
+
+  readonly #keyOf = (item: unknown): PropertyKey => {
+    const field = this.binding?.key as string;
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`[invalid-item] an item is ${item === null ? "null" : typeof item}, but items must be objects with a "${field}" field (data-key). Fix: pass objects, or fill a list of plain values with replace().`);
+    }
+    const key = (item as Record<string, unknown>)[field];
+    if (typeof key !== "string" && typeof key !== "number") {
+      throw new Error(`[missing-key] an item has no usable "${field}" field (data-key): it is ${key === undefined ? "missing" : typeof key}. Fix: give every item a string or number ${field}, or change data-key.`);
+    }
+    return key;
+  };
+
+  readonly #assign = (item: unknown, { el }: ItemContext<L>): void => {
+    const prop = this.binding?.prop as string;
+    customElements.upgrade(el);
+    if (customElements.get(el.localName) && !(prop in el)) {
+      throw new Error(`[unknown-prop] <${el.localName}> has no "${prop}" property (data-prop). Fix: declare ${prop} in the component's props, or change data-prop.`);
+    }
+    (el as unknown as Record<string, unknown>)[prop] = item;
+  };
 
   /** From any node inside an item, find the key and data of the item it belongs to (used by event handlers). */
   itemOf(node: Node | null): { key: PropertyKey; item: unknown } | undefined {
@@ -99,10 +155,10 @@ export class List<L extends ListSchema = ListSchema> {
 
   #run<T>(entry: Entry<L>, key: PropertyKey, item: T, update: Update<L, T>, skip = false): void {
     if (skip && !entry.fresh && Object.is(entry.item, item)) return;
-    entry.item = item;
-    entry.fresh = false;
     this.#byEl.set(entry.el, { key, item });
     update(item, entry);
+    entry.item = item;
+    entry.fresh = false;
   }
 
   remove(key: PropertyKey): boolean {
@@ -123,7 +179,7 @@ export class List<L extends ListSchema = ListSchema> {
     const next = new Set<PropertyKey>();
     for (const it of items) {
       const k = key(it);
-      if (next.has(k)) throw new Error(`[duplicate-key] replace() received two items with the key ${String(k)}, so one element cannot show both. Fix: make key() return a unique value for each item.`);
+      if (next.has(k)) throw new Error(`[duplicate-key] two items have the key ${String(k)}, so one element cannot show both. Fix: make the key unique for each item (the key() you pass to replace(), or the data-key field).`);
       next.add(k);
     }
     for (const k of this.#items.keys()) if (!next.has(k)) this.remove(k);

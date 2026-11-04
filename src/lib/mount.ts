@@ -23,7 +23,9 @@ export function mountTemplate(frag: DocumentFragment, onItem?: (el: Element) => 
     if (!proto) throw new Error(`[each-root-count] data-each="${name}" needs exactly one root element. Fix: wrap the item content in a single element such as <li>.`);
     const anchor = document.createComment(`each:${name}`);
     t.replaceWith(anchor);
-    lists[name] = new List(anchor, proto, onItem);
+    const key = t.getAttribute("data-key")?.trim();
+    const prop = t.getAttribute("data-prop")?.trim();
+    lists[name] = new List(anchor, proto, onItem, key && prop ? { key, prop } : undefined);
   }
   const refs: Record<string, Element> = {};
   for (const el of frag.querySelectorAll("[data-ref]")) refs[el.getAttribute("data-ref") as string] = el;

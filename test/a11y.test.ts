@@ -64,6 +64,9 @@ describe("a11y semantics and id references", () => {
     expect(rules(`<ul><div>x</div></ul>`)).toEqual(["list-structure"]);
     expect(rules(`<ul><template data-each="l"><div>{{ a }}</div></template></ul>`)).toEqual(["list-structure"]);
     expect(rules(`<div><li>x</li></div>`)).toEqual(["list-structure"]);
+    expect(rules(`<ul><template data-each="l" data-key="id" data-prop="item"><x-row role="listitem"></x-row></template></ul>`)).toEqual([]);
+    expect(rules(`<ul><template data-each="l" data-key="id" data-prop="item"><x-row></x-row></template></ul>`)).toEqual(["list-structure"]);
+    expect(rules(`<ul><x-row role="listitem"></x-row></ul>`)).toEqual([]);
     expect(rules(`<ul><li>x</li><template data-each="l"><li>{{ a }}</li></template></ul>`)).toEqual([]);
     expect(rules(`<li>a top-level li leaves the parent to the using element</li>`)).toEqual([]);
   });

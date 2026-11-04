@@ -696,6 +696,33 @@ function menuItem(label: string): HTMLLIElement {
 
 ## 清單
 
+填清單有兩種方式。項目有自己的東西（狀態、事件、內層清單）就用元件；只是幾個純元素組成的小項目就用 `replace()`。
+
+### 項目是元件：`items = ...`
+
+在 `<template data-each>` 上寫出識別項目的欄位名稱與接收項目的屬性名稱，項目是一個自訂元素：
+
+```html
+<ul>
+  <template data-each="todos" data-key="id" data-prop="todo">
+    <todo-row role="listitem" data-on-toggled="toggle"></todo-row>
+  </template>
+</ul>
+```
+
+```ts
+render(view, changed) {
+  if (changed.has("todos")) this.lists.todos.items = view.todos;
+}
+toggle(_e: Event, hit: EventHit) { /* hit.key 就是該項目的 id */ }
+```
+
+指派 `items` 時：key 還在的項目保留原本的元素（瀏覽器支援時用 `moveBefore` 搬動，所以焦點與狀態不會丟）、新 key 建立元素、消失的 key 移除，並對「與上次不是同一個物件」的項目設定元素的 `todo` 屬性。請用不可變更新：就地修改已指派過的物件欄位再指派同一個物件，項目元件不會更新，因為 props 以參考比較；請改指派新物件，例如 `{ ...todo, done: true }`。項目元件在自己的 `props` 宣告 `todo`，愛怎麼顯示都可以，用 `emit` 通知父元件，父元件在處理方法裡讀 `hit.key`。讀取 `items` 會回傳最近一次指派的內容。`tsc` 會檢查這個指派：每個項目要符合 `<todo-row>` 宣告的 `todo` 屬性型別並帶有 `data-key` 欄位（`id`），項目元件必須宣告 `data-prop` 指定的屬性；沒有 `data-key` 與 `data-prop` 的清單不接受指派。這要靠元件註冊在 `ts-dom-tags.ts`（掃描目錄內有匯出的 `define("todo-row", TodoRow)`）；不在其中的元件，只要項目帶有 `id` 欄位就接受。執行期則在指派的不是物件陣列、項目沒有字串或數字的 `id`、兩個項目 key 重複、或範本沒有 `data-key` 與 `data-prop` 時丟錯。
+
+在 `<ul>` 或 `<ol>` 裡，項目元件要加 `role="listitem"`，因為自訂元素不是 `<li>`；無障礙檢查（`list-structure`）會要求這點。`data-each` 刻意不能巢狀：一個項目就是一個元件，項目裡的清單就是該元件自己的 `data-each`。這樣每套範本都只有一層，有自己的 `refs`、`text` 與事件處理。
+
+### 項目是純元素：`replace()`
+
 ```html
 <ul>
   <template data-each="tags">
@@ -752,7 +779,7 @@ this.lists.tags.replace(
 
 四道檢查，互補。**每一則訊息都有穩定的規則代號，並說明哪裡錯、為什麼、怎麼修**；`npx ts-dom rules` 列出全部規則。
 
-1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），範本內的 `<html>`、`<head>`、`<body>`，以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
+1. **codegen 診斷**（`ts-dom gen` 與 Vite 外掛，帶行列號，有錯誤時中斷、不寫檔）：重複的 `data-ref`、`data-each` 沒有單一根元素、`data-each` 不在 `<template>` 上、`data-each` 巢狀、`data-key` 與 `data-prop` 不完整或不合法、有 `data-key` 的清單其項目不是單一自訂元素、`data-if` 在項目根元素、`<slot>` 在項目內、`<style>` 不在第一層、不合法的洞、屬性內的洞、不合法的 `data-on-*`（含與 DOM 或 ts-dom 成員同名），範本內的 `<html>`、`<head>`、`<body>`，以及會執行程式碼或被 Trusted Types 擋下的標記：`<script>`、`on*` 屬性、`srcdoc`、`javascript:` 網址。
 2. **tsc**：TypeScript 使用了 HTML 沒有宣告的名稱就報錯（`this.refs.nope`、`this.show("nope", true)`）；`state`、`props`、`derive`、`emits` 與 HTML 之間的所有約束（見「資料流」）；子元件 prop 的名稱與型別；`define()` 檢查 `data-on-*` 的方法存在。
 3. **執行期**：`Component()` 與元件在定義、連接與使用時，對同樣的問題丟出帶 `[規則代號]` 與修正方式的錯誤。
 4. **lint**（`ts-dom/unused-markup`、`ts-dom/data-flow`、`ts-dom/a11y`）：HTML 宣告了卻沒被使用的標記（錯誤，附 HTML 位置）、資料流建議與子元件契約（警告）、ARIA（警告）。
