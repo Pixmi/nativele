@@ -76,9 +76,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
       - run: npm ci
-      # npm stage publish needs npm 11.15 or later; trusted publishing needs no token, the workflow's OIDC identity is the credential.
+      # npm stage publish needs npm 11.15 or later; trusted publishing needs no token, the workflow's OIDC identity is the credential. setup-node must not get registry-url, which writes a placeholder token that npm then uses instead.
       - run: npm install -g npm@^11.15.0
       # The version waits in npm's staging area until a maintainer approves it (with 2FA) on npmjs.com or with `npm stage approve`.
       # A prerelease version (one with a "-") is published under the "next" tag so that "npm i @nativele/ts-dom" keeps installing the latest stable release.
