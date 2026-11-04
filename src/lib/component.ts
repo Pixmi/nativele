@@ -41,9 +41,16 @@ export type DeepReadonly<T> = T extends (...args: never[]) => unknown
       ? ReadonlyMap<K, DeepReadonly<V>>
       : T extends ReadonlySet<infer V>
         ? ReadonlySet<DeepReadonly<V>>
-        : T extends object
+        : T extends readonly unknown[]
           ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-          : T;
+          : T extends object
+            ? IsPlainObject<T> extends true
+              ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+              : T
+            : T;
+
+// A copy of only the public members is assignable back to a plain object type, but not to a class with private or protected members: such a class instance keeps its own type, so it can still be passed where the class is expected.
+type IsPlainObject<T> = { [K in keyof T]: T[K] } extends T ? true : false;
 
 /** Props as the element exposes them: the parent assigns them, but cannot change the objects inside through them. */
 export type PropAccessors<P> = { -readonly [K in keyof P]: DeepReadonly<P[K]> };

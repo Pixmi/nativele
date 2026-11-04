@@ -236,3 +236,29 @@ describe("state, props and derived values are read-only all the way down", () =>
     expect(typeChecks).toBeTypeOf("function");
   });
 });
+
+class Account {
+  #secret = 1;
+  constructor(readonly name: string) {}
+  get secret(): number {
+    return this.#secret;
+  }
+}
+const takeAccount = (a: Account) => a.name;
+
+describe("DeepReadonly keeps class instances usable", () => {
+  it("a class with private members stays its own type; plain objects and arrays inside it are still read-only", async () => {
+    const { Component } = await import("../src/lib/index.ts");
+    const { default: tplNoHoles } = await import("./host.html.js");
+    class Holder extends Component(tplNoHoles, { state: { account: new Account("a"), list: [{ n: 1 }] } }) {
+      use(): string {
+        return takeAccount(this.state.account);
+      }
+      wrong(): void {
+        // @ts-expect-error a plain object inside an array in state stays read-only
+        this.state.list[0]!.n = 2;
+      }
+    }
+    expect(Holder).toBeTypeOf("function");
+  });
+});

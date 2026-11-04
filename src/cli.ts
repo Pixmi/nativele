@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
-import { CODEGEN_RULES, CodegenError, generateAll, listHtml, staleGenerated, watchAll } from "./lib/codegen.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, generateAll, listHtml, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
@@ -70,13 +70,16 @@ if (!dirs.length) dirs.push("src");
 
 try {
   if (cmd === "gen" && flags.has("--check")) {
-    const stale = dirs.flatMap((d) => staleGenerated(d, generate));
-    if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })) }, null, 2));
-    else if (!stale.length) console.log("ts-dom gen --check: generated files are up to date");
+    const results = dirs.map((d) => checkGenerated(d, generate));
+    const stale = results.flatMap((r) => r.stale);
+    const errors = results.flatMap((r) => r.errors);
+    if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));
     else {
-      for (const s of stale) console.error(`${relative(process.cwd(), s.file)} error [stale-generated] the generated file is ${s.reason}. Fix: run ts-dom gen.`);
+      for (const s of stale) console.error(`${relative(process.cwd(), s.file)}:1:1 error [stale-generated] The generated file is ${s.reason}. Fix: run ts-dom gen.`);
+      for (const e of errors) console.error(e);
+      if (!stale.length && !errors.length) console.log("ts-dom gen --check: generated files are up to date");
     }
-    if (stale.length) process.exitCode = 1;
+    if (stale.length || errors.length) process.exitCode = 1;
   } else if (cmd === "gen") {
     let failed = false;
     for (const d of dirs) {

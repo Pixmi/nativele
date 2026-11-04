@@ -35,7 +35,7 @@ describe("ts-dom check on a project", () => {
       writeFileSync(join(dir, "broken.html"), `<p>{{ title }}</p>\n<button type="button" data-on-click="save">Save</button>\n`);
       writeFileSync(
         join(dir, "broken.ts"),
-        `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./broken.html.js";\nexport class Broken extends Component(tpl, { state: { count: 0 } }) {}\ndefine("x-broken", Broken);\n`,
+        `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./broken.html.js";\nexport class Broken extends Component(tpl, { state: { count: 0 } }) {}\ndefine("x-broken", Broken);\nconst o = { a: 1 };\nexport const n = o.lenght;\n`,
       );
       let out = "";
       try {
@@ -47,9 +47,23 @@ describe("ts-dom check on a project", () => {
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([
         ["check-fixture-tmp/broken.html", 1, 4, "missing-binding"],
         ["check-fixture-tmp/broken.html", 2, 1, "missing-handler"],
+        ["check-fixture-tmp/broken.ts", 6, 20, "tsc"],
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  }, 30_000);
+});
+
+describe("ts-dom check when tsc cannot run", () => {
+  it("reports tsc-failed instead of no issues", () => {
+    let out = "";
+    try {
+      execFileSync(process.execPath, ["src/cli.ts", "check", "examples", "--project=missing-tsconfig.json", "--json"], { encoding: "utf8" });
+    } catch (e) {
+      out = (e as { stdout: string }).stdout;
+    }
+    const rules = (JSON.parse(out) as { issues: { rule: string }[] }).issues.map((i) => i.rule);
+    expect(rules).toContain("tsc-failed");
   }, 30_000);
 });

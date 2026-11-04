@@ -479,3 +479,21 @@ describe("gen --check: generated files out of step", () => {
     ]);
   });
 });
+
+describe("gen --check and gen with errors and orphans", () => {
+  it("checkGenerated reports the errors that make gen fail, and gen removes an orphaned module", async () => {
+    const { existsSync, mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { checkGenerated, generateAll } = await import("../src/lib/codegen.ts");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
+    writeFileSync(join(dir, "ok.html"), `<p></p>`);
+    writeFileSync(join(dir, "gone.html"), `<p></p>`);
+    generateAll(dir);
+    unlinkSync(join(dir, "gone.html"));
+    generateAll(dir);
+    expect(existsSync(join(dir, "gone.html.ts"))).toBe(false);
+    writeFileSync(join(dir, "bad.html"), `<p>{{ a.b }}</p>`);
+    const result = checkGenerated(dir);
+    expect(result.errors.join("\n")).toContain("[invalid-hole]");
+  });
+});

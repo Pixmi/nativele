@@ -1,0 +1,596 @@
+export interface RuleDoc {
+  /** Why the rule exists, in one or two sentences, tied to a principle of the library where there is one. */
+  why: string;
+  /** A short wrong example (HTML, TypeScript, or both), as it would appear in a project. */
+  bad: string;
+  /** The corrected version of the same example. */
+  good: string;
+}
+
+export const RULE_DOCS: Record<string, RuleDoc> = {
+  // CODEGEN_RULES
+  "invalid-hole": {
+    why: "HTML only names things: a hole is a single identifier that TypeScript fills in. Paths and expressions would turn the template into a language, and codegen could not derive a field name from them.",
+    bad: `<!-- card.html -->
+<h2>{{ user.name }}</h2>
+<p>{{ count + 1 }}</p>`,
+    good: `<!-- card.html -->
+<h2>{{ userName }}</h2>
+<p>{{ nextCount }}</p>
+// card.ts: compute the value in TypeScript, then fill the named hole
+this.set({ userName: user.name, nextCount: count + 1 });`,
+  },
+  "attr-hole": {
+    why: "Holes are only text slots. An attribute value is not a text node, so it cannot be filled the same way and would be left as literal braces.",
+    bad: `<!-- card.html -->
+<a href="/user/{{ id }}">profile</a>`,
+    good: `<!-- card.html -->
+<a data-ref="link">profile</a>
+// card.ts
+this.refs.link.href = "/user/" + id;`,
+  },
+  "invalid-event-name": {
+    why: "The event name in data-on-<event> becomes a DOM event listener, and DOM event names are lowercase. HTML attribute names are case-insensitive, so an uppercase name would silently listen for a different event than the one written.",
+    bad: `<button data-on-clickOutside="close">x</button>`,
+    good: `<button data-on-click="close">x</button>`,
+  },
+  "invalid-handler": {
+    why: "data-on-* only names a method; HTML holds no expressions or calls. A call such as save(1) would not be run, and the type of the method could not be checked.",
+    bad: `<button data-on-click="remove(item.id)">x</button>`,
+    good: `<button data-on-click="remove">x</button>
+// card.ts
+remove() { /* read what you need from state or props here */ }`,
+  },
+  "reserved-handler": {
+    why: "A handler becomes a method on the component class. A name such as render, click or remove would override a member of HTMLElement or ts-dom and break the component in ways tsc cannot always see.",
+    bad: `<button data-on-click="render">refresh</button>`,
+    good: `<button data-on-click="refresh">refresh</button>`,
+  },
+  "empty-ref": {
+    why: "data-ref names an element so TypeScript can reach it through this.refs. An empty name gives codegen nothing to generate.",
+    bad: `<input data-ref="">`,
+    good: `<input data-ref="name">
+// card.ts
+this.refs.name.focus();`,
+  },
+  "duplicate-ref": {
+    why: "Each data-ref becomes one field of this.refs, so two elements with the same name would be indistinguishable and one would be unreachable.",
+    bad: `<button data-ref="btn">ok</button>
+<button data-ref="btn">cancel</button>`,
+    good: `<button data-ref="ok">ok</button>
+<button data-ref="cancel">cancel</button>`,
+  },
+  "empty-if": {
+    why: "data-if names a condition that TypeScript toggles through this.set. Without a name there is nothing to toggle.",
+    bad: `<p data-if="">Saved</p>`,
+    good: `<p data-if="saved">Saved</p>
+// card.ts
+this.set({ saved: true });`,
+  },
+  "if-on-item-root": {
+    why: "The root element of a data-each item is the item itself, created and removed by the list. A data-if on it would fight the list over whether the item exists.",
+    bad: `<template data-each="rows">
+  <li data-if="visible">{{ label }}</li>
+</template>`,
+    good: `<template data-each="rows">
+  <li><span data-if="visible">{{ label }}</span></li>
+</template>`,
+  },
+  "slot-in-list": {
+    why: "A slot is filled once by the light DOM of the component, but a data-each template is cloned for every item, so the same slot would appear many times.",
+    bad: `<template data-each="rows">
+  <li><slot></slot></li>
+</template>`,
+    good: `<slot></slot>
+<template data-each="rows">
+  <li>{{ label }}</li>
+</template>`,
+  },
+  "style-not-top-level": {
+    why: "The component collects its styles from the top level of the template and applies them once. A style nested inside other markup would not be picked up.",
+    bad: `<div>
+  <style>p { color: red; }</style>
+  <p>hi</p>
+</div>`,
+    good: `<style>p { color: red; }</style>
+<div>
+  <p>hi</p>
+</div>`,
+  },
+  "duplicate-slot": {
+    why: "Two slots with the same name receive the same light DOM, and the browser shows it in only one of them. This is a warning because it is sometimes a mistake of copying markup.",
+    bad: `<slot name="actions"></slot>
+<slot name="actions"></slot>`,
+    good: `<slot name="actions"></slot>
+<slot name="footer"></slot>`,
+  },
+  "each-not-template": {
+    why: "A list needs an inert prototype that is cloned for each item. Only a <template> provides that without being rendered itself.",
+    bad: `<ul data-each="todos">
+  <li>{{ title }}</li>
+</ul>`,
+    good: `<ul>
+  <template data-each="todos">
+    <li>{{ title }}</li>
+  </template>
+</ul>`,
+  },
+  "empty-each": {
+    why: "The data-each name becomes this.lists.<name>. An empty name gives codegen no list to generate.",
+    bad: `<template data-each="">
+  <li>{{ title }}</li>
+</template>`,
+    good: `<template data-each="todos">
+  <li>{{ title }}</li>
+</template>`,
+  },
+  "nested-each": {
+    why: "Updates are explicit and local; nested lists would need a tree of lists to keep in step. Give the inner list to a child component instead.",
+    bad: `<template data-each="groups">
+  <li>
+    <template data-each="items"><span>{{ label }}</span></template>
+  </li>
+</template>`,
+    good: `<template data-each="groups" data-key="id" data-prop="group">
+  <group-row></group-row>
+</template>
+<!-- group-row.html has its own data-each="items" -->`,
+  },
+  "duplicate-each": {
+    why: "Each data-each name becomes one entry of this.lists, so two lists with one name would be the same list in TypeScript.",
+    bad: `<template data-each="rows"><li>{{ a }}</li></template>
+<template data-each="rows"><li>{{ b }}</li></template>`,
+    good: `<template data-each="rows"><li>{{ a }}</li></template>
+<template data-each="extras"><li>{{ b }}</li></template>`,
+  },
+  "each-binding-incomplete": {
+    why: "A list of components needs both the field that identifies an item (data-key) and the prop that receives it (data-prop). With only one, codegen cannot type the items assignment.",
+    bad: `<template data-each="tasks" data-key="id">
+  <task-row></task-row>
+</template>`,
+    good: `<template data-each="tasks" data-key="id" data-prop="task">
+  <task-row></task-row>
+</template>`,
+  },
+  "invalid-each-binding": {
+    why: "data-key and data-prop are names, not paths: the key is a field of the item and the prop is a property of the item component. Both must be single identifiers so tsc can check them.",
+    bad: `<template data-each="tasks" data-key="meta.id" data-prop="the-task">
+  <task-row></task-row>
+</template>`,
+    good: `<template data-each="tasks" data-key="id" data-prop="task">
+  <task-row></task-row>
+</template>`,
+  },
+  "each-binding-root": {
+    why: "With data-key and data-prop the item is a component that receives the data through its prop, so the item root must be exactly one custom element.",
+    bad: `<template data-each="tasks" data-key="id" data-prop="task">
+  <li>{{ title }}</li>
+</template>`,
+    good: `<template data-each="tasks" data-key="id" data-prop="task">
+  <task-row></task-row>
+</template>`,
+  },
+  "each-root-count": {
+    why: "Each item is cloned as one element so the list can move and remove it as a unit. Zero or several roots would leave no single element to key.",
+    bad: `<template data-each="rows">
+  <dt>{{ term }}</dt>
+  <dd>{{ detail }}</dd>
+</template>`,
+    good: `<template data-each="rows">
+  <div><dt>{{ term }}</dt><dd>{{ detail }}</dd></div>
+</template>`,
+  },
+  "document-tag": {
+    why: "A template is parsed as a fragment, and the browser drops <html>, <head> and <body> from fragments, so the markup would silently vanish.",
+    bad: `<body>
+  <h1>{{ title }}</h1>
+</body>`,
+    good: `<h1>{{ title }}</h1>`,
+  },
+  "forbidden-tag": {
+    why: "A script in a template would run code from markup. Behavior belongs to TypeScript, and pages with Trusted Types enabled would block it.",
+    bad: `<script>alert(1)</script>`,
+    good: `// card.ts
+connected() { /* put the behavior in the class */ }`,
+  },
+  "forbidden-attribute": {
+    why: "on* attributes and srcdoc run code from markup or are blocked by Trusted Types. Events are attached by data-on-* to a named method instead.",
+    bad: `<button onclick="save()">save</button>`,
+    good: `<button data-on-click="save">save</button>`,
+  },
+  "unsafe-url": {
+    why: "A javascript: URL in href, src, action or formaction runs code when followed, and Trusted Types pages block it. Use a handler for behavior.",
+    bad: `<a href="javascript:void(0)">more</a>`,
+    good: `<button data-on-click="more">more</button>`,
+  },
+  "duplicate-define": {
+    why: "A custom element tag can be registered only once, so two define() calls with one tag in the scanned directories would make the second fail at runtime and make the generated tag map ambiguous.",
+    bad: `// a.ts
+define("user-card", CardA);
+// b.ts
+define("user-card", CardB);`,
+    good: `// a.ts
+define("user-card", CardA);
+// b.ts
+define("user-badge", CardB);`,
+  },
+
+  // UNUSED_MARKUP_RULES
+  "unused-ref": {
+    why: "A data-ref that no code reads is dead markup, and it often means the code that was meant to use the element was removed or misspelled.",
+    bad: `<!-- card.html -->
+<input data-ref="name">
+// card.ts does not use this.refs.name`,
+    good: `<input data-ref="name">
+// card.ts
+this.refs.name.focus();`,
+  },
+  "unused-if": {
+    why: "A data-if that is never toggled stays in its initial state forever, which usually means the condition was never wired up.",
+    bad: `<p data-if="error">Failed</p>
+// card.ts never sets "error"`,
+    good: `<p data-if="error">Failed</p>
+// card.ts
+this.set({ error: true });`,
+  },
+  "unused-text": {
+    why: "A hole that no code fills renders empty, so the page shows nothing where a value was expected.",
+    bad: `<h2>{{ title }}</h2>
+// card.ts never sets "title"`,
+    good: `<h2>{{ title }}</h2>
+// card.ts
+this.set({ title: "Hello" });`,
+  },
+  "unused-list": {
+    why: "A data-each that the class never assigns or fills always renders an empty list.",
+    bad: `<template data-each="rows"><li>{{ label }}</li></template>
+// card.ts never uses this.lists.rows`,
+    good: `<template data-each="rows"><li>{{ label }}</li></template>
+// card.ts
+this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+  },
+  "unused-item-name": {
+    why: "A name inside a list item that no code fills or reads is dead markup, usually left over after the item shape changed.",
+    bad: `<template data-each="rows"><li>{{ label }} {{ note }}</li></template>
+// card.ts
+this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+    good: `<template data-each="rows"><li>{{ label }}</li></template>
+// card.ts
+this.lists.rows.replace([{ id: 1, label: "a" }]);`,
+  },
+  "missing-handler": {
+    why: "data-on-* names a method, and a missing method means the event does nothing. The same check runs in tsc through the generated types and in lint on the class text.",
+    bad: `<button data-on-click="save">save</button>
+// card.ts defines no save()`,
+    good: `<button data-on-click="save">save</button>
+// card.ts
+save() { /* ... */ }`,
+  },
+  "no-importer": {
+    why: "A template that no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten.",
+    bad: `// card.html exists, but no .ts file contains
+// import tpl from "./card.html.js"`,
+    good: `// card.ts
+import tpl from "./card.html.js";`,
+  },
+
+  // DATA_FLOW_RULES
+  "prop-forwarding": {
+    why: "Props go down one level. Handing your own prop straight to a child is prop drilling and hides where the data really comes from; use a shared store or have the parent that owns the data set the child.",
+    bad: `// panel.ts (props: { name: string })
+render(view) { this.refs.kid.name = view.name; }`,
+    good: `// panel.ts: fill the child from data this component owns
+render(view) { this.refs.kid.name = this.state.label; }`,
+  },
+  "emit-forwarding": {
+    why: "Events go up, one level at a time, and a parent that only re-emits a child's event builds an implicit chain across layers. Handle the event where it matters, or use a shared store.",
+    bad: `// panel.ts
+onChange(e) { this.emit("change", e.detail); }`,
+    good: `// panel.ts
+onChange(e) { this.set({ value: e.detail.value }); }`,
+  },
+  "props-mutation": {
+    why: "Props are read-only inside the component: the parent owns them and sets them. Assigning one here would be overwritten at the next parent update and breaks one-way data flow.",
+    bad: `// counter.ts (props: { count: number })
+inc() { this.count = this.count + 1; }`,
+    good: `// counter.ts
+inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
+  },
+  "custom-event-on-native": {
+    why: "A child's custom event does not bubble, so a handler on a native element would never receive it. Events are handled on the tag of the component that emits them.",
+    bad: `<div data-on-quantity-change="update">
+  <qty-input></qty-input>
+</div>`,
+    good: `<div>
+  <qty-input data-on-quantity-change="update"></qty-input>
+</div>`,
+  },
+  "unknown-prop": {
+    why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing.",
+    bad: `<x-kid lable="hi"></x-kid>`,
+    good: `<x-kid label="hi"></x-kid>
+// x-kid.ts: Component(tpl, { props: { label: "" } })`,
+  },
+  "invalid-prop-value": {
+    why: "An attribute is always a string, so it can only set string, number or boolean props. Other types can only be passed as JS properties.",
+    bad: `<x-list items="a,b"></x-list>
+// x-list.ts: props: { items: [] as string[] }`,
+    good: `<x-list data-ref="list"></x-list>
+// panel.ts
+this.refs.list.items = ["a", "b"];`,
+  },
+  "unknown-event": {
+    why: "The child does not declare this event in emits and it is not a native event, so the handler could never run. The check catches typos and removed events.",
+    bad: `<qty-input data-on-quantity-chnage="update"></qty-input>`,
+    good: `<qty-input data-on-quantity-change="update"></qty-input>
+// qty-input.ts: emits: { "quantity-change": event<{ value: number }>() }`,
+  },
+
+  // A11Y_RULES
+  "img-alt": {
+    why: "Without alt, screen readers cannot describe the image, or read out its file name.",
+    bad: `<img src="logo.png">`,
+    good: `<img src="logo.png" alt="Nativele logo">
+<img src="divider.png" alt="">`,
+  },
+  "control-name": {
+    why: "A button or link with no text, hole, slot or aria-label has no accessible name, so assistive technology announces it as an unnamed control.",
+    bad: `<button data-on-click="close"><svg></svg></button>`,
+    good: `<button data-on-click="close" aria-label="Close"><svg></svg></button>`,
+  },
+  "form-label": {
+    why: "A form control without a label cannot be identified by screen readers, and clicking the label text will not focus it.",
+    bad: `<input data-ref="email">`,
+    good: `<label>Email <input data-ref="email"></label>`,
+  },
+  "iframe-title": {
+    why: "A screen reader announces an iframe by its title. Without one the user cannot tell what it contains.",
+    bad: `<iframe src="/map"></iframe>`,
+    good: `<iframe src="/map" title="Office location map"></iframe>`,
+  },
+  "dialog-name": {
+    why: "A dialog without a name is announced with no context when it opens.",
+    bad: `<dialog><p>Delete?</p></dialog>`,
+    good: `<dialog aria-label="Confirm delete"><p>Delete?</p></dialog>`,
+  },
+  "heading-empty": {
+    why: "An empty heading adds an empty stop to the heading navigation of assistive technology.",
+    bad: `<h2></h2>`,
+    good: `<h2>{{ title }}</h2>`,
+  },
+  "aria-role": {
+    why: "An invalid role is ignored by browsers, so the element loses the meaning you meant to give it. This is almost always a misspelling.",
+    bad: `<div role="buton">save</div>`,
+    good: `<div role="button" tabindex="0">save</div>`,
+  },
+  "aria-attr": {
+    why: "An unknown aria-* attribute is ignored by assistive technology, so the state you meant to expose is lost. This is almost always a misspelling.",
+    bad: `<button aria-pressd="true">bold</button>`,
+    good: `<button aria-pressed="true">bold</button>`,
+  },
+  "role-tabindex": {
+    why: "An element with an interactive role promises keyboard use, but a non-focusable element cannot be reached with the keyboard.",
+    bad: `<div role="button" data-on-click="save">save</div>`,
+    good: `<button data-on-click="save">save</button>`,
+  },
+  "tabindex-positive": {
+    why: "A positive tabindex pulls an element ahead of the natural order and makes the focus order differ from the reading order.",
+    bad: `<button tabindex="3">save</button>`,
+    good: `<button tabindex="0">save</button>`,
+  },
+  "hidden-focusable": {
+    why: "A focusable element inside aria-hidden=\"true\" can be reached by keyboard but is invisible to screen readers.",
+    bad: `<div aria-hidden="true"><button>save</button></div>`,
+    good: `<div><button>save</button></div>`,
+  },
+  "label-for": {
+    why: "A <label for> that points to a missing id labels nothing, so the control stays unnamed.",
+    bad: `<label for="email">Email</label>
+<input id="mail">`,
+    good: `<label for="email">Email</label>
+<input id="email">`,
+  },
+  "id-in-list": {
+    why: "A data-each template is cloned for every item, so an id inside it is repeated and no longer unique in the document.",
+    bad: `<template data-each="rows">
+  <li id="row">{{ label }}</li>
+</template>`,
+    good: `<template data-each="rows">
+  <li data-ref="row">{{ label }}</li>
+</template>`,
+  },
+  "duplicate-id": {
+    why: "Ids must be unique, or label, aria-labelledby and similar references point at the wrong element.",
+    bad: `<input id="name">
+<input id="name">`,
+    good: `<input id="first-name">
+<input id="last-name">`,
+  },
+  "aria-idref": {
+    why: "An ARIA attribute such as aria-labelledby refers to an id that is not in this template, so the reference is dead. If the id lives outside the component, ignore the rule for that file.",
+    bad: `<section aria-labelledby="heading">
+  <h2 id="title">{{ title }}</h2>
+</section>`,
+    good: `<section aria-labelledby="title">
+  <h2 id="title">{{ title }}</h2>
+</section>`,
+  },
+  "heading-order": {
+    why: "Skipping heading levels breaks the outline that screen reader users navigate by.",
+    bad: `<h1>{{ title }}</h1>
+<h3>{{ subtitle }}</h3>`,
+    good: `<h1>{{ title }}</h1>
+<h2>{{ subtitle }}</h2>`,
+  },
+  "table-header": {
+    why: "Without header cells, a screen reader cannot tell which column or row a data cell belongs to.",
+    bad: `<table><tr><td>Name</td><td>Age</td></tr></table>`,
+    good: `<table><tr><th>Name</th><th>Age</th></tr></table>`,
+  },
+  "list-structure": {
+    why: "Screen readers announce lists by counting their items, which only works when <ul>/<ol> contain <li> and <li> sits inside a list.",
+    bad: `<ul><div>one</div></ul>`,
+    good: `<ul><li>one</li></ul>`,
+  },
+  "landmark-label": {
+    why: "When several landmarks of one kind exist, users navigating by landmark hear identical names and cannot tell them apart.",
+    bad: `<nav>...</nav>
+<nav>...</nav>`,
+    good: `<nav aria-label="Main">...</nav>
+<nav aria-label="Footer">...</nav>`,
+  },
+  "redundant-role": {
+    why: "A role that repeats the native role adds nothing and can drift from the element if it is changed later.",
+    bad: `<button role="button">save</button>`,
+    good: `<button>save</button>`,
+  },
+  "click-semantics": {
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable.",
+    bad: `<div data-on-click="open">open</div>`,
+    good: `<button data-on-click="open">open</button>`,
+  },
+
+  // CHECK_RULES
+  "stale-generated": {
+    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned, tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
+    bad: `# card.html was edited, card.html.ts was not regenerated
+npx ts-dom check --no-write`,
+    good: `npx ts-dom gen
+# or: npx ts-dom check (it regenerates first)`,
+  },
+  "missing-binding": {
+    why: "Every {{ hole }} and data-if must be backed by a field in state, props or derive. tsc finds the ones that are not, which usually means a typo or a forgotten declaration.",
+    bad: `<!-- card.html -->
+<h2>{{ title }}</h2>
+// card.ts
+Component(tpl, { state: { name: "" } })`,
+    good: `// card.ts
+Component(tpl, { state: { title: "" } })`,
+  },
+  "conflicting-keys": {
+    why: "state, props and derive share one namespace in the view. The same name in two of them would make it unclear who owns the value, against one-way data flow.",
+    bad: `Component(tpl, {
+  state: { total: 0 },
+  derive: { total: (s) => s.count * 2 },
+})`,
+    good: `Component(tpl, {
+  state: { count: 0 },
+  derive: { total: (s) => s.count * 2 },
+})`,
+  },
+  "reserved-prop": {
+    why: "A prop becomes a property on the element, and names such as title, hidden or render already belong to HTMLElement or ts-dom.",
+    bad: `Component(tpl, { props: { title: "" } })`,
+    good: `Component(tpl, { props: { heading: "" } })`,
+  },
+  "native-event-name": {
+    why: "An emitted event with a native name such as click or input would be confused with the native event and handled by the wrong listeners.",
+    bad: `Component(tpl, { emits: { click: event() } })`,
+    good: `Component(tpl, { emits: { "item-select": event() } })`,
+  },
+  "item-prop-missing": {
+    why: "A list with data-prop assigns each item to that property of the item component. If the component does not declare it, the items go nowhere.",
+    bad: `<template data-each="tasks" data-key="id" data-prop="task"><task-row></task-row></template>
+// task-row.ts
+Component(tpl, { props: { item: {} as Task } })`,
+    good: `// task-row.ts
+Component(tpl, { props: { task: {} as Task } })`,
+  },
+  "item-not-in-tag-map": {
+    why: "tsc learns which class a tag stands for from ts-dom-tags.ts. If the item component is missing there, its items cannot be typed.",
+    bad: `// task-row.ts defines the tag, but ts-dom-tags.ts is out of date
+define("task-row", TaskRow);`,
+    good: `npx ts-dom gen   # regenerates ts-dom-tags.ts`,
+  },
+  "item-class-not-exported": {
+    why: "The tag map imports the class from the file that calls define(), so the class must be exported or tsc cannot see its props.",
+    bad: `class TaskRow extends Component(tpl, {}) {}
+define("task-row", TaskRow);`,
+    good: `export class TaskRow extends Component(tpl, {}) {}
+define("task-row", TaskRow);`,
+  },
+  tsc: {
+    why: "Any TypeScript error that none of the specific rules recognizes is passed through as tsc prints it, with the location moved to the template where it applies.",
+    bad: `// card.ts
+const n: number = "1";`,
+    good: `// card.ts
+const n: number = 1;`,
+  },
+  "tsc-not-found": {
+    why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",
+    bad: `npx ts-dom check   # typescript is not installed`,
+    good: `npm i -D typescript
+npx ts-dom check`,
+  },
+
+  // DOCTOR_RULES
+  "no-tsconfig": {
+    why: "The core value of the library is that tsc checks HTML against TypeScript, and tsc needs a tsconfig.json to know what to check.",
+    bad: `# project root has no tsconfig.json`,
+    good: `// tsconfig.json
+{ "compilerOptions": { "strict": true, "lib": ["ES2022", "DOM"] }, "include": ["src"] }`,
+  },
+  "tsconfig-not-strict": {
+    why: "Without strict, tsc lets wrong names and null values through, which removes most of what the generated types are for.",
+    bad: `// tsconfig.json
+{ "compilerOptions": { "strict": false } }`,
+    good: `// tsconfig.json
+{ "compilerOptions": { "strict": true } }`,
+  },
+  "tsconfig-no-dom-lib": {
+    why: "Components extend HTMLElement and refs are element types. Without the DOM lib those types do not exist.",
+    bad: `// tsconfig.json
+{ "compilerOptions": { "lib": ["ES2022"] } }`,
+    good: `// tsconfig.json
+{ "compilerOptions": { "lib": ["ES2022", "DOM"] } }`,
+  },
+  "tsconfig-classic-resolution": {
+    why: "Templates are imported as ./x.html.js and TypeScript must map that to the generated x.html.ts. The classic resolution does not do that mapping.",
+    bad: `// tsconfig.json
+{ "compilerOptions": { "moduleResolution": "classic" } }`,
+    good: `// tsconfig.json
+{ "compilerOptions": { "moduleResolution": "bundler" } }`,
+  },
+  "tsconfig-misses-templates": {
+    why: "tsc only checks files under include. A template folder left out means its generated types are never checked against the components.",
+    bad: `// tsconfig.json
+{ "include": ["src/server"] }   // templates are in src/ui`,
+    good: `// tsconfig.json
+{ "include": ["src"] }`,
+  },
+  "runtime-not-installed": {
+    why: "Generated files import the runtime package. If it cannot be resolved from the project, they fail to compile and to run.",
+    bad: `// card.html.ts imports "@nativele/ts-dom", which is not installed`,
+    good: `npm i @nativele/ts-dom`,
+  },
+  "template-import-without-js": {
+    why: "Without a bundler plugin, ./x.html is not a module. ./x.html.js is what TypeScript maps to the generated x.html.ts, and it works with or without Vite.",
+    bad: `import tpl from "./card.html";`,
+    good: `import tpl from "./card.html.js";`,
+  },
+  "vite-plugin-missing": {
+    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand.",
+    bad: `// vite.config.ts
+export default defineConfig({ plugins: [] });`,
+    good: `// vite.config.ts
+import { tsDom } from "@nativele/ts-dom/vite";
+export default defineConfig({ plugins: [tsDom()] });`,
+  },
+  "oxlint-plugin-missing": {
+    why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI.",
+    bad: `// .oxlintrc.json
+{ "rules": {} }`,
+    good: `// .oxlintrc.json
+{
+  "jsPlugins": [{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }],
+  "rules": { "ts-dom/unused-markup": "warn" }
+}`,
+  },
+  "formatter-whitespace": {
+    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page.",
+    bad: `# formatter is configured, templates keep their whitespace
+npx ts-dom gen`,
+    good: `npx ts-dom gen --whitespace=collapse
+// or in vite.config.ts: tsDom({ whitespace: "collapse" })`,
+  },
+};

@@ -627,15 +627,21 @@ export function planGenerated(dir: string, options: GenerateOptions = {}): { fil
 
 /** Generated files under `dir` that differ from what `ts-dom gen` would write now. */
 export function staleGenerated(dir: string, options: GenerateOptions = {}): StaleFile[] {
+  return checkGenerated(dir, options).stale;
+}
+
+/** `staleGenerated`, plus the errors that would make `ts-dom gen` fail (template diagnostics, a tag defined twice). */
+export function checkGenerated(dir: string, options: GenerateOptions = {}): { stale: StaleFile[]; errors: string[] } {
+  const plan = planGenerated(dir, options);
   const out: StaleFile[] = [];
-  for (const [file, next] of planGenerated(dir, options).files) {
+  for (const [file, next] of plan.files) {
     const prev = existsSync(file) ? readFileSync(file, "utf8") : null;
     if (next === null) {
       if (prev !== null && prev.startsWith(TAGS_HEADER)) out.push({ file, reason: file.endsWith(".html.ts") ? "orphan" : "outdated" });
     } else if (prev === null) out.push({ file, reason: "missing" });
     else if (prev !== next) out.push({ file, reason: "outdated" });
   }
-  return out.sort((a, b) => a.file.localeCompare(b.file));
+  return { stale: out.sort((a, b) => a.file.localeCompare(b.file)), errors: plan.errors };
 }
 
 function listGenerated(dir: string): string[] {
@@ -670,6 +676,7 @@ export function generateAll(dir: string, options: GenerateOptions = {}): string[
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
+  for (const f of listGenerated(dir)) if (!existsSync(f.slice(0, -3))) unlinkSync(f);
   if (errors.length) throw new CodegenError(errors.join("\n"));
   return written;
 }

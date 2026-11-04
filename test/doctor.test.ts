@@ -48,3 +48,52 @@ describe("ts-dom doctor", () => {
     expect(rules(fine).filter((r) => r !== "stale-generated")).toEqual([]);
   });
 });
+
+describe("ts-dom doctor: tsconfig extends and include", () => {
+  const strictPaths = `"strict": true, "paths": { "@nativele/ts-dom": ["x"] }`;
+  it("follows package and array extends", () => {
+    const cwd = project({
+      "a.json": `{ "compilerOptions": { "lib": ["ES2022", "DOM"] } }`,
+      "tsconfig.json": `{ "extends": ["@cfg/strict/tsconfig.json", "./a.json"], "compilerOptions": { "paths": { "@nativele/ts-dom": ["x"] } } }`,
+      "src/x.html": "<p></p>",
+    });
+    mkdirSync(join(cwd, "node_modules/@cfg/strict"), { recursive: true });
+    writeFileSync(join(cwd, "node_modules/@cfg/strict/package.json"), `{ "name": "@cfg/strict" }`);
+    writeFileSync(join(cwd, "node_modules/@cfg/strict/tsconfig.json"), `{ "compilerOptions": { "strict": true } }`);
+    expect(rules(cwd).filter((r) => r.startsWith("tsconfig"))).toEqual([]);
+  });
+
+  it("an include inherited from a base in another folder is read from that folder", () => {
+    const cwd = project({ "tsconfig.json": `{ "extends": "./configs/base.json", "compilerOptions": { ${strictPaths} } }`, "src/x.html": "<p></p>" });
+    mkdirSync(join(cwd, "configs"));
+    writeFileSync(join(cwd, "configs/base.json"), `{ "include": ["../src"] }`);
+    expect(rules(cwd)).not.toContain("tsconfig-misses-templates");
+  });
+
+  it("checks the folders that hold templates, also when the scanned dir is the project root", () => {
+    const cwd = project({ "tsconfig.json": `{ "compilerOptions": { ${strictPaths} }, "include": ["src/*.ts"] }`, "src/top.html": "<p></p>" });
+    mkdirSync(join(cwd, "src/deep"));
+    writeFileSync(join(cwd, "src/deep/x.html"), "<p></p>");
+    const issues = runDoctor({ dirs: ["."], cwd }).filter((i) => i.rule === "tsconfig-misses-templates");
+    expect(issues.map((i) => i.message)).toEqual([expect.stringContaining("src/deep")]);
+    const fine = project({ "tsconfig.json": `{ "compilerOptions": { ${strictPaths} }, "include": ["src"] }`, "src/x.html": "<p></p>" });
+    expect(runDoctor({ dirs: ["."], cwd: fine }).map((i) => i.rule)).not.toContain("tsconfig-misses-templates");
+  });
+
+  it("a package whose name only contains prettier is not a formatter set-up", () => {
+    const cwd = project({
+      "tsconfig.json": `{ "compilerOptions": { ${strictPaths} } }`,
+      "src/x.html": "<p></p>",
+      "package.json": `{ "devDependencies": { "eslint-config-prettier": "1" } }`,
+    });
+    expect(rules(cwd)).not.toContain("formatter-whitespace");
+  });
+});
+
+describe("ts-dom doctor output", () => {
+  it("every line has file:line:col, also without a file", async () => {
+    const { formatDoctorIssue } = await import("../src/lib/doctor.ts");
+    expect(formatDoctorIssue({ rule: "runtime-not-installed", severity: "error", message: "m" })).toBe(".:1:1 error [runtime-not-installed] m");
+    expect(formatDoctorIssue({ rule: "template-import-without-js", severity: "error", message: "m", file: "src/a.ts", line: 2 })).toBe("src/a.ts:2:1 error [template-import-without-js] m");
+  });
+});

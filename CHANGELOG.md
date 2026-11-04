@@ -14,20 +14,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom doctor [dirs...]` checks the project set-up: a tsconfig with `strict`, the DOM lib, a module resolution other than `classic` and an `include` covering the template folders (read through relative `extends`); the runtime package being resolvable; templates imported as `./x.html` instead of `./x.html.js`; stale generated files; the Vite and oxlint plugins being configured; and a formatter (oxfmt, Prettier) set up while templates keep their whitespace. Stable rule ids, a `Fix:` per issue, `--json`, exit code 1 on errors.
+- `ts-dom doctor [dirs...]` checks the project set-up: a tsconfig with `strict`, the DOM lib, a module resolution other than `classic` and an `include` covering the template folders (read through `extends`: relative paths, packages and arrays); the runtime package being resolvable; templates imported as `./x.html` instead of `./x.html.js`; stale generated files; the Vite and oxlint plugins being configured; and a formatter (oxfmt, Prettier) set up while templates keep their whitespace. Stable rule ids, a `Fix:` per issue, `--json`, exit code 1 on errors.
 
 ## 0.4.3
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom check [dirs...]` runs everything in one pass for agents and CI: template diagnostics, generated files (regenerated, or reported as stale with `--no-write`), the project's own `tsc` (TypeScript 5, 6 or 7), and the lint rules (`--a11y` adds accessibility). TypeScript errors from the template contract point at the template line and column (`missing-binding`, `missing-handler`), item component problems get their own rule ids, and errors that only follow from a broken class are left out. `--json` prints the issues as data; `--strict` fails on warnings.
+- `ts-dom check [dirs...]` runs everything in one pass for agents and CI: template diagnostics, generated files (regenerated, or reported as stale with `--no-write`), the project's own `tsc` (TypeScript 5, 6 or 7), and the lint rules (`--a11y` adds accessibility). TypeScript errors from the template contract point at the template line and column (`missing-binding`, `missing-handler`), item component problems get their own rule ids, and errors that only follow from a broken class (the ones naming that class) are left out. A tag defined twice is reported, and a tsc that does not run to completion (no tsconfig, a bad option) is reported as `tsc-failed` instead of passing silently. `--json` prints the issues as data; `--strict` fails on warnings.
 - The README, the rules for AI agents and `llms.txt` use `ts-dom check` as the command to run after a change.
 
 ## 0.4.2
 
 Not published on its own; it ships with the last 0.4.x version.
 
-- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template), with exit code 1 if there are any; `--json` prints them as data. Codegen exposes `renderFile`, `renderTags`, `planGenerated` and `staleGenerated` for tools that need the generated output without writing it.
+- `ts-dom gen --check` writes nothing and lists generated files that are missing, outdated or orphaned (a deleted template) and the errors that would make `ts-dom gen` fail, with exit code 1 if there are any; `--json` prints them as data. `ts-dom gen` removes an orphaned generated module. Codegen exposes `renderFile`, `renderTags`, `planGenerated` and `staleGenerated` for tools that need the generated output without writing it.
 
 ## 0.4.1
 
@@ -36,7 +36,7 @@ Not published on its own; it ships with the last 0.4.x version.
 - `npm run bench` measures lists of 1,000 to 10,000 items in real Chrome (create, update 10%, reverse, remove half, append) for component items, plain elements and a direct DOM baseline; the README's Performance section shows the results and when to choose which.
 - Assigning `items` sets the prop of a new item before its element goes into the document, so the item component is connected with its item already set and renders once instead of first rendering without it. `replace()` and `upsert()` keep inserting first.
 - README: a fourth example, a list of components (add, remove, sort, toggle, events up from the item), the one-line rule for choosing between `items =` and `replace()`, and how moving an item affects `connected()` and subscriptions with and without `moveBefore`. The introduction and the package description say what the library is built for: type safety and AI coding agents, which can correct their own mistakes from `tsc` errors and the `Fix:` hints of every diagnostic.
-- `state`, `props`, the `view` passed to `render` and the argument of `derive` functions are typed `DeepReadonly` (exported, with `PropAccessors`): changing an array or object inside them in place is a `tsc` error, since the list and child props compare by reference and would not update. `set()` accepts read-only values. A parent can still assign a child's props.
+- `state`, `props`, the `view` passed to `render` and the argument of `derive` functions are typed `DeepReadonly` (class instances with private members keep their own type) (exported, with `PropAccessors`): changing an array or object inside them in place is a `tsc` error, since the list and child props compare by reference and would not update. `set()` accepts read-only values. A parent can still assign a child's props.
 
 ### Breaking changes
 

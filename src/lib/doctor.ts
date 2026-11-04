@@ -44,21 +44,67 @@ function parseJsonc(text: string): Record<string, unknown> {
 
 interface TsConfig {
   compilerOptions: Record<string, unknown>;
+  /** include patterns made absolute against the folder of the config that declared them */
   include?: string[];
 }
 
-/** Read a tsconfig and the ones it extends (relative paths only), the nearer one winning. */
+function resolveExtends(from: string, ext: string): string | null {
+  const dir = dirname(from);
+  if (ext.startsWith(".")) {
+    const target = resolve(dir, ext);
+    return existsSync(target) ? target : existsSync(`${target}.json`) ? `${target}.json` : null;
+  }
+  const req = createRequire(from);
+  for (const spec of [ext, `${ext}.json`, `${ext}/tsconfig.json`]) {
+    try {
+      return req.resolve(spec);
+    } catch {
+      /* try the next form */
+    }
+  }
+  return null;
+}
+
+/** Read a tsconfig and the ones it extends (a relative path, a package, or an array of them), the later and nearer one winning. */
 function readTsConfig(file: string, depth = 0): TsConfig {
   const json = parseJsonc(readFileSync(file, "utf8"));
-  let base: TsConfig = { compilerOptions: {} };
-  const ext = json.extends;
-  if (typeof ext === "string" && ext.startsWith(".") && depth < 5) {
-    const target = resolve(dirname(file), ext.endsWith(".json") ? ext : `${ext}.json`);
-    if (existsSync(target)) base = readTsConfig(target, depth + 1);
+  let merged: TsConfig = { compilerOptions: {} };
+  const exts = typeof json.extends === "string" ? [json.extends] : Array.isArray(json.extends) ? (json.extends as string[]) : [];
+  for (const ext of depth < 5 ? exts : []) {
+    const target = resolveExtends(file, ext);
+    if (!target) continue;
+    const base = readTsConfig(target, depth + 1);
+    merged = { compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions }, ...(base.include ?? merged.include ? { include: base.include ?? merged.include } : {}) };
   }
-  const include = (json.include as string[] | undefined) ?? base.include;
-  return { compilerOptions: { ...base.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}) };
+  const own = json.include as string[] | undefined;
+  const include = own ? own.map((p) => resolve(dirname(file), p).split("\\").join("/")) : merged.include;
+  return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}) };
 }
+
+/** Whether an include pattern (absolute, forward slashes) makes tsc read the files directly in `dir`. */
+function covers(pattern: string, dir: string): boolean {
+  const d = dir.split("\\").join("/");
+  const star = pattern.indexOf("*");
+  if (star === -1) return /\.[cm]?tsx?$/.test(pattern) ? false : d === pattern || d.startsWith(`${pattern}/`);
+  const prefix = pattern.slice(0, star).replace(/\/$/, "");
+  const rest = pattern.slice(star);
+  if (rest.startsWith("**")) return d === prefix || d.startsWith(`${prefix}/`);
+  return d === prefix;
+}
+
+const templateFolders = (dir: string): string[] => {
+  const out = new Set<string>();
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      if (n === "node_modules") continue;
+      const f = join(d, n);
+      if (statSync(f).isDirectory()) walk(f);
+      else if (n.endsWith(".html")) out.add(d);
+    }
+  };
+  walk(dir);
+  return [...out];
+};
 
 function listTs(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -102,13 +148,10 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
       add("tsconfig-classic-resolution", "error", 'moduleResolution "classic" cannot resolve ./x.html.js to the generated x.html.ts. Fix: use "bundler" or "NodeNext".', { file });
     }
     if (config.include) {
-      for (const d of dirs) {
-        const r = relative(cwd, d).split("\\").join("/");
-        const covered = config.include.some((p) => {
-          const pat = p.replace(/^\.\//, "");
-          return pat.startsWith("**") || pat === "." || r === pat || r.startsWith(`${pat.replace(/\/\*\*.*$|\/\*.*$/, "")}/`) || r === pat.replace(/\/\*\*.*$|\/\*.*$/, "");
-        });
-        if (!covered && hasHtml(d)) add("tsconfig-misses-templates", "error", `tsconfig include leaves out ${r}, which has templates, so their generated types are never checked. Fix: add "${r}" to include.`, { file });
+      const missed = new Set<string>();
+      for (const d of dirs) for (const folder of templateFolders(d)) if (!config.include.some((p) => covers(p, folder))) missed.add(rel(folder));
+      for (const folder of missed) {
+        add("tsconfig-misses-templates", "error", `tsconfig include leaves out ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file });
       }
     }
   }
@@ -149,12 +192,19 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     add("oxlint-plugin-missing", "warning", 'The lint config does not load the ts-dom oxlint plugin, so unused markup, data flow and accessibility rules do not run in the editor. Fix: add { name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" } to jsPlugins and enable "ts-dom/unused-markup".', { file: rel(oxlintrc ?? (viteConfig as string)) });
   }
 
-  const pkg = readText(join(cwd, "package.json")) ?? "";
+  const pkgText = readText(join(cwd, "package.json"));
+  const pkg = pkgText ? (JSON.parse(pkgText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> }) : {};
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  const scripts = Object.values(pkg.scripts ?? {});
+  const ignoredHtml = /(^|\n)\s*(\*\*\/)?\*\.html\s*($|\n)/.test(readText(join(cwd, ".prettierignore")) ?? "");
   const formatter =
-    [".oxfmtrc.json", ".oxfmtrc.jsonc", ".prettierrc", ".prettierrc.json", ".prettierrc.js", "prettier.config.js", "prettier.config.mjs"].some((n) => existsSync(join(cwd, n))) ||
-    /\b(oxfmt|prettier|vp fmt)\b/.test(pkg) ||
-    (vite !== null && /\bfmt\s*:/.test(vite));
-  const collapsed = /--whitespace=collapse/.test(pkg) || (vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite));
+    [".oxfmtrc.json", ".oxfmtrc.jsonc"].some((n) => existsSync(join(cwd, n))) ||
+    ("oxfmt" in deps) ||
+    scripts.some((c) => /(^|[\s;&|])(oxfmt|vp fmt)(\s|$)/.test(c)) ||
+    (vite !== null && /\bfmt\s*:/.test(vite)) ||
+    (!ignoredHtml &&
+      ([".prettierrc", ".prettierrc.json", ".prettierrc.js", "prettier.config.js", "prettier.config.mjs"].some((n) => existsSync(join(cwd, n))) || "prettier" in deps || scripts.some((c) => /(^|[\s;&|])prettier(\s|$)/.test(c))));
+  const collapsed = scripts.some((c) => c.includes("--whitespace=collapse")) || (vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite));
   if (formatter && !collapsed && dirs.some(hasHtml)) {
     add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).');
   }
@@ -162,6 +212,5 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
 }
 
 export function formatDoctorIssue(i: DoctorIssue): string {
-  const at = i.file ? `${i.file}${i.line ? `:${i.line}` : ""} ` : "";
-  return `${at}${i.severity} [${i.rule}] ${i.message}`;
+  return `${i.file ?? "."}:${i.line ?? 1}:1 ${i.severity} [${i.rule}] ${i.message}`;
 }
