@@ -704,6 +704,10 @@ Notes:
 - `data-each` cannot be nested. Split it into two templates: put the inner list in its own `.html` (a child component with its own `data-each`) and use that component's tag inside the outer item.
 - `<slot>` cannot be placed inside an item.
 
+### Order of list updates
+
+`replace()` and `upsert()` put a new item's element into the document first and then call `update`, so a child component placed in an item is connected before the parent has set its properties. Build per-item state in the child when it first receives data (for example in a property setter), and guard a render in `connected()` with the data it needs.
+
 ## Trusted Types, Translations and Icons
 
 - Trusted Types: pages that enforce `require-trusted-types-for 'script'` work with no policy, because `ts-dom gen` writes the markup as data and the runtime builds it with DOM calls. Your own code must avoid `innerHTML` too.
