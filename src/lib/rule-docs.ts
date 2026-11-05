@@ -536,9 +536,11 @@ const n: number = 1;`,
     good: `npx ts-dom check --project=tsconfig.json`,
   },
   "dir-not-found": {
-    why: "A folder given to ts-dom check or doctor that does not exist would otherwise be skipped silently, and a clean result would only mean that nothing was looked at.",
-    bad: `npx ts-dom check ap   # the templates live in app/`,
-    good: `npx ts-dom check app`,
+    why: "A folder given to ts-dom check or doctor, or to tsDom({ dirs }) in the Vite plugin, that does not exist would otherwise be skipped silently, and a clean result would only mean that nothing was looked at. The Vite plugin resolves dirs against Vite's root, not the working directory.",
+    bad: `npx ts-dom check ap   # the templates live in app/
+// vite.config.ts with root: "web": tsDom({ dirs: ["web/src"] }) looks for web/web/src`,
+    good: `npx ts-dom check app
+// vite.config.ts with root: "web": tsDom({ dirs: ["src"] })`,
   },
   "tsc-not-found": {
     why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",
