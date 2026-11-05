@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 |
+| @nativele/ts-dom | 0.5.2 (the last agent trial) |
 | zod | 4.6.7 (the procedure was also run with 3.25.76, with the schema changes in limitation 10) |
 | valibot | 1.5.0 (limitation 11) |
 | vite | 8.3.6 |

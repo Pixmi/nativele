@@ -25,7 +25,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 |
+| @nativele/ts-dom | 0.5.2 and every later release (CI runs the example on every change to the library or the Skill) |
 | vitest | 5.1.0 |
 | happy-dom | 21.0.4 |
 | jsdom | 30.1.3 (the same component tests pass; not the recommended environment) |

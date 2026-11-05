@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 |
+| @nativele/ts-dom | 0.5.2 and every later release (CI runs the example on every change to the library or the Skill) |
 | zustand (`zustand/vanilla`) | 5.0.16 |
 | @reduxjs/toolkit | 2.14.0 |
 | redux | 5.0.1 (installed by `@reduxjs/toolkit`; a `legacy_createStore` store with the adapter was checked by hand with `tsc` and Node, the example project does not run it) |

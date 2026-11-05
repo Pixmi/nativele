@@ -25,7 +25,7 @@ Nativele components are native custom elements. The framework renders their tags
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 |
+| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
 | preact | 11.1.1 |
 | vite | 8.3.6 |
 | @preact/preset-vite | 2.10.6 |

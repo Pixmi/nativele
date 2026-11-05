@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 |
+| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |

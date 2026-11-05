@@ -25,7 +25,7 @@ Nativele components are native custom elements. Svelte renders them like any oth
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 |
+| @nativele/ts-dom | 0.5.1 (the last agent trial) |
 | svelte | 5.57.3 |
 | @sveltejs/vite-plugin-svelte | 7.3.1 |
 | svelte-check | 4.7.8 |

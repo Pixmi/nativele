@@ -38,7 +38,7 @@ name: nativele-react
 description: "Use Nativele web components inside a React 19 app: props, events, children and slots, lifecycle, and TSX types. Use when a project has react and @nativele/ts-dom."
 metadata:
   tier: official                 # official | community | experimental
-  nativele: ">=0.5.0 <0.6.0"     # the library versions the Skill was verified with
+  nativele: ">=0.5.0 <0.6.0"     # the library versions the Skill supports; the lower bound is the first one it was verified with
   verified: "2026-11-05"         # date of the last verification
   tools: "react@19.3.1 react-dom@19.3.1 vite@8.3.5 @vitejs/plugin-react@6.2.1 typescript@7.0.2"
   author: "Nativele maintainers" # for community Skills: the contributor
@@ -51,7 +51,7 @@ Quote the `description` and any value that contains `: `, so the frontmatter sta
 Required sections, in this order:
 
 1. **When to use**: the situation and the signals (dependencies, files) that call for this Skill, and when not to use it.
-2. **Versions**: a table of every tool and the exact version it was verified with, and the date. If the project uses a different major version of a tool, the Skill says so and stops treating its steps as verified.
+2. **Versions**: a table of every tool and the exact version it was verified with, and the date. The `@nativele/ts-dom` row says how far that verification reaches: for an Official Skill, "<first version> and every later release", because CI runs its example on every change; for a Community or Experimental Skill, the version of its last agent trial. If the project uses a different major version of a tool, the Skill says so and stops treating its steps as verified.
 3. **Set-up**: numbered steps with the exact commands and file contents, starting from a working project of the tool (for an integration Skill) and covering only what Nativele adds or changes.
 4. **Example**: a complete, minimal working example (every file it needs, short).
 5. **Known limitations**: what does not work or needs care, each with what to do instead. An agent must never have to guess these.
@@ -92,7 +92,7 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 
 - `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a real-browser test of what the Skill promises: usually a `verify.mjs` script; an example whose Skill sets up tests (`nativele-testing`, `nativele-architecture`) runs its own Vitest and Playwright Test suites instead.
 - `nativele-core` has no example of its own: the library's CI, which checks every example in the repository, verifies it.
-- The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when an `example/` changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. A change to `SKILL.md` runs only `.github/workflows/skills-format.yml`, which checks every `SKILL.md` against this specification. Neither is a required check for `main`.
+- The workflow `.github/workflows/skills.yml` has two required checks for `main`. "Verify Skill examples" runs `npm run verify` for each Official Skill when an `example/` or the library changes, and once a month, so a third-party release that breaks a Skill is found; an Official Skill whose example fails therefore cannot be merged. "SKILL.md format" checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, when any of them changes. Both report on every pull request, skipped when nothing they check changed.
 - The monthly run opens nothing by itself; a failure is reported in the workflow run, and the Skill is fixed or moved to Experimental.
 
 ## Contributing a Skill
@@ -117,7 +117,28 @@ The Skill is accepted when:
 - the agent followed the Skill's steps as written, and no step was wrong for the stated versions;
 - every guess, outside search or unexplained error in the report is already covered by the Skill; a guess about the tool itself (how to configure the framework, the build tool or the test runner beyond what Nativele needs) is not a gap in the Skill.
 
-Otherwise the maintainers send the gaps back to the contributor as review comments (a missing step, a limitation to list, a Troubleshooting row to add), and the trial runs again, with a new agent, on the updated Skill. The record of the passing trial (agent and model, date, versions, Verify output) is added to the PR as a review comment.
+Otherwise the maintainers send the gaps back to the contributor as review comments (a missing step, a limitation to list, a Troubleshooting row to add), and the trial runs again, with a new agent, on the updated Skill. Each trial is recorded on the PR as a review comment in this form, so a reader can see which agent passed which task, what it ran into, and whether a later change to the Skill needs a new trial:
+
+```yaml
+trial:
+  skill: nativele-vue
+  round: 2                      # 1 for the first trial; a new agent each round
+  date: 2026-11-05
+  nativele: 0.5.4               # the packed version the agent installed
+  tools: vue@3.5.44 vite@8.3.6 vue-tsc@3.3.14 typescript@6.0.3
+  agent: Claude Code            # or Codex, Cursor, ...
+  model: <model id>
+  start: create-vite vue-ts, built once before Nativele was added
+  task: |
+    An inventory screen: an item component in a keyed list Vue sorts, a two-way bound input,
+    Light DOM and shadow slots with Vue-managed children, a store bound under <KeepAlive>.
+  verify:                       # the Skill's Verify commands, as the maintainer re-ran them
+    "npx ts-dom check src/nv": "ts-dom check: no issues"
+    "npm run build": "built"
+    browser: 22 checks passed, no console errors or Vue warnings
+  gaps: []                      # each guess or error the Skill did not cover; empty to accept
+  result: accepted              # or: gaps sent back
+```
 
 ## Skills
 

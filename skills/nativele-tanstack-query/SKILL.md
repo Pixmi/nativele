@@ -25,7 +25,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 |
+| @nativele/ts-dom | 0.5.2 (the last agent trial) |
 | @tanstack/query-core | 5.106.1 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
