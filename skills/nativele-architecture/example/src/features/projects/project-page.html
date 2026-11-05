@@ -1,0 +1,13 @@
+<p><a href="/">All projects</a></p>
+<section data-if="found">
+  <h1>{{ name }}</h1>
+  <progress-meter data-ref="meter"></progress-meter>
+  <text-entry label="New task" action="Add task" data-on-entry-submit="onAdd"></text-entry>
+  <ul>
+    <template data-each="tasks" data-key="id" data-prop="task">
+      <task-row role="listitem" data-on-task-toggle="onToggle"></task-row>
+    </template>
+  </ul>
+  <p data-if="someHidden">{{ hiddenCount }} done tasks are hidden.</p>
+</section>
+<p data-if="missing">There is no project with this id.</p>

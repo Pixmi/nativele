@@ -135,4 +135,5 @@ Otherwise the maintainers send the gaps back to the contributor as review commen
 | `nativele-tanstack-query` | Experimental | available | `@tanstack/query-core` observers through `bind`: loading and error states, keys from props, mutations |
 | `nativele-zod` | Experimental | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
 | `nativele-tailwind` | Experimental | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
+| `nativele-architecture` | Official | available | app layout: feature folders, shared components and stores, pages as custom elements mounted by a router (Navigation API or universal-router), lazy pages, one scanned folder, unit/browser/end-to-end split |
 | Other libraries | Experimental or Community | open for contributions | |

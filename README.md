@@ -65,6 +65,7 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-vue` | Nativele components in Vue 3: props, events, `v-model`, slots, `<KeepAlive>`, template types |
 | `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types |
 | `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection (Experimental) |
+| `nativele-architecture` | app layout: feature folders, shared components and stores, pages mounted by a router, lazy pages, the test split |
 | `nativele-vite` | Nativele in a Vite app: the plugin and `root`, multi-page builds, hot updates |
 | `nativele-integration` | Nativele components in a framework without its own Skill (Preact, Solid, ...): properties, events, slots, lifecycle, template types (Experimental) |
 | `nativele-state-management` | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` |
@@ -228,6 +229,7 @@ The full guide is in English:
 - [Components and data flow: state, props, derive, events, composition, stores](https://github.com/Pixmi/nativele/blob/main/docs/components.md)
 - [Recipes: loading and error states, store data, filtered lists, dialogs, form validation](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md)
 - [Lists: lists of components with `items =`, plain lists with `replace()`, moving items](https://github.com/Pixmi/nativele/blob/main/docs/lists.md)
+- [Architecture: feature folders, shared components and stores, pages mounted by a router, where state lives, testing strategy](https://github.com/Pixmi/nativele/blob/main/docs/architecture.md)
 - [Setup, checks and lint: installation, Vite, oxlint, `ts-dom check`, `ts-dom doctor`, accessibility](https://github.com/Pixmi/nativele/blob/main/docs/tooling.md)
 - [Performance: the large list benchmark](https://github.com/Pixmi/nativele/blob/main/docs/performance.md)
 - [Design: principles, deliberate decisions, limitations](https://github.com/Pixmi/nativele/blob/main/docs/design.md)

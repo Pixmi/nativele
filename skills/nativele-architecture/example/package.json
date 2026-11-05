@@ -1,0 +1,26 @@
+{
+  "name": "nativele-architecture-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "ts-dom check src && vite build",
+    "preview": "vite preview",
+    "test": "vitest run --project unit",
+    "test:browser": "vitest run --project browser",
+    "test:e2e": "playwright test",
+    "verify": "npm run build && ts-dom doctor src && npm test && npm run test:browser && npm run test:e2e"
+  },
+  "dependencies": {
+    "@nativele/ts-dom": "file:../../.."
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@vitest/browser-playwright": "5.1.0",
+    "happy-dom": "21.0.4",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  }
+}
