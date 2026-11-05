@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Unreleased
 
+- Fixed: `unused-ref` (and the matching checks for holes and lists) reported every ref as unused when the class held `this.refs` in a variable (`const r = this.refs; r.name.focus()`). Such an alias now counts as using every name, like `this.refs[k]`; destructuring (`const { name } = this.refs`) is still checked name by name.
 - Fixed: in a list item, a `data-ref` on an element inside a `data-if` block was missing from the item's `refs` (the generated type declared it, so the code compiled and then threw). The refs are now collected before the item hides its `data-if` blocks.
 - `nativele-integration` is now Official, verified with Preact 11 and an example project in CI. Its worked example is Preact:
   - the JSX declaration that types Nativele tags;
