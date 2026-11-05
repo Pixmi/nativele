@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { basename, dirname, relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { analyze, listHtml, scanDefines } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 
@@ -315,26 +315,48 @@ function kindOf(valueText: string): PropKind {
   return "other";
 }
 
+/** Every definition of each tag found by contractsFor, with the folder of the package that defines it. */
+export type Contracts = Map<string, { pkg: string; contract: Contract }[]>;
+
+/** The nearest folder at or above `file` that holds a package.json, or "" when there is none. */
+function packageOf(file: string): string {
+  for (let dir = dirname(resolve(file)); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "package.json"))) return dir;
+    if (dirname(dir) === dir) return "";
+  }
+}
+
 /**
  * Read the declared props and emitted events of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[]): Map<string, Contract> {
+export function contractsFor(dirs: string[]): Contracts {
+  const out: Contracts = new Map();
+  for (const def of scanDefines(dirs)) {
+    const code = readFileSync(def.file, "utf8");
+    const m = new RegExp(`class\\s+${esc(def.className)}\\s+extends\\s+Component\\s*\\(`).exec(code);
+    if (!m) continue;
+    const open = code.indexOf("(", m.index + m[0].length - 1);
+    const close = matchClose(code, open, "(", ")");
+    if (close < 0) continue;
+    const call = code.slice(open, close + 1);
+    const contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(def.file), contract }]);
+  }
+  return out;
+}
+
+/**
+ * The contracts that apply to a template in `file`. A tag defined once uses that definition. A tag defined several times
+ * (separate apps or packages in one folder) uses the one in the same package as `file`, and is left out when that is not
+ * exactly one, so a template is never checked against a component it does not use.
+ */
+export function contractsAt(all: Contracts, file: string): Map<string, Contract> {
+  const pkg = packageOf(file);
   const out = new Map<string, Contract>();
-  for (const dir of dirs) {
-    for (const def of scanDefines(dir)) {
-      const code = readFileSync(def.file, "utf8");
-      const m = new RegExp(`class\\s+${esc(def.className)}\\s+extends\\s+Component\\s*\\(`).exec(code);
-      if (!m) continue;
-      const open = code.indexOf("(", m.index + m[0].length - 1);
-      const close = matchClose(code, open, "(", ")");
-      if (close < 0) continue;
-      const call = code.slice(open, close + 1);
-      out.set(def.tag, {
-        props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])),
-        emits: new Set(optionKeys(call, "emits")),
-      });
-    }
+  for (const [tag, defs] of all) {
+    const own = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
+    if (own.length === 1) out.set(tag, own[0]!.contract);
   }
   return out;
 }
@@ -521,7 +543,7 @@ export function lintDataFlow(dirs: string[], tsFiles: string[]): LintIssue[] {
       for (const [f, src] of sources) {
         if (dirname(f) === dirname(html) && importsHtml(src, name)) classes = classes.concat(componentClasses(src, spec));
       }
-      for (const d of dataFlow(readFileSync(html, "utf8"), classes, [], contracts)) issues.push({ file, ...d });
+      for (const d of dataFlow(readFileSync(html, "utf8"), classes, [], contractsAt(contracts, html))) issues.push({ file, ...d });
     }
   }
   return issues;

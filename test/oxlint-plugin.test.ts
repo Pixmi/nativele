@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -23,7 +23,7 @@ function project(rules: Record<string, string>): string {
 
 const run = (dir: string, ...args: string[]) => {
   try {
-    return execFileSync(process.execPath, [oxlint, "--format=json", ...args, "panel.ts"], { cwd: dir, encoding: "utf8", env });
+    return execFileSync(process.execPath, [oxlint, "--format=json", ...args, ...(args.some((a) => a.endsWith(".ts")) ? [] : ["panel.ts"])], { cwd: dir, encoding: "utf8", env });
   } catch (e) {
     return (e as { stdout: string }).stdout;
   }
@@ -38,6 +38,28 @@ describe("the lint plugin in oxlint", () => {
       ["ts-dom(missing-handler)", "error", "./panel.html.js:1:1 [missing-handler]"],
       ["ts-dom(unused-ref)", "warning", "./panel.html.js:2:1 [unused-ref]"],
     ]);
+  }, 30_000);
+
+  it("checks a child tag against the definition in the linted file's package when another package defines the same tag", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
+    const row = (emits: string) => `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./row.html.js";\nexport class Row extends Component(tpl, { emits: { ${emits} } }) {}\ndefine("x-row", Row);\n`;
+    const files: Record<string, string> = {
+      "package.json": "{}",
+      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-event": "warn" } }),
+      "app/row.html": "<li></li>\n",
+      "app/row.ts": row(`"row-toggle": event(), "row-remove": event()`),
+      "app/board.html": `<x-row data-on-row-remove="removeRow" data-on-row-open="openRow"></x-row>\n`,
+      "app/board.ts": `import { Component } from "@nativele/ts-dom";\nimport tpl from "./board.html.js";\nexport class Board extends Component(tpl) {\n  removeRow(): void {}\n  openRow(): void {}\n}\n`,
+      "example/package.json": "{}",
+      "example/row.html": "<li></li>\n",
+      "example/row.ts": row(`"row-toggle": event()`),
+    };
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), text);
+    }
+    const out = JSON.parse(run(dir, "app/board.ts")) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.map((d) => /does not emit "([^"]+)"/.exec(d.message)?.[1])).toEqual(["row-open"]);
   }, 30_000);
 
   it("--fix-suggestions adds the missing handler to the component class", () => {

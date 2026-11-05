@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { componentClasses, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, templateCode, unusedMarkup } from "../src/lib/lint.ts";
+import { componentClasses, contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, templateCode, unusedMarkup } from "../src/lib/lint.ts";
 import type { Contract } from "../src/lib/lint.ts";
 
 describe("one file importing several templates", () => {
@@ -220,7 +220,7 @@ export class Kid extends Component(tpl, {
 }) {}
 define("x-kid", Kid);`;
   const dir = setup({ "kid.ts": child, "bare.ts": `export class Bare extends Component(tpl) {}\ndefine("x-bare", Bare);` });
-  const contracts = contractsFor([dir]);
+  const contracts = contractsAt(contractsFor([dir]), join(dir, "p.html"));
   const run = (html: string, ignore: string[] = [], c: ReadonlyMap<string, Contract> = contracts) => dataFlow(html, [], ignore, c);
 
   it("contractsFor reads props (with kinds) and emits from the child's source", () => {
@@ -311,6 +311,72 @@ define("x-kid", Kid);`;
     const issues = lintDataFlow([d], [join(d, "p.ts"), join(d, "kid.ts")]);
     expect(issues.map((i) => i.rule)).toEqual(["unknown-prop"]);
     expect(issues[0]?.file.endsWith("p.html")).toBe(true);
+  });
+});
+
+describe("a tag defined more than once under the scanned folders", () => {
+  const write = (root: string, files: Record<string, string>) => {
+    for (const [n, c] of Object.entries(files)) {
+      mkdirSync(join(root, n, ".."), { recursive: true });
+      writeFileSync(join(root, n), c);
+    }
+  };
+  const row = (emits: string) => `import tpl from "./row.html.js";\nexport class Row extends Component(tpl, { emits: { ${emits} } }) {}\ndefine("x-row", Row);`;
+  const parent = `import t from "./board.html.js";\nclass Board extends Component(t) {}`;
+  const board = `<x-row data-on-row-remove="r"></x-row>`;
+  const twoApps = () => {
+    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    write(root, {
+      "package.json": "{}",
+      "app/row.ts": row(`"row-toggle": event(), "row-remove": event()`),
+      "app/board.html": board,
+      "app/board.ts": parent,
+      "other/package.json": "{}",
+      "other/row.ts": row(`"row-toggle": event()`),
+      "other/board.html": board,
+      "other/board.ts": parent,
+    });
+    return root;
+  };
+
+  it("each template is checked against the definition in its own package", () => {
+    const root = twoApps();
+    const all = contractsFor([root]);
+    expect([...(contractsAt(all, join(root, "app/board.html")).get("x-row")?.emits ?? [])]).toEqual(["row-toggle", "row-remove"]);
+    expect([...(contractsAt(all, join(root, "other/board.html")).get("x-row")?.emits ?? [])]).toEqual(["row-toggle"]);
+  });
+  it("an event is reported only when the own package's child does not emit it", () => {
+    const root = twoApps();
+    const all = contractsFor([root]);
+    const flow = (dir: string) => dataFlow(board, [], [], contractsAt(all, join(root, dir, "board.html"))).map((d) => d.rule);
+    expect(flow("app")).toEqual([]);
+    expect(flow("other")).toEqual(["unknown-event"]);
+  });
+  it("ts-dom lint with several folders applies the same rule", () => {
+    const root = twoApps();
+    const dirs = [join(root, "app"), join(root, "other")];
+    const issues = lintDataFlow(dirs, dirs.flatMap((d) => ["row.ts", "board.ts"].map((f) => join(d, f))));
+    expect(issues.map((i) => [i.file.endsWith(join("other", "board.html")), i.rule])).toEqual([[true, "unknown-event"]]);
+  });
+  it("a tag defined twice in one package, or in other packages only, is not checked rather than guessed", () => {
+    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    write(root, {
+      "package.json": "{}",
+      "a/row.ts": row(`"row-toggle": event()`),
+      "b/row.ts": row(`"row-open": event()`),
+      "lib1/package.json": "{}",
+      "lib1/item.ts": row(`"one": event()`).replace("x-row", "x-item"),
+      "lib2/package.json": "{}",
+      "lib2/item.ts": row(`"two": event()`).replace("x-row", "x-item"),
+    });
+    const at = contractsAt(contractsFor([root]), join(root, "board.html"));
+    expect(at.has("x-row")).toBe(false);
+    expect(at.has("x-item")).toBe(false);
+  });
+  it("a tag defined once applies everywhere, also from another package", () => {
+    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    write(root, { "package.json": "{}", "ui/package.json": "{}", "ui/row.ts": row(`"row-toggle": event()`) });
+    expect(contractsAt(contractsFor([root]), join(root, "app/board.html")).has("x-row")).toBe(true);
   });
 });
 

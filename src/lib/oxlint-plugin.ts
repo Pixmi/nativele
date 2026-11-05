@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { A11Y_RULES, checkA11y } from "./a11y.ts";
-import { componentClasses, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
-import type { Contract } from "./lint.ts";
+import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
+import type { Contracts } from "./lint.ts";
 import type { Diagnostic } from "./codegen.ts";
 
 interface ImportNode {
@@ -34,7 +34,7 @@ const ignoreSchema = [
 ];
 
 /** Child component contracts, scanned once per process from the working directory. */
-let contracts: Map<string, Contract> | null = null;
+let contracts: Contracts | null = null;
 const getContracts = () => (contracts ??= contractsFor([process.cwd()]));
 
 // Each template is analyzed once per group for a given file text and template text, however many rules ask for it.
@@ -43,7 +43,7 @@ function groupDiagnostics(group: Group, html: string, code: string, spec: string
   const key = `${group}\0${filename}\0${spec}`;
   const hit = cache.get(key);
   if (hit && hit.code === code && hit.html === html) return hit.diags;
-  const diags = group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec)) : group === "a11y" ? checkA11y(html) : dataFlow(html, componentClasses(code, spec), [], getContracts());
+  const diags = group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec)) : group === "a11y" ? checkA11y(html) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename));
   cache.set(key, { code, html, diags });
   return diags;
 }
