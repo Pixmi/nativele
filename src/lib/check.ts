@@ -155,7 +155,10 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
   const brokenFiles = new Set([...brokenClasses.values()].map((e) => rel(resolve(cwd, e.file))));
-  const classIn = (message: string) => [...brokenClasses.keys()].find((c) => new RegExp(`(?<![\\w$.])${c.replace(/\$/g, "\\$")}(?![\\w$])`).test(message));
+  const classIn = (message: string) => {
+    const types = [...message.matchAll(/'([^']*)'/g)].flatMap((m) => topLevelMembers(m[1] as string).map((t) => t.replace(/^typeof\s+/, "")));
+    return [...brokenClasses.keys()].find((c) => types.includes(c));
+  };
   return out.flatMap((i) => {
     const cls = i.rule === "tsc" ? classIn(i.message) : undefined;
     if (i.rule === "tsc" && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
@@ -166,6 +169,24 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cause.file))}:${cause.line}:${cause.col}`;
     return [{ ...i, message: `${i.message.replace(/ Fix: .*$/s, "")} This error follows from the contract error of ${cls} at ${at}, which makes tsc type ${cls} as that error instead of an element. Fix: fix that error first; this one then goes away.` }];
   });
+}
+
+/** The members of a union or intersection type as tsc prints it (`A & { x: number; }` gives `A` and `{ x: number; }`); any other type is its only member. */
+function topLevelMembers(type: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < type.length; i++) {
+    const c = type[i] as string;
+    if ("({[<".includes(c)) depth++;
+    else if (")}]".includes(c) || (c === ">" && type[i - 1] !== "=")) depth--;
+    else if (depth === 0 && (c === "&" || c === "|")) {
+      out.push(type.slice(from, i));
+      from = i + 1;
+    }
+  }
+  out.push(type.slice(from));
+  return out.map((t) => t.trim());
 }
 
 /** The offset of the `}` that closes a class body, given the offset of the `(` of its `extends Component(`; -1 when it cannot be found. Strings and comments are skipped. */

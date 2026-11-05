@@ -451,6 +451,12 @@ describe("whitespace option", () => {
     expect(collapsed(`<button>\n  Save\n</button>`)).toBe(`[["button",{},["Save"]]]`);
     expect(collapsed(`<span>\n  <b>x</b>\n</span>`)).toBe(`[["span",{},[" ",["b",{},["x"]]," "]]]`);
   });
+  it("collapse keeps the spaces between the inline content of an SVG <text>, and drops whitespace between other SVG elements", () => {
+    const ns = `"http://www.w3.org/2000/svg"`;
+    expect(collapsed(`<svg><text>\n  Hello <tspan>{{ name }}</tspan>\n  <tspan>b</tspan>\n</text> <g> <circle></circle> </g></svg>`)).toBe(
+      `[["svg",{},[["text",{},["Hello ",["tspan",{},["{{ name }}"],${ns}]," ",["tspan",{},["b"],${ns}]],${ns}],["g",{},[["circle",{},[],${ns}]],${ns}]],${ns}]]`,
+    );
+  });
   it("collapse leaves non-breaking spaces alone", () => {
     expect(collapsed(`<p>a  b</p>`)).toBe(`[["p",{},["a  b"]]]`);
   });

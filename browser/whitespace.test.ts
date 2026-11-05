@@ -95,7 +95,44 @@ const cases: { name: string; line: string; formatted: string }[] = [
     line: `<pre>  keep\n  this</pre><textarea>  and\n this</textarea>`,
     formatted: `<pre>\n  keep\n  this</pre>\n<textarea>\n  and\n this</textarea>\n`,
   },
+  {
+    name: "svg shapes in a paragraph",
+    line: `<p>Chart <svg viewBox="0 0 10 10" width="10"><g><circle r="4"></circle> <rect width="2" height="2"></rect></g></svg> legend text after it</p>`,
+    formatted: `<p>\n  Chart\n  <svg viewBox="0 0 10 10" width="10">\n    <g>\n      <circle r="4"></circle>\n      <rect width="2" height="2"></rect>\n    </g>\n  </svg>\n  legend text after it\n</p>\n`,
+  },
 ];
+
+// SVG text content elements are inline, which oxfmt assumes and Prettier does not: where their output differs, each is a case of its own. Prettier puts a line break between text and a <tspan> that touch it, which adds a space, so a template without whitespace there has only an oxfmt case.
+const svg: { name: string; line: string; prettier: string | null; oxfmt: string }[] = [
+  {
+    name: "svg <tspan> between words",
+    line: `<svg viewBox="0 0 200 40"><text x="0" y="20">Hello <tspan>{{ name }}</tspan> <tspan font-weight="bold">b</tspan></text></svg>`,
+    prettier: `<svg viewBox="0 0 200 40">\n  <text x="0" y="20">\n    Hello\n    <tspan>{{ name }}</tspan>\n    <tspan font-weight="bold">b</tspan>\n  </text>\n</svg>\n`,
+    oxfmt: `<svg viewBox="0 0 200 40">\n  <text x="0" y="20">\n    Hello <tspan>{{ name }}</tspan>\n    <tspan font-weight="bold">b</tspan>\n  </text>\n</svg>\n`,
+  },
+  {
+    name: "svg <text> with <a>",
+    line: `<svg viewBox="0 0 200 40"><text x="0" y="20">Points: <tspan>12</tspan> of <tspan>40</tspan> done today</text><text x="0" y="30"><a href="#x">link</a> <tspan>after</tspan></text></svg>`,
+    prettier: `<svg viewBox="0 0 200 40">\n  <text x="0" y="20">\n    Points:\n    <tspan>12</tspan>\n    of\n    <tspan>40</tspan>\n    done today\n  </text>\n  <text x="0" y="30">\n    <a href="#x">link</a>\n    <tspan>after</tspan>\n  </text>\n</svg>\n`,
+    oxfmt: `<svg viewBox="0 0 200 40">\n  <text x="0" y="20">\n    Points: <tspan>12</tspan> of\n    <tspan>40</tspan> done today\n  </text>\n  <text x="0" y="30">\n    <a href="#x">link</a>\n    <tspan>after</tspan>\n  </text>\n</svg>\n`,
+  },
+  {
+    name: "svg <textPath>",
+    line: `<svg viewBox="0 0 200 40"><defs><path id="p" d="M0 20 H200"></path></defs><text><textPath href="#p">along <tspan>the</tspan> path</textPath></text></svg>`,
+    prettier: `<svg viewBox="0 0 200 40">\n  <defs>\n    <path id="p" d="M0 20 H200"></path>\n  </defs>\n  <text>\n    <textPath href="#p">\n      along\n      <tspan>the</tspan>\n      path\n    </textPath>\n  </text>\n</svg>\n`,
+    oxfmt: `<svg viewBox="0 0 200 40">\n  <defs>\n    <path id="p" d="M0 20 H200"></path>\n  </defs>\n  <text>\n    <textPath href="#p"\n      >along\n      <tspan>the</tspan> path</textPath\n    >\n  </text>\n</svg>\n`,
+  },
+  {
+    name: "svg <tspan> touching text",
+    line: `<svg viewBox="0 0 200 40"><text x="0" y="20">Total<tspan dx="4">{{ count }}</tspan>items, <tspan>{{ done }}</tspan>% done here</text></svg>`,
+    prettier: null,
+    oxfmt: `<svg viewBox="0 0 200 40">\n  <text x="0" y="20">\n    Total<tspan dx="4"\n      >{{ count }}</tspan\n    >items, <tspan>{{ done }}</tspan>%\n    done here\n  </text>\n</svg>\n`,
+  },
+];
+for (const s of svg) {
+  if (s.prettier) cases.push({ name: `${s.name} (Prettier)`, line: s.line, formatted: s.prettier });
+  cases.push({ name: `${s.name} (oxfmt)`, line: s.line, formatted: s.oxfmt });
+}
 
 /** The `innerText` of an inline host holding the built nodes, between two words, so whitespace at the template's edges counts too. */
 const rendered = (html: string, collapse: boolean) =>
