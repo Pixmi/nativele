@@ -151,6 +151,27 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
   });
 });
 
+describe("ts-dom doctor: a Vitest config without the plugin", () => {
+  const base = {
+    "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`,
+    "src/x.html": "<p></p>",
+    "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom()] };`,
+  };
+  const missing = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "vite-plugin-missing");
+
+  it("is reported when it neither uses tsDom nor merges ./vite.config", () => {
+    const issues = missing(project({ ...base, "vitest.config.ts": `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { environment: "happy-dom" } });` }));
+    expect(issues).toMatchObject([{ severity: "warning", file: "vitest.config.ts" }]);
+    expect(issues[0]?.message).toMatch(/replaces the Vite config for Vitest.* Fix: add tsDom\(\) to its plugins, or merge the Vite config/);
+  });
+
+  it("is fine when it uses tsDom or merges ./vite.config", () => {
+    expect(missing(project({ ...base, "vitest.config.mts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom()], test: {} };` }))).toEqual([]);
+    expect(missing(project({ ...base, "vitest.config.ts": `import { defineConfig, mergeConfig } from "vitest/config";\nimport viteConfig from "./vite.config";\nexport default mergeConfig(viteConfig, defineConfig({ test: {} }));` }))).toEqual([]);
+    expect(missing(project(base))).toEqual([]);
+  });
+});
+
 describe("ts-dom doctor: whitespace asked for and whitespace on disk", () => {
   const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/x.html": "<p>\n  hi\n</p>" };
   const whitespace = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "formatter-whitespace");

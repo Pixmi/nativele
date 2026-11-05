@@ -612,12 +612,17 @@ npx ts-dom check`,
 "typecheck": "ts-dom check src"`,
   },
   "vite-plugin-missing": {
-    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand.",
+    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout.",
     bad: `// vite.config.ts
-export default defineConfig({ plugins: [] });`,
+export default defineConfig({ plugins: [] });
+// vitest.config.ts next to a vite.config.ts that has tsDom()
+export default defineConfig({ test: { environment: "happy-dom" } });`,
     good: `// vite.config.ts
 import { tsDom } from "@nativele/ts-dom/vite";
-export default defineConfig({ plugins: [tsDom()] });`,
+export default defineConfig({ plugins: [tsDom()] });
+// vitest.config.ts
+import viteConfig from "./vite.config";
+export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happy-dom" } }));`,
   },
   "oxlint-plugin-missing": {
     why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI.",
