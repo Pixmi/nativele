@@ -43,6 +43,8 @@ Rules the compiler enforces: every `{{ hole }}` / `data-if` name must exist in s
 - Props go DOWN: the parent sets them with an attribute or a property (`this.refs.child.value = v.x`, typed). A component never assigns its own props; to ask for a change it `emit`s an event.
 - Events go UP: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag, casting with `EmitEvent<Child, "event-name">`.
 - Data needed several levels away: share a `createStore` module and `this.bind(store, fn)`; do not forward props or re-emit events through middle components (lint rules `prop-forwarding`, `emit-forwarding`).
+- `store.set` REPLACES the value (a component's `this.set` merges): `store.set((s) => ({ ...s, status: "loading" }))`. In a component with state/props/derive every `{{ hole }}` must be one of them, so copy store data into state in the `bind` callback: `this.bind(store, (s) => this.set({ total: s.items.length }))`.
+- Loading/error states, modal dialogs (a public `open()` called through a typed ref), form validation messages, filtered lists: `docs/recipes.md` and `examples/recipes/` in the repository.
 - Writing form values back (lint rule `unguarded-input-value`): only assign `input.value` when it differs (`if (input.value !== v.value) input.value = v.value`), otherwise the caret jumps.
 
 ## Minimal example
@@ -72,17 +74,18 @@ define("my-counter", MyCounter);
 - Rule: an item with anything of its own (state, events, a nested list) is a component filled with `items =`; an item of a few texts and `data-if` is plain elements filled with `replace()`.
 - Subscribe in `connected()`, never in the constructor: without `moveBefore` a moved item is disconnected (its `bind`/`on`/`onCleanup` released) and connected again. Data every item needs goes in a `createStore` the item binds.
 - Full example (add, remove, sort, toggle, child emit): `examples/readme/task-board.ts` and `task-row.ts` in the repository.
-- Items that are components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row></todo-row></template>`, then `this.lists.todos.items = view.todos` (inside `render`, guarded by `changed.has("todos")`). Keeps the element of each key, creates and removes the rest, sets the `todo` prop of each changed item; `hit.key` in handlers. The item component declares `todo` in its `props`; `tsc` checks the items against that prop type and the `data-key` field; an item component defined in a scanned folder must be exported and listed in `ts-dom-tags.ts` (run `ts-dom gen`), otherwise the assignment is a type error that names the problem.
+- Items that are components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row></todo-row></template>`, then `this.lists.todos.items = view.todos` (inside `render`, guarded by `changed.has("todos")`; `changed` holds the state, prop and derived names that changed, so a derived list is guarded by its own name). Keeps the element of each key, creates and removes the rest, sets the `todo` prop of each changed item; `hit.key` in handlers (`hit: EventHit<Todo, "id">` types `hit.key` and `hit.item`). The item component declares `todo` in its `props`; `tsc` checks the items against that prop type and the `data-key` field; an item component defined in a scanned folder must be exported and listed in `ts-dom-tags.ts` (run `ts-dom gen`), otherwise the assignment is a type error that names the problem.
 - Items that are plain elements: `<template data-each="x">` with `this.lists.x.replace(items, keyFn, (item, { text, show }) => ...)`.
 - `data-each` is never nested: a list inside an item is the item component's own `data-each`.
 
 ## Rules for agents
+- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, `nativele-react` for React 19, ...), each with verified versions; `npx ts-dom skills <name>` prints one, `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`, and `npx ts-dom doctor` suggests the ones that match the project's dependencies.
 - `npx ts-dom rules --explain=<id>` (or `rules --json`) explains any rule id from a diagnostic: why it exists, a wrong example and the fix.
 - Markup well-formedness is a formatter's job: `oxfmt --check` reports misnested tags that the library's parser would silently repair. Generate with `--whitespace=collapse` when a formatter is used.
 - If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first: it reports tsconfig, import path, runtime, generated file and plugin problems with a `Fix:` each.
 - `npx ts-dom gen --check` (writes nothing, exit 1) tells whether the generated files are stale before you trust `tsc` errors.
 - Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` or component change run `npx ts-dom check --json`: it regenerates, runs tsc, maps template contract errors to the template line/col (`missing-binding`, `missing-handler`, item rules), and runs lint. Fix every issue by its `Fix:` hint; never cast a type error away.
-- No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list.
+- No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list, and annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), not `ReadonlySet<string>`, so tsc checks them.
 - Props go down (parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `data-each` cannot be nested: make the inner list its own component.
 
 ## Setup
@@ -95,7 +98,8 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 ## Pitfalls
 - Import templates with `./x.html.js`, not `./x.html`. Run `ts-dom gen` before `tsc` (it creates `x.html.ts` and `ts-dom-tags.ts`; both are generated, do not edit or commit).
 - Exports: `export class` the component to get typed `refs.child` in parent templates (`define("tag", Class)` is scanned).
-- `data-if` content is hidden until the name is truthy; `{{ hole }}` stays empty until filled.
+- `data-if` content is hidden until the name is truthy (it stays in memory, so its `refs` still work); `{{ hole }}` stays empty until filled.
+- With Vite, `package.json` needs `"type": "module"`.
 - `slotchange()` is Light-DOM only; with `shadow: true` use the native `slotchange` event.
 
 ## Docs

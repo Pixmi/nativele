@@ -88,15 +88,27 @@ type IsClean<T> = unknown extends T ? true : false;
 
 type Lists<S extends Schema> = { [K in keyof S["lists"]]: List<S["lists"][K]> };
 
-/** The second argument received by a data-on-* handler method. */
-export interface EventHit<Item = unknown> {
-  /** The element that carries the data-on-* attribute */
-  readonly el: Element;
-  /** When the event happened inside a list item: the key of that item */
-  readonly key?: PropertyKey;
-  /** When the event happened inside a list item: the data last passed to update() for that item. Annotate the handler, e.g. `hit: EventHit<Todo>`, to type it. */
-  readonly item?: Item;
-}
+/**
+ * The second argument received by a data-on-* handler method.
+ * In a handler for events inside list items, name the item type and its key field, e.g. `hit: EventHit<Todo, "id">`: `hit.item` is then a `Todo` and `hit.key` a `Todo["id"]`.
+ */
+export type EventHit<Item = unknown, KeyField extends keyof Item = never> = [KeyField] extends [never]
+  ? {
+      /** The element that carries the data-on-* attribute */
+      readonly el: Element;
+      /** When the event happened inside a list item: the key of that item */
+      readonly key?: PropertyKey;
+      /** When the event happened inside a list item: the data of that item. Annotate the handler, e.g. `hit: EventHit<Todo, "id">`, to type it. */
+      readonly item?: Item;
+    }
+  : {
+      /** The element that carries the data-on-* attribute */
+      readonly el: Element;
+      /** The key of the list item the event happened in */
+      readonly key: Item[KeyField];
+      /** The data of the list item the event happened in */
+      readonly item: Item;
+    };
 
 export interface ComponentInstance<S extends Schema> extends HTMLElement {
   /** Type inference only (define() uses it to check that data-on-* methods exist); does not exist at runtime. */
@@ -138,9 +150,9 @@ export interface StatefulInstance<S extends Schema, St extends object, P extends
   batch(fn: () => void): void;
   /**
    * Override it to handle updates that automatic binding cannot do (lists, attributes, focus, ...).
-   * `view` is state, props and derived values merged; `changed` holds the fields that changed (all of them on the first render).
+   * `view` is state, props and derived values merged; `changed` holds the names of the state fields, props and derived values that changed (all of them on the first render).
    */
-  render(view: View<St & P, R>, changed: ReadonlySet<keyof St | keyof P>): void;
+  render(view: View<St & P, R>, changed: ReadonlySet<keyof St | keyof P | keyof R>): void;
   /** Emit an event declared in `emits` (it does not bubble by default and only reaches this element itself). */
   emit<K extends keyof E & string>(name: K, ...detail: EmitArgs<E[K]>): void;
   /** Type inference only (EmitEvent uses it to get the detail type of an event); does not exist at runtime. */
@@ -455,7 +467,10 @@ export function Component(
       for (const [name, fn] of Object.entries(opts.derive ?? {})) {
         const v = (fn as (s: unknown) => unknown)(to);
         derived[name] = v;
-        if (!from || !Object.is(this.#derived[name], v)) bindName(name, v);
+        if (!from || !Object.is(this.#derived[name], v)) {
+          bindName(name, v);
+          keys.push(name);
+        }
       }
       this.#derived = derived;
       this.render({ ...to, ...derived }, new Set(keys));

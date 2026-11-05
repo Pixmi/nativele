@@ -617,4 +617,15 @@ npx ts-dom gen`,
     good: `npx ts-dom gen --whitespace=collapse
 // or in vite.config.ts: tsDom({ whitespace: "collapse" })`,
   },
+  "skill-available": {
+    why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",
+    bad: `// package.json lists "react", and the project has no copy of the nativele-react Skill`,
+    good: `npx ts-dom skills add nativele-react   # copies it into .claude/skills/ or .agents/skills/
+npx ts-dom skills nativele-react       # or just read it`,
+  },
+  "skill-outdated": {
+    why: "A copied Skill does not update with the package. After an upgrade the copy may describe an older version of Nativele or of the tool it covers.",
+    bad: `// .claude/skills/nativele-core/SKILL.md was copied from an older @nativele/ts-dom`,
+    good: `npx ts-dom skills add nativele-core   # replaces the copy with the one shipped with the installed version`,
+  },
 };

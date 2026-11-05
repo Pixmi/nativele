@@ -25,7 +25,7 @@ export class ShadowPanel extends Component(tpl, {
     this.log.push(`row:${String(hit.key)}`);
     this.set((s) => ({ total: s.total + 1 }));
   }
-  override render(v: { rows: readonly Row[] }, changed: ReadonlySet<string>): void {
+  override render(v: { rows: readonly Row[] }, changed: ReadonlySet<"rows">): void {
     if (!changed.has("rows")) return;
     this.lists.rows.replace(v.rows, (r) => r.id, (r, { refs }) => {
       refs.row.label = `row ${r.id}`;

@@ -10,12 +10,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.0
 
+Nativele is a light, composable UI layer that grows its integrations through Skills instead of through the library. This version ships the first Skills and the command that delivers them, types `changed` and list event handlers more precisely, and adds recipes for common screens.
+
+### Skills
+
+- New `skills/` folder with the specification every Skill follows (versions it was verified with, set-up, a complete example, known limitations, verification commands; Official, Community and Experimental tiers) and a template for contributors. The package ships every `SKILL.md`.
+- `nativele-core`: building components with Nativele, the `ts-dom check` loop and the rules an agent must follow (it replaces the README's "Rules for AI Agents").
+- `nativele-react`: Nativele components in React 19, verified with React 19.3.1, Vite 8.3.5 and TypeScript 7.0.2: props as properties (define before render), `on<event-name>` handlers, children and slots (`shadow: true` or stable wrappers; Light DOM slots with changing React children are unsafe), lifecycle under StrictMode, and a TSX declaration that types every component's props and events from `ts-dom-tags.ts`. Its example project runs in a separate workflow (`skills.yml`) when a Skill or the library changes and once a month.
+- `ts-dom skills` lists the Skills shipped with the installed version (tier, verified date and versions, and whether it is stale: older than six months or not covering the installed version); `ts-dom skills <name>` prints one; `ts-dom skills add <name...>` copies Skills into `.claude/skills/` when the project has `.claude`, otherwise into `.agents/skills/` (`--to=<dir>` for another folder). `--json` prints the list as data.
+- `ts-dom doctor` suggests the Skills whose dependencies the project has (`skill-available`) and reports a project copy that differs from the shipped one (`skill-outdated`). Both are `info` and never change the exit code.
+
+### Components
+
+- `changed` in `render(view, changed)` also holds the derived values whose value changed (all of them on the first render), so `if (changed.has("visible")) this.lists.visible.items = view.visible` works for a derived list. Its type includes the derived names; annotate it with the names you check (`ReadonlySet<"items" | "visible">`) and tsc reports a misspelled name. The examples and guides no longer use `ReadonlySet<string>`.
+- `EventHit<Item, KeyField>`: naming the item type and its key field (`hit: EventHit<Todo, "id">`) types `hit.item` as `Todo` and `hit.key` as `Todo["id"]`, with no cast.
+
+### Lint
+
+- New lint rule `unguarded-input-value` (in the `data-flow` group, and `ts-dom/unguarded-input-value` on its own): a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without comparing it first, which moves the caret while the user types.
+
+### Documentation
+
+- New guide `docs/recipes.md` with `examples/recipes` and a real Chrome test: loading and error states from a shared store, showing store data in a component with state, a filtered list, events from list items, a modal dialog opened through a typed ref, and form validation.
+- The guides say that `store.set` replaces the value (a component's `this.set` merges), that a component with `state`, `props` or `derive` shows store data by copying it into state, that a hidden `data-if` block keeps its elements and refs, and that Vite needs `"type": "module"` in `package.json`.
+- The README's "Rules for AI Agents" becomes "Nativele Skills".
+- The project's agent instructions are `AGENTS.md`, in English, and state the direction: a light UI foundation layer for larger applications, with integrations delivered as Skills.
+- The README is now the introduction (the short version, Nativele Skills, a quick start with two examples, the example apps), and the full guide lives in `docs/`: templates, components and data flow, lists, recipes, setup and checks, performance, design, and developing Nativele. The guide is in English only; `README.zh-TW.md` mirrors the README. The components guide gains a table of the common DOM operations in `render` (text, `data-if` against `hidden`, attributes, classes, form values, lists).
 - The README opens with a banner and the line "Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML."; the package description, `llms.txt` and the repository description use the same wording, and describe the library as one for building web components rather than a UI library (it ships no ready-made components).
 - The setup guide, the README and `ts-dom --help` say which commands write files: `ts-dom check` rewrites the generated files first, `ts-dom check --no-write` and `ts-dom gen --check` write nothing.
-- New lint rule `unguarded-input-value` (in the `data-flow` group, and `ts-dom/unguarded-input-value` on its own): a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without comparing it first, which moves the caret while the user types.
-- The README is now the introduction (the short version, the rules for agents, a quick start with two examples, the example apps), and the full guide lives in `docs/`: templates, components and data flow, lists, setup and checks, performance, design, and developing Nativele. The guide is in English only; `README.zh-TW.md` mirrors the README. The components guide gains a table of the common DOM operations in `render` (text, `data-if` against `hidden`, attributes, classes, form values, lists).
+
+### Breaking changes
+
+- `changed` in `render` now also holds derived names. Code that reads `changed.size` or iterates it sees more names; `changed.has(...)` checks on state and props behave as before.
+- `EventHit` is now a type alias instead of an interface, so it can no longer be extended with `interface X extends EventHit`; intersect it instead (`EventHit & { ... }`).
 
 ## 0.4.6
 

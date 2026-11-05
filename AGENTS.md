@@ -37,6 +37,7 @@ Integration with frameworks and other tools is delivered as Skills, not as runti
 - Every Skill states the versions it was verified with (Nativele and each third-party tool) and the date of that verification. Outdated guidance is more dangerous than none.
 - A Skill never adds a dependency to the library's core or changes its runtime.
 - Tiers: Official (verified and maintained by the maintainers, with an example project checked in CI), Community (contributed, with its author and last verified versions), Experimental (not fully verified yet). New contributions start as Experimental.
+- Skills live in `skills/<name>/SKILL.md` and follow `skills/README.md`. An Official Skill's `example/` is verified by `.github/workflows/skills.yml`; after changing the runtime or a Skill, run `npm run build:lib` and `npm run verify` in that example. A new minor version updates every Skill's `nativele` range and `verified` date once it has been verified again.
 
 ## Language
 

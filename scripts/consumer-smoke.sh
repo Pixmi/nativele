@@ -74,4 +74,12 @@ test -s dist/index.html
 # Make sure the type check really rejects a wrong name
 echo 'import tpl from "./hello.html.js"; import { Component } from "@nativele/ts-dom"; class X extends Component(tpl) { m() { this.refs.nope; } } void X;' > src/bad.ts
 if npx tsc >/dev/null 2>&1; then echo "[smoke] expected tsc to fail but it passed" >&2; exit 1; fi
+rm src/bad.ts
+echo "[smoke] skills"
+npx ts-dom skills | grep -q "nativele-core"
+npx ts-dom skills nativele-react | grep -q "^name: nativele-react"
+npx ts-dom doctor | grep -q "\[skill-available\].*nativele-core"
+npx ts-dom skills add nativele-core >/dev/null
+test -s .agents/skills/nativele-core/SKILL.md
+if npx ts-dom doctor | grep -q "nativele-core"; then echo "[smoke] doctor still recommends a copied Skill" >&2; exit 1; fi
 echo "[smoke] OK"

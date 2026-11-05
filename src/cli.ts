@@ -5,6 +5,7 @@ import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
+import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
 import { checkGenerated, CODEGEN_RULES, CodegenError, generateAll, listHtml, listTs, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
@@ -35,6 +36,13 @@ Commands
   doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
                     and the Vite, oxlint and formatter configuration (default dir: src)
         --json            print the issues as JSON instead of text
+  skills            List the Nativele Skills shipped with this version: task procedures for coding agents
+                    (set-up, a complete example, known limitations, verification), with the versions verified
+        <name>            print one Skill
+        add <name...>     copy Skills into the project: .claude/skills/ when the project has .claude,
+                          otherwise .agents/skills/
+        --to=<dir>        copy into this folder instead
+        --json            print the list as JSON
   rules             List every rule id with its description
         --explain=<id>    why the rule exists, a wrong example and the fix (the id as printed in [brackets])
         --json            print every rule as JSON: { id, group, description, why, bad, good }
@@ -78,6 +86,55 @@ function printRules(): void {
     for (const [id, desc] of Object.entries(rules)) console.log(`  ${id.padEnd(28)} ${desc}`);
   }
   console.log("\nts-dom rules --explain=<id> shows why a rule exists, with a wrong and a right example.");
+}
+
+function skillsCommand(): void {
+  const skills = listSkills();
+  const version = libraryVersion();
+  const names = args.filter((a) => !a.startsWith("--"));
+  const find = (name: string) => {
+    const skill = skills.find((s) => s.name === name);
+    if (!skill) {
+      console.error(`Unknown Skill "${name}". Fix: run ts-dom skills to see the Skills shipped with this version.`);
+      process.exitCode = 1;
+    }
+    return skill;
+  };
+  if (names[0] === "add") {
+    if (names.length < 2) {
+      console.error("Name the Skills to add. Fix: ts-dom skills add <name...> (ts-dom skills lists them).");
+      process.exitCode = 1;
+      return;
+    }
+    const to = args.find((a) => a.startsWith("--to="))?.slice("--to=".length);
+    const target = skillsTarget(process.cwd(), to);
+    for (const name of names.slice(1)) {
+      const skill = find(name);
+      if (skill) console.log(`added ${relative(process.cwd(), addSkill(skill, target))}`);
+    }
+    return;
+  }
+  if (names.length) {
+    for (const name of names) {
+      const skill = find(name);
+      if (skill) console.log(readFileSync(`${skill.dir}/SKILL.md`, "utf8"));
+    }
+    return;
+  }
+  const rows = skills.map((skill) => {
+    const { dir: _dir, ...s } = skill;
+    return { ...s, stale: staleReason(skill, version) };
+  });
+  if (flags.has("--json")) {
+    console.log(JSON.stringify({ version, skills: rows }, null, 2));
+    return;
+  }
+  console.log(`Nativele Skills shipped with @nativele/ts-dom ${version}:\n`);
+  for (const s of rows) {
+    console.log(`  ${s.name.padEnd(28)} ${s.tier.padEnd(13)} verified ${s.verified}${s.stale ? ` (stale: ${s.stale})` : ""}`);
+    console.log(`  ${"".padEnd(28)} ${s.description}`);
+  }
+  console.log("\nts-dom skills <name> prints one; ts-dom skills add <name> copies it into the project for your agent.");
 }
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -131,9 +188,9 @@ try {
   } else if (cmd === "doctor") {
     const issues = runDoctor({ dirs, generate });
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
-    else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatDoctorIssue(i));
+    else for (const i of issues) (i.severity === "error" ? console.error : i.severity === "warning" ? console.warn : console.log)(formatDoctorIssue(i));
     if (issues.some((i) => i.severity === "error")) process.exitCode = 1;
-    if (!flags.has("--json") && !issues.length) console.log("ts-dom doctor: the set-up looks right");
+    if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
     const files = dirs.flatMap(listTs);
     const issues: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
@@ -152,6 +209,8 @@ try {
     if (!flags.has("--json") && !issues.length) console.log("ts-dom lint: no issues");
   } else if (cmd === "rules") {
     printRules();
+  } else if (cmd === "skills") {
+    skillsCommand();
   } else {
     console.log(HELP);
     if (cmd && cmd !== "--help" && cmd !== "-h" && cmd !== "help") process.exitCode = 1;

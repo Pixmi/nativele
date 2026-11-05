@@ -75,6 +75,8 @@ export default defineConfig({
 
 While the dev server runs, the plugin keeps the generated files in step: adding or editing a template regenerates its `x.html.ts` and reloads the page once if a page uses it (a save that changes nothing does not reload), deleting a template removes its `x.html.ts`, and adding or removing a `define()` updates `ts-dom-tags.ts` and the child imports of the templates. `dirs` are relative to Vite's `root`. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
 
+Vite loads `vite.config.ts` as an ES module only when `package.json` has `"type": "module"` (`npm pkg set type=module`); without it, Vite warns that the config is loaded as CommonJS.
+
 When installing, we recommend installing `vite-plus` first and then `ts-dom` (when both are installed in the same npm run, `vite` may not be hoisted to the top level).
 
 ### Lint (optional)
@@ -176,6 +178,20 @@ class Card extends Component(cardTpl) {}   // → reports that title in card.htm
 ```
 
 Note: refs, text, and so on should be used by the component's own class. Access through an instance outside the class (for example in tests) is not counted, so turn this rule off for test directories. When no corresponding class can be found (for example when `Component` is wrapped by a helper), it falls back to comparing the whole file.
+
+## Skills
+
+The package ships Skills: task procedures for coding agents (set-up, a complete example, known limitations, verification commands, and the exact versions they were verified with).
+
+```sh
+npx ts-dom skills                     # list them: tier, verified date and versions, stale or not
+npx ts-dom skills --json              # the same as data
+npx ts-dom skills nativele-react      # print one
+npx ts-dom skills add nativele-core   # copy into .claude/skills/ when the project has .claude, otherwise .agents/skills/
+npx ts-dom skills add nativele-core --to=tools/skills
+```
+
+A Skill is marked stale when its verification is more than six months old or its range of Nativele versions does not include the installed one. `ts-dom skills add` only copies files; it installs nothing. `ts-dom doctor` reports, as `info` that never changes the exit code, the Skills whose dependencies the project has and that it has no copy of (`skill-available`), and a copy that differs from the one shipped with the installed version (`skill-outdated`; run `ts-dom skills add` again to replace it). The format of a Skill and how to contribute one are in [skills/README.md](../skills/README.md).
 
 ## ARIA / Accessibility Checks
 

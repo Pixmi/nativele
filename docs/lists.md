@@ -52,7 +52,7 @@ export class TodoList extends Component(tpl, {
   }
 
   // Automatic binding handles {{ remaining }}; the list is filled here.
-  override render(view: { items: readonly Item[] }, changed: ReadonlySet<string>): void {
+  override render(view: { items: readonly Item[] }, changed: ReadonlySet<"items">): void {
     if (!changed.has("items")) return;
     this.lists.items.replace(
       view.items,
@@ -93,7 +93,7 @@ Name the field that identifies an item and the property that receives it, on the
 render(view, changed) {
   if (changed.has("todos")) this.lists.todos.items = view.todos;
 }
-toggle(_e: Event, hit: EventHit) { /* hit.key is the item's id */ }
+toggle(_e: Event, hit: EventHit<Todo, "id">) { /* hit.key is the item's id, typed Todo["id"]; hit.item is the Todo */ }
 ```
 
 Assigning `items` keeps the element of each key that stays (moved with `moveBefore` where the browser has it, so focus and state survive), creates one for a new key, removes the ones that are gone, and sets `todo` on each element whose item is not the same object as last time. Use immutable updates: changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, for example `{ ...todo, done: true }`. The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned. `tsc` checks the assignment: each item must have the type of the `todo` property that `<todo-row>` declares and a `data-key` field (`id`), and the item component must declare the `data-prop` property; a list without `data-key` and `data-prop` takes no items. This relies on the component being registered in `ts-dom-tags.ts` (an exported `define("todo-row", TodoRow)` in a scanned directory). When the component is defined in a scanned directory but its class is not exported, or `ts-dom-tags.ts` does not list it yet, the assignment is a type error that says so (`itemComponentClassNotExported`, `itemComponentMissingFromTagMap`); only a component from outside the scanned directories accepts any item with the `id` field. At runtime, assigning throws when the value is not an array of objects, when an item has no string or number `id`, when two items share one, or when the template has no `data-key` and `data-prop`.

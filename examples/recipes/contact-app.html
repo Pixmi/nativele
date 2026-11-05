@@ -1,0 +1,12 @@
+<contact-stats></contact-stats>
+<input data-ref="search" type="search" aria-label="Search contacts" data-on-input="search" />
+<button type="button" data-on-click="openForm">Add contact</button>
+<p data-if="loading">Loading...</p>
+<p role="alert" data-if="failed">Could not load: {{ error }} <button type="button" data-on-click="retry">Retry</button></p>
+<p data-if="empty">No contacts match.</p>
+<ul>
+  <template data-each="visible" data-key="id" data-prop="contact">
+    <contact-row role="listitem" data-on-contact-remove="removeRow"></contact-row>
+  </template>
+</ul>
+<contact-form data-ref="form" data-on-contact-add="addRow"></contact-form>

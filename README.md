@@ -8,7 +8,7 @@ Nativele publishes this library as `@nativele/ts-dom` (import it from `@nativele
 
 A lightweight library for building web components: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
 
-**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Rules for AI Agents](#rules-for-ai-agents) is a list you can paste into a project's agent instructions.
+**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Nativele Skills](#nativele-skills) give agents verified procedures for building components and for using them with other tools.
 
 English | [繁體中文](README.zh-TW.md)
 
@@ -46,17 +46,28 @@ Six things cover most components:
 5. **Props go down, events go up**: the parent sets props; the child calls `this.emit("name", detail)` and the parent handles it with `data-on-name` on the child's tag.
 6. **A handler is a public method** `(event, hit)`; inside a list item `hit.key` is the item's key.
 
-## Rules for AI Agents
+## Nativele Skills
 
-Paste these into your project's agent instructions (`AGENTS.md`, `CLAUDE.md` or similar):
+Nativele ships Skills with the package: task procedures for coding agents, each with set-up steps, a complete example, known limitations, the commands that verify the result, and the exact versions it was verified with. The guides hold the facts about the API; a Skill tells an agent how to do a job with them.
 
-- Write the `.html` and the `.ts` of a component together; never edit `x.html.ts` or `ts-dom-tags.ts`, which `ts-dom gen` writes.
-- After changing any `.html` or component, run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files (use `--no-write` where the working tree must stay untouched), runs `tsc`, maps the template contract errors back to the template line and column, and runs the lint rules. Fix every issue it reports, following its `Fix:` hint, instead of casting a type error away.
-- Import templates as `./x.html.js`.
-- No expressions in HTML: put computed values in `derive`, and change state only with `this.set()`.
-- Every diagnostic from `ts-dom gen` and `ts-dom lint` ends with a `Fix:` hint; follow it. `npx ts-dom rules` lists all rule ids, and `npx ts-dom lint --a11y` also checks accessibility.
-- A `data-each` list cannot be nested: put the inner list in its own `.html` as a child component.
-- For a list of components, write `data-key` and `data-prop` on the `<template data-each>`, give the item component `role="listitem"` inside `<ul>` or `<ol>`, assign `this.lists.x.items = ...` with new objects for changed items (never mutate an assigned item), and let `tsc` check the items.
+```sh
+npx ts-dom skills                      # list the Skills in the installed version
+npx ts-dom skills nativele-core        # print one
+npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the project has .claude) or .agents/skills/
+```
+
+`npx ts-dom doctor` reads your `package.json` and suggests the Skills that match it, for example `nativele-react` when React is a dependency.
+
+| Skill | Covers |
+|---|---|
+| `nativele-core` | building components: the `ts-dom check` loop, templates, state, lists, data flow |
+| `nativele-react` | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
+
+Tiers: Official Skills are verified by the maintainers against an example project in CI; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
+
+Nativele stays a light UI layer and grows its integrations through Skills: a new Skill changes no runtime code and adds no dependency. The planned Skills and how to contribute one are in [the Skills guide](https://github.com/Pixmi/nativele/blob/main/skills/README.md).
+
+If your agent does not load Skills, add this line to its instructions (`AGENTS.md`, `CLAUDE.md` or similar): "Before working on Nativele components, run `npx ts-dom skills nativele-core` and follow it."
 
 ## Quick Start
 
@@ -174,16 +185,16 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
     this.refs.title.value = "";
   }
   // A changed task is a new object: the list sets the prop only on items that are not the same object as before.
-  toggleTask(_e: Event, hit: EventHit): void {
+  toggleTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.map((t) => (t.id === hit.key ? { ...t, done: !t.done } : t)) }));
   }
-  removeTask(_e: Event, hit: EventHit): void {
+  removeTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.filter((t) => t.id !== hit.key) }));
   }
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<"tasks">): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -197,6 +208,7 @@ Adding, removing, sorting and toggling all go through `this.set()`; the list kee
 - [examples/signup](examples/signup/signup-form.ts): a signup form. Three components composed (`signup-form` → `form-field`, `entry-row`), covering `props` down, `emits` up, child components inside lists (`hit.key`), `derive` validation, and form input without cursor jumps; the corresponding real Chrome test is in [browser/signup.test.ts](browser/signup.test.ts).
 - [examples/user-card](examples/user-card.ts): the minimal example, covering `state` automatic binding, `data-on-click`, lists, and slots.
 - [examples/todo](examples/todo/todo-app.ts): a complete todo list, covering `state` and `derive`, `data-on-*` event delegation (including `hit.key` for list items), filtering, an empty state, `aria-pressed`, and `skipUnchanged`; it has a corresponding real Chrome end-to-end test ([browser/todo.test.ts](browser/todo.test.ts)).
+- [examples/recipes](examples/recipes/contact-app.ts): a contacts screen for the [Recipes](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md) guide, covering loading and error states from a shared store, a filtered list, a modal dialog with form validation, and typed `hit.key`; its real Chrome test is [browser/recipes.test.ts](browser/recipes.test.ts).
 
 ## Documentation
 
@@ -204,6 +216,7 @@ The full guide is in English:
 
 - [Templates: HTML syntax, generated types, templates without a component, Trusted Types, translations and icons](https://github.com/Pixmi/nativele/blob/main/docs/templates.md)
 - [Components and data flow: state, props, derive, events, composition, stores](https://github.com/Pixmi/nativele/blob/main/docs/components.md)
+- [Recipes: loading and error states, store data, filtered lists, dialogs, form validation](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md)
 - [Lists: lists of components with `items =`, plain lists with `replace()`, moving items](https://github.com/Pixmi/nativele/blob/main/docs/lists.md)
 - [Setup, checks and lint: installation, Vite, oxlint, `ts-dom check`, `ts-dom doctor`, accessibility](https://github.com/Pixmi/nativele/blob/main/docs/tooling.md)
 - [Performance: the large list benchmark](https://github.com/Pixmi/nativele/blob/main/docs/performance.md)

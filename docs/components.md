@@ -162,7 +162,7 @@ class Counter extends Component(tpl, {
 |---|---|
 | `state` | The current data, read-only. Use `set` to change data |
 | `set(patch)` / `set(s => patch)` | **The only entry point for changing data**: shallow-merges the patch; **if no field actually changes (`Object.is`), it does nothing** and `render` is not called. When something changes, it updates the automatic bindings synchronously and then calls `render` |
-| `render(view, changed)` | Override it to handle updates other than automatic binding. `view` is `state` plus the derived values, and `changed` is the set of state fields that changed this time (all of them on the first render). Use `changed.has("x")` to skip the parts that did not change |
+| `render(view, changed)` | Override it to handle updates other than automatic binding. `view` is `state`, props and the derived values, and `changed` holds the names of the state fields, props and derived values that changed this time (all of them on the first render). Use `changed.has("x")` to skip the parts that did not change, and annotate it with the names you check, for example `changed: ReadonlySet<"items" | "visible">`, so tsc reports a misspelled name or one that is not state, a prop or a derived value |
 | `batch(fn)` | Combine multiple `set` calls: after `fn` finishes, the update runs once and `render` is called once |
 | `derive` option | Derived values, usable directly by `{{ }}`, `data-if`, and `render`. They are recomputed after every state change, with **no dependency tracking** |
 
@@ -174,6 +174,7 @@ Design trade-offs:
 - **No fine-grained updates**: on every change, `render` re-runs as a whole, and its cost depends on what you write in it. For large lists, use `changed` to skip unnecessary redraws and enable `skipUnchanged` on `replace` (see [Lists](lists.md#lists)).
 - `set` may be called inside `render`; it is processed in another round after the current one ends. If it has not stabilized after 50 consecutive rounds, a "suspected infinite loop" error is thrown.
 - When `state` is not used, the original `refs`, `text`, `show`, `bind`, and `createStore` work as before, fully backward compatible.
+- Once a component has any of `state`, `props` or `derive`, every `{{ hole }}` and `data-if` in its template must name one of them; tsc reports any other name. To show data from a store in such a component, copy it into state in the `bind` callback (see [Recipes](recipes.md#showing-data-from-a-store)).
 
 **Read-only all the way down**: `state`, `props`, the `view` passed to `render` and the argument of each `derive` function are typed `DeepReadonly`: arrays and objects inside them cannot be changed in place. `this.state.items[0].done = true` or `this.state.items.push(x)` is a `tsc` error, because an object changed in place keeps its identity and the list and child props, which compare by reference, would not update. Pass new objects instead: `this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`. When you annotate `render`'s `view` or a helper that takes the state, use read-only types (`readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`).
 
@@ -207,7 +208,7 @@ add(e: Event) { e.preventDefault(); … }
 removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((i) => i.id !== hit.key) })); }
 ```
 
-- The method receives `(event, hit)`. `hit.el` is the element carrying the `data-on-*`; when the event happens inside a list item, `hit.key` is that item's key and `hit.item` is the data most recently passed to `update`; this also holds for events emitted by a child component placed inside the item. `hit.item` is `unknown` unless the handler annotates it, e.g. `hit: EventHit<Todo>`. If you need extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
+- The method receives `(event, hit)`. `hit.el` is the element carrying the `data-on-*`; when the event happens inside a list item, `hit.key` is that item's key and `hit.item` is the data most recently passed to `update`; this also holds for events emitted by a child component placed inside the item. `hit.key` and `hit.item` are untyped and optional unless the handler names the item type and its key field, e.g. `hit: EventHit<Todo, "id">`, which makes `hit.item` a `Todo` and `hit.key` a `Todo["id"]` (use that form only for handlers inside list items). If you need extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
 - **Event delegation**: only one listener per event type is attached at the component root, so a longer list does not add listeners, and adding or removing items needs no rebinding. Non-bubbling events (`focus`, `blur`, `mouseenter`, etc.) use the capture phase and handle only the target itself; for bubbling events, the handler methods are called in order from the inside out, and `stopPropagation()` stops the chain.
 - **Only elements in the component's own template count**: content a user puts into a slot does not trigger anything even if it has `data-on-click`.
 - Only a method name may be written; `add(1)` and `a.b` cause an error at codegen time. A method name must not collide with DOM built-in methods or ts-dom members (for example `remove`, `click`, `focus`, `set`, `render`); otherwise they would be overridden, and codegen reports an error and suggests renaming.
@@ -337,5 +338,7 @@ store.set({ count: 1 });
 store.set((s) => ({ count: s.count + 1 }));
 const off = store.subscribe((s) => console.log(s)); // returns an unsubscribe function
 ```
+
+`store.set` replaces the whole value; it does not merge like a component's `this.set`, because a store can hold any value (a number, an array). For an object with several fields, spread the rest yourself: `store.set((s) => ({ ...s, status: "loading" }))`.
 
 `this.bind` also accepts a read-only source that has only `get` and `subscribe`. There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.

@@ -12,16 +12,16 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
     this.refs.title.value = "";
   }
   // A changed task is a new object: the list sets the prop only on items that are not the same object as before.
-  toggleTask(_e: Event, hit: EventHit): void {
+  toggleTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.map((t) => (t.id === hit.key ? { ...t, done: !t.done } : t)) }));
   }
-  removeTask(_e: Event, hit: EventHit): void {
+  removeTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.filter((t) => t.id !== hit.key) }));
   }
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<"tasks">): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
