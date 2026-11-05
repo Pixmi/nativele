@@ -1,0 +1,18 @@
+{
+  "name": "nativele-vite-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "ts-dom check web/src/nv && vite build",
+    "verify": "npm run build && ts-dom doctor web/src/nv && node verify.mjs"
+  },
+  "dependencies": {
+    "@nativele/ts-dom": "file:../../.."
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6"
+  }
+}

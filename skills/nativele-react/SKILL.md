@@ -89,6 +89,8 @@ Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nati
 
    The component class must be exported and passed to `define()` in a folder that `ts-dom gen` scans, so it appears in `ts-dom-tags.ts`.
 
+The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'`. Generate them first: `"build": "ts-dom gen src/nv && tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front).
+
 ## Example
 
 A Nativele component with props and an event:
@@ -197,6 +199,7 @@ In the browser, render a component with an object prop and an event handler, and
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&` |
 | An object prop shows `[object Object]` or is missing | the component was rendered before `define()` ran | import the component module in the entry file before rendering |
 | The event handler never runs | the prop name is camelCased (`onItemSelect`) | use `on` plus the exact event name (`onitem-select`) |
 | `insertBefore`/`removeChild` errors, the React root disappears | React children changed inside a Light DOM component with slots | use `shadow: true`, or stable wrapper elements per slot |

@@ -125,9 +125,11 @@ Otherwise the maintainers send the gaps back to the contributor as review commen
 |---|---|---|---|
 | `nativele-core` | Official | available | building with Nativele itself: the `ts-dom check` loop, components, lists, data flow |
 | `nativele-react` | Official | available | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
-| `nativele-integration` | Experimental | available | Nativele components in a framework without its own Skill: defining before render, properties and attributes, events, slots, lifecycle, types; verified with Vue |
-| `nativele-vite` | Official | planned | the Vite plugin, `root`, hot updates |
-| `nativele-vue` | Official | planned | Nativele components in Vue |
+| `nativele-integration` | Experimental | available | Nativele components in a framework without its own Skill: defining before render, properties and attributes, events, slots, lifecycle, types |
+| `nativele-vite` | Official | available | Nativele in a Vite app: the plugin and `root`, multi-page builds, the build script, hot updates, Vite+ |
+| `nativele-vue` | Official | available | Nativele components in Vue 3: `isCustomElement`, props, events, `v-model`, slots, `<KeepAlive>`, template types |
+| `nativele-svelte` | Experimental | available | Nativele components in Svelte 5: props, event attributes, slots, `bind:this`, template types |
+| `nativele-angular` | Experimental | available | Nativele components in Angular: `CUSTOM_ELEMENTS_SCHEMA`, bindings, zoneless change detection, `ts-dom gen` in the build, content projection |
 | `nativele-state-management` | Official | planned | `createStore`, and Zustand or Redux through `bind` |
 | `nativele-testing` | Official | planned | Vitest and Playwright |
-| Svelte, Angular, Tailwind CSS, TanStack Query, Zod | Experimental or Community | open for contributions | |
+| Tailwind CSS, TanStack Query, Zod | Experimental or Community | open for contributions | |

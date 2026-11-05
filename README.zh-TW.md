@@ -62,7 +62,11 @@ npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .
 |---|---|
 | `nativele-core` | 開發元件：`ts-dom check` 循環、範本、state、清單、資料流 |
 | `nativele-react` | 在 React 19 中使用 Nativele 元件：props、事件、子元素與 slot、生命週期、TSX 型別 |
-| `nativele-integration` | 在沒有專屬 Skill 的框架（Vue、Svelte、Angular 等）中使用 Nativele 元件：property、事件、slot、生命週期、範本型別（Experimental） |
+| `nativele-vue` | 在 Vue 3 中使用 Nativele 元件：props、事件、`v-model`、slot、`<KeepAlive>`、範本型別 |
+| `nativele-svelte` | 在 Svelte 5 中使用 Nativele 元件：props、事件、slot、範本型別（Experimental） |
+| `nativele-angular` | 在 Angular 中使用 Nativele 元件：綁定、變更偵測、建置流程、內容投影（Experimental） |
+| `nativele-vite` | 在 Vite 應用中使用 Nativele：外掛與 `root`、多頁建置、熱更新 |
+| `nativele-integration` | 在沒有專屬 Skill 的框架（Preact、Solid 等）中使用 Nativele 元件：property、事件、slot、生命週期、範本型別（Experimental） |
 
 等級：Official 由維護者以 CI 中的範例專案驗證；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
 
