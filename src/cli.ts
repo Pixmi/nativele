@@ -36,8 +36,10 @@ Commands
         --json            print the issues as JSON instead of text
   doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
                     and the Vite, oxlint and formatter configuration (default dir: src)
+        --project=<path>  tsconfig to check (default: tsconfig.json)
         --include=<glob>, --exclude=<glob>, --whitespace=collapse|preserve   as for gen (they decide which
                           generated files are stale)
+        --strict          exit with code 1 on warnings too (errors always do; info never does)
         --json            print the issues as JSON instead of text
   skills            List the Nativele Skills shipped with this version: task procedures for coding agents
                     (set-up, a complete example, known limitations, verification), with the versions verified
@@ -60,7 +62,7 @@ function ruleGroups(): [string, string, Record<string, string>][] {
     ["gen", "reported by `ts-dom gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
     ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state)", CHECK_RULES],
     ["doctor", "reported by `ts-dom doctor` (project set-up)", DOCTOR_RULES],
-    ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup (or ts-dom/<id>)", UNUSED_MARKUP_RULES],
+    ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup (or ts-dom/<id>); no-importer only from `ts-dom lint`, as the oxlint plugin sees one file at a time and cannot tell that no file imports a template", UNUSED_MARKUP_RULES],
     ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow (or ts-dom/<id>)", DATA_FLOW_RULES],
     ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y (or ts-dom/<id>)", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
   ];
@@ -188,10 +190,11 @@ try {
     if (errors || (flags.has("--strict") && issues.length)) process.exitCode = 1;
     if (!flags.has("--json") && !issues.length) console.log("ts-dom check: no issues");
   } else if (cmd === "doctor") {
-    const issues = runDoctor({ dirs, generate });
+    const project = args.find((a) => a.startsWith("--project="))?.slice("--project=".length);
+    const issues = runDoctor({ dirs, generate, ...(project ? { project } : {}) });
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
     else for (const i of issues) (i.severity === "error" ? console.error : i.severity === "warning" ? console.warn : console.log)(formatDoctorIssue(i));
-    if (issues.some((i) => i.severity === "error")) process.exitCode = 1;
+    if (issues.some((i) => i.severity === "error" || (flags.has("--strict") && i.severity === "warning"))) process.exitCode = 1;
     if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
     const files = dirs.flatMap(listTs);

@@ -207,7 +207,7 @@ connected() { /* put the behavior in the class */ }`,
     good: `<button data-on-click="more">more</button>`,
   },
   "duplicate-define": {
-    why: "A custom element tag can be registered only once, so two define() calls with one tag in the scanned directories would make the second fail at runtime and make the generated tag map ambiguous.",
+    why: "A custom element tag can be registered only once. define() skips a tag that is already registered, so with two classes for one tag the class whose define() runs first wins and the other is dropped without an error, and the tag map cannot say which class the tag stands for. ts-dom check also reports it when tsc finds two tag maps in one program that declare the tag with different classes (TS2717 in ts-dom-tags.ts), for example a folder scanned separately or a package that ships its own tag map.",
     bad: `// a.ts
 define("user-card", CardA);
 // b.ts
@@ -514,7 +514,9 @@ Component(tpl, { props: { task: {} as Task } })`,
     why: "tsc learns which class a tag stands for from ts-dom-tags.ts. If the item component is missing there, its items cannot be typed.",
     bad: `// task-row.ts defines the tag, but ts-dom-tags.ts is out of date
 define("task-row", TaskRow);`,
-    good: `npx ts-dom gen   # regenerates ts-dom-tags.ts`,
+    good: `npx ts-dom gen   # regenerates ts-dom-tags.ts
+// and keep ts-dom-tags.ts in the program: tsconfig.json
+{ "include": ["src"] }   // not ["src/**/*.tsx"], and no exclude that matches it`,
   },
   "item-class-not-exported": {
     why: "The tag map imports the class from the file that calls define(), so the class must be exported or tsc cannot see its props.",
@@ -543,7 +545,7 @@ const n: number = 1;`,
 // vite.config.ts with root: "web": tsDom({ dirs: ["src"] })`,
   },
   "tsc-not-found": {
-    why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",
+    why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked, so this is an error: otherwise a CI job that omits the dev dependencies would pass without any type check.",
     bad: `npx ts-dom check   # typescript is not installed`,
     good: `npm i -D typescript
 npx ts-dom check`,
@@ -557,9 +559,10 @@ npx ts-dom check`,
 { "compilerOptions": { "strict": true, "lib": ["ES2022", "DOM"] }, "include": ["src"] }`,
   },
   "tsconfig-not-strict": {
-    why: "Without strict, tsc lets wrong names and null values through, which removes most of what the generated types are for.",
+    why: "The names in the templates are checked with or without strict, but without it tsc does not report values that may be null (a querySelector result, an optional ref) or parameters that are implicitly any (a handler parameter without a type). TypeScript 6 and later turn strict on when it is left out; TypeScript 5 leaves it off, so there it has to be set.",
     bad: `// tsconfig.json
-{ "compilerOptions": { "strict": false } }`,
+{ "compilerOptions": { "strict": false } }
+// or, with TypeScript 5, no "strict" at all`,
     good: `// tsconfig.json
 { "compilerOptions": { "strict": true } }`,
   },
@@ -571,9 +574,11 @@ npx ts-dom check`,
 { "compilerOptions": { "lib": ["ES2022", "DOM"] } }`,
   },
   "tsconfig-classic-resolution": {
-    why: "Templates are imported as ./x.html.js and TypeScript must map that to the generated x.html.ts. The classic resolution does not do that mapping.",
+    why: "Every generated x.html.ts imports the runtime package (@nativele/ts-dom), and the classic resolution does not look in node_modules, so tsc reports TS2792 (Cannot find module) and no component gets its types. TypeScript 5 also resolves the classic way when moduleResolution is left out and module is ES2015 to ESNext (or target is ES2015 or later without module). TypeScript 6 deprecates classic (TS5107) and 7 removes it (TS5108); both stop before checking anything.",
     bad: `// tsconfig.json
-{ "compilerOptions": { "moduleResolution": "classic" } }`,
+{ "compilerOptions": { "moduleResolution": "classic" } }
+// or, with TypeScript 5
+{ "compilerOptions": { "module": "ESNext" } }`,
     good: `// tsconfig.json
 { "compilerOptions": { "moduleResolution": "bundler" } }`,
   },
@@ -583,6 +588,15 @@ npx ts-dom check`,
 { "include": ["src/server"] }   // templates are in src/ui`,
     good: `// tsconfig.json
 { "include": ["src"] }`,
+  },
+  "tsconfig-misses-tag-map": {
+    why: "ts-dom-tags.ts registers the components in HTMLElementTagNameMap, and no file imports it, so it is in the program only when include matches it and exclude does not remove it. Left out, tags are typed as plain HTMLElement and lists of item components fail with item-not-in-tag-map. The x.html.ts files do not have this problem: their components import them.",
+    bad: `// tsconfig.json
+{ "include": ["src/**/*.tsx"] }
+{ "include": ["src"], "exclude": ["**/ts-dom-tags.ts"] }`,
+    good: `// tsconfig.json
+{ "include": ["src"] }
+{ "include": ["src/**/*.tsx", "src/ts-dom-tags.ts"] }`,
   },
   "runtime-not-installed": {
     why: "Generated files import the runtime package. If it cannot be resolved from the project, they fail to compile and to run.",

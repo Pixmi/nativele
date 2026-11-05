@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runDoctor } from "../src/lib/doctor.ts";
 
 const project = (files: Record<string, string>) => {
@@ -242,4 +243,157 @@ describe("ts-dom doctor: a type check that runs before gen", () => {
     const app = scripts({ build: "tsc -p tsconfig.app.json && vite build" }, { "tsconfig.app.json": `{ "include": ["src"] }` });
     expect(flagged(app)).toHaveLength(1);
   });
+});
+
+const tree = (files: Record<string, string>) => {
+  const dir = mkdtempSync(join(tmpdir(), "nativele-doctor-"));
+  for (const [name, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, name)), { recursive: true });
+    writeFileSync(join(dir, name), text);
+  }
+  return dir;
+};
+const withTypeScript = (version: string) => ({ "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version }) });
+const issuesOf = (cwd: string, rule: string, extra: { project?: string } = {}) => runDoctor({ dirs: ["src"], cwd, ...extra }).filter((i) => i.rule === rule);
+const paths = `"paths": { "@nativele/ts-dom": ["x"] }`;
+
+describe("ts-dom doctor: what the installed TypeScript does by default", () => {
+  const config = (options: string) => ({ "tsconfig.json": `{ "compilerOptions": { ${paths}${options} } }`, "src/x.html": "<p></p>" });
+
+  it("strict left out is a warning on TypeScript 5 only; strict false is one on every version", () => {
+    expect(issuesOf(tree({ ...config(""), ...withTypeScript("6.0.3") }), "tsconfig-not-strict")).toEqual([]);
+    expect(issuesOf(tree({ ...config(""), ...withTypeScript("7.0.2") }), "tsconfig-not-strict")).toEqual([]);
+    const [five] = issuesOf(tree({ ...config(""), ...withTypeScript("5.9.3") }), "tsconfig-not-strict");
+    expect(five?.message).toMatch(/^compilerOptions\.strict is not set, and TypeScript 5\.9\.3 leaves it off by default .* Fix: set "strict": true\.$/);
+    const [off] = issuesOf(tree({ ...config(`, "strict": false`), ...withTypeScript("7.0.2") }), "tsconfig-not-strict");
+    expect(off?.message).toMatch(/^compilerOptions\.strict is false, so tsc does not report values that may be null .*implicitly any/);
+    expect(off?.message).not.toContain("wrong names");
+  });
+
+  it("moduleResolution classic: what fails depends on the version", () => {
+    const classic = `, "strict": true, "moduleResolution": "classic"`;
+    expect(issuesOf(tree({ ...config(classic), ...withTypeScript("5.9.3") }), "tsconfig-classic-resolution")[0]?.message).toMatch(/cannot resolve the package "@nativele\/ts-dom" that every generated file imports \(TS2792/);
+    expect(issuesOf(tree({ ...config(classic), ...withTypeScript("6.0.3") }), "tsconfig-classic-resolution")[0]?.message).toContain("TS5107");
+    expect(issuesOf(tree({ ...config(classic), ...withTypeScript("7.0.2") }), "tsconfig-classic-resolution")[0]?.message).toContain("TS5108");
+    expect(issuesOf(tree(config(classic)), "tsconfig-classic-resolution")[0]?.message).not.toContain("./x.html.js");
+  });
+
+  it("module ESNext without moduleResolution resolves the classic way on TypeScript 5 only", () => {
+    const esnext = `, "strict": true, "module": "ESNext"`;
+    const [five] = issuesOf(tree({ ...config(esnext), ...withTypeScript("5.9.3") }), "tsconfig-classic-resolution");
+    expect(five).toMatchObject({ severity: "error", file: "tsconfig.json" });
+    expect(five?.message).toMatch(/^"module": "ESNext" without "moduleResolution" makes TypeScript 5\.9\.3 resolve modules the classic way.* Fix: add "moduleResolution": "bundler"/);
+    expect(issuesOf(tree({ ...config(`, "strict": true, "target": "ES2022"`), ...withTypeScript("5.9.3") }), "tsconfig-classic-resolution")).toHaveLength(1);
+    expect(issuesOf(tree({ ...config(`, "strict": true, "module": "CommonJS"`), ...withTypeScript("5.9.3") }), "tsconfig-classic-resolution")).toEqual([]);
+    expect(issuesOf(tree({ ...config(`${esnext}, "moduleResolution": "bundler"`), ...withTypeScript("5.9.3") }), "tsconfig-classic-resolution")).toEqual([]);
+    expect(issuesOf(tree({ ...config(esnext), ...withTypeScript("6.0.3") }), "tsconfig-classic-resolution")).toEqual([]);
+  });
+});
+
+describe("ts-dom doctor: ts-dom-tags.ts left out of the program", () => {
+  const files = (tsconfig: string) => ({
+    "tsconfig.json": tsconfig,
+    "src/card.html": "<p></p>",
+    "src/card.ts": `import tpl from "./card.html.js";\nexport class Card extends Component(tpl) {}\ndefine("x-card", Card);\n`,
+  });
+  const options = `"compilerOptions": { "strict": true, ${paths} }`;
+
+  it("an exclude that matches it, or an include that matches only .tsx, is an error", () => {
+    const [excluded] = issuesOf(tree(files(`{ ${options}, "include": ["src"], "exclude": ["**/ts-dom-tags.ts"] }`)), "tsconfig-misses-tag-map");
+    expect(excluded).toMatchObject({ severity: "error", file: "tsconfig.json" });
+    expect(excluded?.message).toMatch(/^The exclude pattern "\*\*\/ts-dom-tags\.ts" in tsconfig\.json removes src\/ts-dom-tags\.ts .*<x-card>.* Fix: .*add "src\/ts-dom-tags\.ts" to files/);
+    const [tsx] = issuesOf(tree(files(`{ ${options}, "include": ["src/**/*.tsx"] }`)), "tsconfig-misses-tag-map");
+    expect(tsx?.message).toMatch(/^The include of tsconfig\.json does not match src\/ts-dom-tags\.ts.* Fix: add "src\/ts-dom-tags\.ts" to include\.$/);
+    expect(issuesOf(tree(files(`{ ${options}, "include": ["src"], "exclude": ["src/gen"] }`)), "tsconfig-misses-tag-map")).toEqual([]);
+  });
+
+  it("the generated x.html.ts can be excluded, as their components import them; files keeps an excluded tag map in", () => {
+    expect(issuesOf(tree(files(`{ ${options}, "include": ["src"], "exclude": ["**/*.html.ts"] }`)), "tsconfig-misses-tag-map")).toEqual([]);
+    expect(issuesOf(tree(files(`{ ${options}, "include": ["src/**/*.tsx"], "files": ["src/ts-dom-tags.ts"] }`)), "tsconfig-misses-tag-map")).toEqual([]);
+    expect(issuesOf(tree(files(`{ ${options} }`)), "tsconfig-misses-tag-map")).toEqual([]);
+  });
+
+  it("an exclude inherited through extends counts", () => {
+    const cwd = tree({ ...files(`{ "extends": "./configs/base.json", ${options} }`), "configs/base.json": `{ "include": ["../src"], "exclude": ["../src/ts-dom-tags.ts"] }` });
+    expect(issuesOf(cwd, "tsconfig-misses-tag-map")).toHaveLength(1);
+  });
+});
+
+describe("ts-dom doctor: configuration files in their other formats", () => {
+  const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, ${paths} } }`, "src/x.html": "<p></p>" };
+
+  it("an .oxlintrc.jsonc without the plugin", () => {
+    expect(issuesOf(tree({ ...base, ".oxlintrc.jsonc": `{ // comment\n "rules": {} }` }), "oxlint-plugin-missing")).toMatchObject([{ file: ".oxlintrc.jsonc" }]);
+  });
+
+  it("Prettier and oxfmt configured through any of their config files or the package.json key", () => {
+    const extras: Record<string, string>[] = [
+      { ".prettierrc.yaml": "semi: false\n" },
+      { ".prettierrc.yml": "semi: false\n" },
+      { ".prettierrc.json5": "{}" },
+      { ".prettierrc.toml": "semi = false\n" },
+      { ".prettierrc.mjs": "export default {};\n" },
+      { "prettier.config.ts": "export default {};\n" },
+      { "package.json": JSON.stringify({ prettier: { semi: false } }) },
+      { "oxfmt.config.ts": "export default {};\n" },
+    ];
+    for (const extra of extras) {
+      expect(issuesOf(tree({ ...base, ...extra }), "formatter-whitespace"), Object.keys(extra)[0]).toHaveLength(1);
+    }
+  });
+});
+
+describe("ts-dom doctor in a package of a workspace", () => {
+  const pkg = "packages/app";
+  const app = {
+    [`${pkg}/package.json`]: JSON.stringify({ scripts: { build: "tsc" }, dependencies: { "@nativele/ts-dom": "0.5.0" } }, null, 2),
+    [`${pkg}/tsconfig.json`]: `{ "compilerOptions": { "strict": true, ${paths} }, "include": ["src"] }`,
+    [`${pkg}/src/x.html`]: "<p></p>",
+  };
+
+  it("reads the .gitignore and the Skill copies of the folders up to the workspace root", () => {
+    const markers: Record<string, string>[] = [{ "package.json": JSON.stringify({ workspaces: ["packages/*"] }) }, { "pnpm-workspace.yaml": "packages:\n  - packages/*\n" }, { ".git/HEAD": "ref: refs/heads/main\n" }];
+    for (const marker of markers) {
+      const root = tree({ ...app, ...marker, ".gitignore": "node_modules\n*.html.ts\n", ".claude/skills/nativele-core/SKILL.md": "an older copy" });
+      const issues = runDoctor({ dirs: ["src"], cwd: join(root, pkg) });
+      const name = Object.keys(marker)[0];
+      expect(issues.filter((i) => i.rule === "typecheck-before-gen"), name).toHaveLength(1);
+      expect(issues.filter((i) => i.rule === "skill-available"), name).toEqual([]);
+      expect(issues.filter((i) => i.rule === "skill-outdated").map((i) => i.file), name).toEqual(["../../.claude/skills/nativele-core/SKILL.md"]);
+    }
+  });
+
+  it("stops at the workspace root", () => {
+    const outer = tree({ ".gitignore": "*.html.ts\n", "repo/package.json": JSON.stringify({ workspaces: ["packages/*"] }) });
+    cpSync(join(tree(app), "packages"), join(outer, "repo/packages"), { recursive: true });
+    expect(runDoctor({ dirs: ["src"], cwd: join(outer, "repo", pkg) }).filter((i) => i.rule === "typecheck-before-gen")).toEqual([]);
+  });
+});
+
+describe("ts-dom doctor --project", () => {
+  it("checks the tsconfig given instead of tsconfig.json", () => {
+    const cwd = tree({ "tsconfig.json": `{ "compilerOptions": { "strict": true, ${paths} } }`, "tsconfig.app.json": `{ "compilerOptions": { "strict": false, ${paths} } }`, "src/x.html": "<p></p>" });
+    expect(issuesOf(cwd, "tsconfig-not-strict")).toEqual([]);
+    expect(issuesOf(cwd, "tsconfig-not-strict", { project: "tsconfig.app.json" })).toMatchObject([{ file: "tsconfig.app.json" }]);
+    expect(issuesOf(cwd, "no-tsconfig", { project: "tsconfig.missing.json" })[0]?.message).toContain("tsconfig.missing.json");
+  });
+});
+
+describe("ts-dom doctor on the command line", () => {
+  const cli = join(process.cwd(), "src/cli.ts");
+  const warningsOnly = () => tree({ "tsconfig.json": `{ "compilerOptions": { "strict": false, ${paths} } }`, "tsconfig.app.json": `{ "compilerOptions": { "strict": true, ${paths} } }`, "src/a.ts": "export {};\n" });
+
+  it("--strict exits with 1 on warnings, like check --strict", () => {
+    const cwd = warningsOnly();
+    expect(spawnSync(process.execPath, [cli, "doctor", "src"], { cwd, encoding: "utf8" }).status).toBe(0);
+    const strict = spawnSync(process.execPath, [cli, "doctor", "src", "--strict"], { cwd, encoding: "utf8" });
+    expect(strict.stderr).toContain("[tsconfig-not-strict]");
+    expect(strict.status).toBe(1);
+  }, 30_000);
+
+  it("--project picks the tsconfig", () => {
+    const run = spawnSync(process.execPath, [cli, "doctor", "src", "--project=tsconfig.app.json", "--strict"], { cwd: warningsOnly(), encoding: "utf8" });
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  }, 30_000);
 });
