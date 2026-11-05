@@ -24,14 +24,14 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.1 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
 | @vitejs/plugin-react | 6.2.1 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), which CI runs again when the example or the library changes and once a month. With a different major version of React, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of React, treat every step as unverified.
 
 ## Set-up
 
@@ -189,7 +189,7 @@ npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and
 
 Pass `tsc` the tsconfig from step 3. A root `tsconfig.json` that only lists `references` (as in Vite's template) checks nothing itself, so `tsc --noEmit` without `-p` passes even with type errors.
 
-In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. The example project's [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) does these checks with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
+In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) of the trial's example project, which does them with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
 
 ## Troubleshooting
 

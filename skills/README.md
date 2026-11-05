@@ -19,7 +19,7 @@ skills/
 │   └── SKILL.md
 ├── nativele-react/
 │   ├── SKILL.md
-│   └── example/                  # Official only: the project the Skill is verified with
+│   └── example/                  # optional: a reference project from the agent trial
 │       ├── package.json          # exact versions of every tool the Skill names
 │       ├── ...                   # the minimal app the SKILL.md example comes from
 │       └── verify.mjs            # browser checks run by `npm run verify` (or the project's own tests, see below)
@@ -51,7 +51,7 @@ Quote the `description` and any value that contains `: `, so the frontmatter sta
 Required sections, in this order:
 
 1. **When to use**: the situation and the signals (dependencies, files) that call for this Skill, and when not to use it.
-2. **Versions**: a table of every tool and the exact version it was verified with, and the date. The `@nativele/ts-dom` row says how far that verification reaches: for an Official Skill, "<first version> and every later release", because CI runs its example on every change; for a Community or Experimental Skill, the version of its last agent trial. If the project uses a different major version of a tool, the Skill says so and stops treating its steps as verified.
+2. **Versions**: a table of every tool and the exact version it was verified with, and the date. The `@nativele/ts-dom` row names the version of the Skill's last agent trial. If the project uses a different major version of a tool, the Skill says so and stops treating its steps as verified.
 3. **Set-up**: numbered steps with the exact commands and file contents, starting from a working project of the tool (for an integration Skill) and covering only what Nativele adds or changes.
 4. **Example**: a complete, minimal working example (every file it needs, short).
 5. **Known limitations**: what does not work or needs care, each with what to do instead. An agent must never have to guess these.
@@ -70,12 +70,12 @@ Rules for the content:
 
 | Tier | Who maintains it | Requirements | Shown by `ts-dom skills` |
 |---|---|---|---|
-| Official | the Nativele maintainers | accepted through an agent trial, and an `example/` project that `npm run verify` checks in CI; verified within the last 6 months | as official |
+| Official | the Nativele maintainers | accepted through an agent trial and maintained by the maintainers; verified within the last 6 months | as official |
 | Community | its author | the full SKILL.md format, `author` and `verified` filled in, accepted through a maintainer's agent trial | as community, with the author |
 | Experimental | its author | the SKILL.md format; verification not complete | as experimental, with a warning |
 
-- A new contribution starts as Experimental. It becomes Community when it passes a maintainer's agent trial (see "How a Skill pull request is accepted"), and Official when the maintainers adopt it with an `example/` project in CI.
-- A Skill whose `verified` date is older than 6 months, or whose `nativele` range does not include the installed version, is shown as stale. A stale Official Skill whose CI check fails is moved to Experimental until fixed.
+- A new contribution starts as Experimental. It becomes Community when it passes a maintainer's agent trial (see "How a Skill pull request is accepted"), and Official when the maintainers adopt and maintain it.
+- A Skill whose `verified` date is older than 6 months, or whose `nativele` range does not include the installed version, is shown as stale. A stale Official Skill is verified again with a new agent trial, or moved to Experimental until it is.
 
 ## Delivering Skills to projects
 
@@ -88,12 +88,11 @@ The library already lives in the user's `node_modules`, so its Skills travel wit
 
 None of this adds a runtime dependency: listing and copying read the Markdown files with Node's file API, and the frontmatter is parsed with a small reader for the fields above.
 
-## Verification of Official Skills
+## Examples
 
-- `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a real-browser test of what the Skill promises: usually a `verify.mjs` script; an example whose Skill sets up tests (`nativele-testing`, `nativele-architecture`) runs its own Vitest and Playwright Test suites instead.
-- `nativele-core` has no example of its own: the library's CI, which checks every example in the repository, verifies it.
-- The workflow `.github/workflows/skills.yml` has two required checks for `main`. "Verify Skill examples" runs `npm run verify` for each Official Skill when an `example/` or the library changes, and once a month, so a third-party release that breaks a Skill is found; an Official Skill whose example fails therefore cannot be merged. "SKILL.md format" checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, when any of them changes. Both report on every pull request, skipped when nothing they check changed.
-- The monthly run opens nothing by itself; a failure is reported in the workflow run, and the Skill is fixed or moved to Experimental.
+A Skill may keep the project from its agent trial in `skills/<name>/example/` as a reference: the files the Skill's example comes from, with exact versions and `"@nativele/ts-dom": "file:../../.."`. An example is not run in CI; the Skill is verified by its agent trials. The npm package does not ship the `example/` folders.
+
+The workflow `.github/workflows/skills.yml` has one required check for `main`, "SKILL.md format": it checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, whenever any of them changes.
 
 ## Contributing a Skill
 

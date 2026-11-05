@@ -24,7 +24,7 @@ src/lib/
   doctor.ts         ts-dom doctor
   skills.ts         ts-dom skills: listing, stale checks, copying
 src/cli.ts          the ts-dom command
-skills/             Skills shipped with the package; an Official Skill's example/ is verified by .github/workflows/skills.yml
+skills/             Skills shipped with the package; an example/ is a reference project from the Skill's agent trial
 examples/           user-card, todo, signup, readme and recipes examples, demo entry
 test/               unit tests (happy-dom)
 browser/            real Chrome tests and fixtures
@@ -49,7 +49,7 @@ browser/            real Chrome tests and fixtures
 
 Examples in the repo point directly to `src/lib` through an alias in `vite.config.ts`, so no packing is needed first.
 
-To verify a Skill's example project: `npm run build:lib`, then in `skills/<name>/example` run `npm install` and `npm run verify` (it depends on the library in this repository through `file:../../..`).
+To run a Skill's example project: `npm run build:lib`, then in `skills/<name>/example` run `npm install` and `npm run verify` (it depends on the library in this repository through `file:../../..`).
 
 ### Browser tests
 
@@ -70,11 +70,11 @@ A pull request runs only the jobs its changed files need, and a push to `main` d
 
 | Changed files | Jobs that run |
 |---|---|
-| `src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `.github/workflows/ci.yml` | all of `ci.yml`, the Skill examples and the `SKILL.md` format check |
+| `src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `.github/workflows/ci.yml` | all of `ci.yml`, and the `SKILL.md` format check |
 | `test/`, `scripts/bench.ts`, `index.html` | types, unit tests and lint |
 | `browser/`, `examples/` | types, unit tests and lint, and the browser tests |
 | `scripts/consumer-smoke.sh`, `scripts/no-bundler-smoke.sh` | types, unit tests and lint, and that smoke test |
-| `skills/`, `docs/`, the READMEs, `llms.txt` | the `SKILL.md` format check, which also checks their links (`skills.yml`); a change under `skills/*/example/` also runs the Skill examples |
+| `skills/`, `docs/`, the READMEs, `llms.txt` | the `SKILL.md` format check, which also checks their links (`skills.yml`) |
 | Other Markdown, `LICENSE`, `.gitignore`, other workflows | nothing |
 
-Every job reports on every pull request, skipped when not needed, so all of them are required checks for `main`. The Skill examples also run once a month, so a third-party release that breaks a Skill is found.
+Every job reports on every pull request, skipped when not needed, so all of them are required checks for `main`.

@@ -33,11 +33,9 @@ describe("Skills shipped with the package", () => {
       const value = /^\s*[\w-]+: (.*)$/.exec(line)?.[1];
       if (value && value.includes(": ")) expect(value.startsWith('"'), line).toBe(true);
     }
-    if (s.tier === "official" && name !== "nativele-core") expect(existsSync(join(s.dir, "example", "package.json"))).toBe(true);
     const lowest = s.nativele.match(/^>=(\S+)/)?.[1];
-    const row = text.match(/^\| @nativele\/ts-dom \| (.+) \|$/m)?.[1] ?? "";
-    if (s.tier === "official") expect(row.startsWith(`${lowest} and every later release (`), row).toBe(true);
-    else expect(row, row).toMatch(/^\d+\.\d+\.\d+ \(the last agent trial\)$/);
+    const row = text.match(/^\| @nativele\/ts-dom \| (.+) \|$/m)?.[1];
+    expect(row, "the Versions row names the version of the last agent trial").toBe(`${lowest} (the last agent trial)`);
   });
 
   it("the shipped Skills cover the version in package.json", () => {

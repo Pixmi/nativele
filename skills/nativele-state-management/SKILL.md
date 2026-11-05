@@ -24,16 +24,16 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.2 (the last agent trial) |
 | zustand (`zustand/vanilla`) | 5.0.16 |
 | @reduxjs/toolkit | 2.14.0 |
-| redux | 5.0.1 (installed by `@reduxjs/toolkit`; a `legacy_createStore` store with the adapter was checked by hand with `tsc` and Node, the example project does not run it) |
+| redux | 5.0.1 (installed by `@reduxjs/toolkit`; a `legacy_createStore` store with the adapter was checked by hand with `tsc` and Node) |
 | nanostores | 1.5.5 (`atom` only) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`), which CI runs again when the example or the library changes and once a month. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
+Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
 
 ## Set-up
 
@@ -294,7 +294,7 @@ for (const name of ["set", "render"]) {
 }
 ```
 
-Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each. The example project's [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-state-management/example/verify.mjs) does these checks with Playwright for Zustand, Redux, nanostores and `createStore`, plus the `bind` contract itself (an immediate call, no call for an `Object.is`-equal set, nothing after removal), the nanostores double call, selectors that return a new object or a kept slice, and no console errors.
+Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-state-management/example/verify.mjs) of the trial's example project, which does them with Playwright for Zustand, Redux, nanostores and `createStore`, plus the `bind` contract itself (an immediate call, no call for an `Object.is`-equal set, nothing after removal), the nanostores double call, selectors that return a new object or a kept slice, and no console errors.
 
 ## Troubleshooting
 

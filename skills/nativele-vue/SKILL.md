@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.1 (the last agent trial) |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |
@@ -33,7 +33,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 | typescript | 6.0.3 |
 | @vue/tsconfig | 0.9.1 |
 
-Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `vue-ts` template, with the example project in the Nativele repository (`skills/nativele-vue/example`), which CI runs again when the example or the library changes and once a month. With a different major version of Vue, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `vue-ts` template, with the example project in the Nativele repository (`skills/nativele-vue/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of Vue, treat every step as unverified.
 
 ## Set-up
 
@@ -252,7 +252,7 @@ Prove that the declaration types props: keep a `.vue` file that the app never im
 
 `vue-tsc -b` passes only while each of these is an error; if the declaration stops working, it reports `TS2578: Unused '@ts-expect-error' directive`.
 
-In the browser, against the dev server (production builds drop Vue warnings), check that an element with an object prop has no attribute for it (`el.getAttributeNames()`) and that `el.item` is the object, that the listener runs once per event, that a kebab-case Vue component still renders, and that there are no errors or `[Vue warn]` lines in the console. The example project's [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-vue/example/verify.mjs) does these checks with Playwright, plus the `v-model` replacement, a component defined after mount, children that Vue reorders, adds and removes in both slot modes, and the lifecycle under `v-for`, `<KeepAlive>` and `v-if`. A Light DOM component has no `<slot>` elements once rendered; read a slot with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
+In the browser, against the dev server (production builds drop Vue warnings), check that an element with an object prop has no attribute for it (`el.getAttributeNames()`) and that `el.item` is the object, that the listener runs once per event, that a kebab-case Vue component still renders, and that there are no errors or `[Vue warn]` lines in the console. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-vue/example/verify.mjs) of the trial's example project, which does them with Playwright, plus the `v-model` replacement, a component defined after mount, children that Vue reorders, adds and removes in both slot modes, and the lifecycle under `v-for`, `<KeepAlive>` and `v-if`. A Light DOM component has no `<slot>` elements once rendered; read a slot with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
 
 ## Troubleshooting
 
