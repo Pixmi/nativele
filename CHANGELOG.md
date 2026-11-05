@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.1
 
 - `ts-dom doctor` checks `strict`, `lib` and `moduleResolution` only in the tsconfig files that cover the component folders, when there are any. A project with several referenced configs, such as Vite's templates with `tsconfig.app.json` and `tsconfig.node.json`, no longer gets `tsconfig-no-dom-lib` and `tsconfig-not-strict` for the config that only covers `vite.config.ts`.
 - The generated `ts-dom-tags.ts` no longer ends with `export {}`: its `import type` lines already make it a module, and linters reported the empty export as useless.
