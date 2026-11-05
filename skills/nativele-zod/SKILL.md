@@ -30,7 +30,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-05 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build, in a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`). Zod 4 is the current major and the one these steps use. With a different major version of Zod or Valibot, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build, in a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`). These steps use Zod 4.6.7; Zod 3.25.76 and Valibot 1.5.0 need only the schema changes in Known limitations 10 and 11. With any other major version of Zod or Valibot, treat every step as unverified.
 
 ## Set-up
 
@@ -257,7 +257,7 @@ What it does, as checked in the browser:
 7. **Blur does not bubble.** Use `data-on-focusout` on the `<form>`, which receives every field's blur; `e.target` is the field. Validate the whole form and take only that field's message, so checks that read more than one field still apply. The example skips checkboxes on blur, because tabbing past an unchecked box would show its message too early.
 8. **`aria-invalid` needs the value `"true"`.** `toggleAttribute("aria-invalid", on)` writes `aria-invalid=""`, which Chrome's accessibility tree reports as not invalid. Set `input.ariaInvalid = invalid ? "true" : null`. Whether a screen reader announces the message was not checked; the accessibility tree shows each invalid input with its message as the description.
 9. **Checks across fields**: `.refine((d) => d.password === d.confirm, { message: "Passwords differ", path: ["confirm"] })` puts the message under `confirm`. Give such a refinement a `path`; without one its path is empty and the map key is `""`, which no field shows. In Zod 4 the object-level `refine` runs only when every failing field failed a check on a value of the right type (`too_small`, `invalid_format`, a field's own `refine`); a field that fails with `invalid_value` or `invalid_type` stops it, and the cross-field message is missing until that field is fixed. Those are `z.literal(...)` (an unchecked `z.literal(true)` box), `z.enum([...])` given an empty `<select>`, and `z.coerce.number()` given text. Write them so they fail with a check instead: a box as `z.boolean().refine((v) => v, "...")`, a select as `z.string().min(1, "Choose a role").pipe(z.enum([...]))`, a number as in the example (checked with `safeParse` in Node). Valibot's `v.forward(v.partialCheck(...))` does not have this problem.
-10. **Zod 4 vs Zod 3.** These steps use Zod 4. The same component, `verify.mjs` and `issue.path.join(".")` passed with Zod 3.25.76 after these schema changes:
+10. **Zod 4 vs Zod 3.** These steps use Zod 4. The same component, browser checks and `issue.path.join(".")` passed with Zod 3.25.76 after these schema changes:
 
     | In the schema | Zod 4.6.7 | Zod 3.25.76 |
     |---|---|---|
@@ -268,7 +268,7 @@ What it does, as checked in the browser:
 
     `safeParse`, `result.error.issues`, `issue.path`, `issue.message` and `z.infer` were used the same way in both.
 
-11. **Valibot 1.5.0 fits the same procedure.** Only `signup.ts` changes; the component, template and `verify.mjs` passed unchanged:
+11. **Valibot 1.5.0 fits the same procedure.** Only `signup.ts` changes; the component, template and browser checks passed unchanged:
 
     ```ts
     // src/nv/signup.ts with Valibot
