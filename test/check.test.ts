@@ -84,6 +84,28 @@ describe("ts-dom check: more cases", () => {
     expect(issues.map((i) => i.rule).sort()).toEqual(["missing-binding", "reserved-prop"]);
   });
 
+  it("errors inside the body of a class with a contract error follow from it and are left out; errors after the class are kept", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    writeFileSync(
+      join(dir, "c.ts"),
+      `export class Card extends Component(tpl, { state: { count: 0 } }) {\n  label = "}";\n  connectedCallback() {\n    this.bind(store, (s) => {\n      console.log(s.n);\n    });\n  }\n}\nexport const n = o.lenght;\n`,
+    );
+    const issues = mapTscErrors(
+      [
+        { file: "c.ts", line: 1, col: 27, code: "TS2507", message: `Type '{ missingStateKeys: "nope"; }' is not a constructor function type.` },
+        { file: "c.ts", line: 4, col: 23, code: "TS7006", message: "Parameter 's' implicitly has an 'any' type." },
+        { file: "c.ts", line: 9, col: 20, code: "TS2339", message: "Property 'lenght' does not exist on type '{ a: number; }'." },
+      ],
+      dir,
+    );
+    expect(issues.map((i) => [i.rule, i.line])).toEqual([
+      ["missing-binding", 1],
+      ["tsc", 9],
+    ]);
+  });
+
   it("a folder that does not exist is reported, not skipped", () => {
     let out = "";
     try {
