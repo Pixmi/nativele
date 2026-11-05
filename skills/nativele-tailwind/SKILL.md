@@ -163,7 +163,20 @@ import "./nv/badge-box.ts";
 
    Use `adoptedStyleSheets`. Keep `import "./style.css"` in the entry anyway: Tailwind declares its internal variables with `@property`, which the browser registers only from the document. With the sheet adopted only in a shadow root and none in the document, plain utilities (`bg-violet-300`) worked but `shadow-lg` and `translate-x-[5px]` computed to `none`. When components do not need Shadow DOM's isolation, prefer Light DOM: it needs none of this.
 4. **Template styles beat utilities, whatever the specificity.** Tailwind puts utilities in `@layer utilities`, and the `<style>` Nativele injects is not in a layer, so a rule in `<style scoped>` overrides a utility on the same element (`.scoped-red` beat `text-sky-600`). To let utilities override a template's defaults, wrap those rules in `@layer components { }` inside the `<style scoped>` (as in the example); for a single element, the important modifier (`text-sky-600!`) also wins.
-5. **A `dark` class on `<html>` does not reach a shadow root.** With the class-based variant (`@custom-variant dark (&:where(.dark, .dark *));`), `dark:` utilities inside a `shadow: true` component match only an ancestor inside the same shadow root. Copy the class onto the component's inner wrapper: in `connected()`, a `MutationObserver` on `document.documentElement` (`attributeFilter: ["class"]`) that toggles `dark` on `this.refs.wrapper`, disconnected in `onCleanup`.
+5. **A `dark` class on `<html>` does not reach a shadow root.** With the class-based variant (`@custom-variant dark (&:where(.dark, .dark *));`), `dark:` utilities inside a `shadow: true` component match only an ancestor inside the same shadow root. Copy the class onto the component's inner wrapper (a `data-ref="wrapper"` element around everything that uses `dark:`), once at connect and on every change; the `sync()` at connect also covers a component created after dark mode was turned on:
+
+   ```ts
+   override connected(): void {
+     const root = document.documentElement;
+     const sync = (): void => {
+       this.refs.wrapper.classList.toggle("dark", root.classList.contains("dark"));
+     };
+     const observer = new MutationObserver(sync);
+     observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+     this.onCleanup(() => observer.disconnect());
+     sync();
+   }
+   ```
 6. Not verified: Tailwind v3, `@tailwindcss/postcss` and the Tailwind CLI; Vite's `root` in a sub-folder; `dark:` from the `prefers-color-scheme` default inside a shadow root; Nativele components shipped as a package in `node_modules`; a template `<style>` inside a `shadow: true` component together with Tailwind; the CSS nesting fallback of `<style scoped>` in browsers without `@scope`; Tailwind's `prefix()` option and the `dark:` variant inside a shadow root.
 
 ## Verify
@@ -174,6 +187,7 @@ Run in the project:
 npm run build                     # expect: ts-dom check: no issues, then ✓ built
 npx ts-dom doctor src/nv          # expect: ts-dom doctor: the set-up looks right
 grep -cF '<a class used only in one of your templates>' dist/assets/*.css   # expect: 1
+grep -cF '<a class used only in an installed Skill file>' dist/assets/*.css   # expect: 0 (the @source not line of step 3)
 ```
 
 For an arbitrary value, search for the escaped form (`grep -cF 'p-\[13px\]'`). Then, against both `npm run dev` and `npx vite preview`, read computed styles in the browser, for example:

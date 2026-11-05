@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { configDefaults } from "vitest/config";
 import { tsDom } from "./src/lib/vite-plugin.ts";
 
 const lib = fileURLToPath(new URL("./src/lib/index.ts", import.meta.url));
@@ -33,5 +34,6 @@ export default defineConfig({
     // Tests use refs from outside the class through instances, so the "the component itself must use it" rule does not apply
     overrides: [{ files: ["test/**", "browser/**"], rules: { "ts-dom/unused-markup": "off", "ts-dom/a11y": "off", "ts-dom/data-flow": "off" } }],
   },
-  test: { environment: "happy-dom" },
+  // The Skill examples are separate projects with their own tests, run by their `npm run verify`.
+  test: { environment: "happy-dom", exclude: [...configDefaults.exclude, "skills/**"] },
 });

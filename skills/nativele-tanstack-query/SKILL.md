@@ -297,5 +297,6 @@ Then check in a browser against the dev server, without external network: point 
 - Loading and error states without a library: https://github.com/Pixmi/nativele/blob/main/docs/recipes.md#loading-and-error-states
 - Copying store data into state: https://github.com/Pixmi/nativele/blob/main/docs/recipes.md#showing-data-from-a-store
 - Lists with `replace()`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
+- Lists of item components (`items = ...`): https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-components-items--
 - Why subscriptions belong in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
 - Setting up Vite: `npx ts-dom skills nativele-vite`
