@@ -71,8 +71,8 @@ A pull request runs only the jobs its changed files need, and a push to `main` d
 | Changed files | Jobs that run |
 |---|---|
 | `src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `.github/workflows/ci.yml` | all of `ci.yml`, and the Skill examples |
-| `test/`, `examples/`, `scripts/bench.ts`, `index.html` | types, unit tests and lint |
-| `browser/` | types, unit tests and lint, and the browser tests |
+| `test/`, `scripts/bench.ts`, `index.html` | types, unit tests and lint |
+| `browser/`, `examples/` | types, unit tests and lint, and the browser tests |
 | `scripts/consumer-smoke.sh`, `scripts/no-bundler-smoke.sh` | types, unit tests and lint, and that smoke test |
 | `skills/` | the `SKILL.md` format check (`skills-format.yml`); a change under `skills/*/example/` also runs that example (`skills.yml`) |
 | Markdown, `llms.txt`, `LICENSE`, `.gitignore`, other workflows | nothing |
