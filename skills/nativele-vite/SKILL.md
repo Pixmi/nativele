@@ -17,7 +17,7 @@ metadata:
 - A Vite app with no UI framework (for example one started with `npm create vite@latest -- --template vanilla-ts`) that adds components written with Nativele (`@nativele/ts-dom`).
 - Any Vite project with Nativele whose set-up goes beyond the defaults: `root` in a sub-folder, several HTML pages, Vite+, or questions about what `vite dev` does when a template changes.
 - Signals: `vite` or `vite-plus` and `@nativele/ts-dom` in `package.json`, a `vite.config.ts`.
-- With React, follow `nativele-react`; with another framework, `nativele-integration`. The parts about `dirs`, `root` and the build script apply there too, but the hot-update behavior below was verified without a framework.
+- With a UI framework, follow its Skill: `nativele-react`, `nativele-vue`, `nativele-svelte`, `nativele-angular`, or `nativele-integration` for any other. The parts about `dirs` and `root` apply there too; the build script in step 5 does not: it is for a project whose type check is plain `tsc`, while a framework project keeps its own type check (`tsc -b`, `vue-tsc -b`, `svelte-check`) and puts `ts-dom gen <folder> &&` in front of that script. The hot-update behavior below was verified without a framework.
 - Not for writing the components themselves (`npx ts-dom skills add nativele-core`), and not for setting Vite up.
 
 ## Versions

@@ -22,7 +22,7 @@ skills/
 │   └── example/                  # Official only: the project the Skill is verified with
 │       ├── package.json          # exact versions of every tool the Skill names
 │       ├── ...                   # the minimal app the SKILL.md example comes from
-│       └── verify.mjs            # the browser checks `npm run verify` ends with
+│       └── verify.mjs            # browser checks run by `npm run verify` (or the project's own tests, see below)
 └── ...
 ```
 
@@ -90,7 +90,7 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 
 ## Verification of Official Skills
 
-- `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a short real-browser test of what the Skill promises.
+- `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a real-browser test of what the Skill promises: usually a `verify.mjs` script; an example whose Skill sets up tests (`nativele-testing`, `nativele-architecture`) runs its own Vitest and Playwright Test suites instead.
 - `nativele-core` has no example of its own: the library's CI, which checks every example in the repository, verifies it.
 - The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when an `example/` changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. A change to `SKILL.md` runs only `.github/workflows/skills-format.yml`, which checks every `SKILL.md` against this specification. Neither is a required check for `main`.
 - The monthly run opens nothing by itself; a failure is reported in the workflow run, and the Skill is fixed or moved to Experimental.

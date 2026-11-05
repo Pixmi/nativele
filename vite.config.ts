@@ -22,7 +22,7 @@ export default defineConfig({
   resolve: { alias: { "@nativele/ts-dom": lib } },
   plugins: [tsDom({ dirs: ["examples", "test", "browser"], a11y: true })],
   lint: {
-    ignorePatterns: ["node_modules", "dist", "demo-dist", "**/*.html.ts", "**/ts-dom-tags.ts"],
+    ignorePatterns: ["node_modules", "dist", "demo-dist", "**/*.html.ts", "**/ts-dom-tags.ts", ".claude/worktrees"],
     jsPlugins: [{ name: "ts-dom", specifier: "./src/lib/oxlint-plugin.ts" }],
     rules: {
       "ts-dom/unused-markup": "error",
@@ -34,6 +34,6 @@ export default defineConfig({
     // Tests use refs from outside the class through instances, so the "the component itself must use it" rule does not apply
     overrides: [{ files: ["test/**", "browser/**"], rules: { "ts-dom/unused-markup": "off", "ts-dom/a11y": "off", "ts-dom/data-flow": "off" } }],
   },
-  // The Skill examples are separate projects with their own tests, run by their `npm run verify`.
-  test: { environment: "happy-dom", exclude: [...configDefaults.exclude, "skills/**"] },
+  // The Skill examples are separate projects with their own tests, run by their `npm run verify`; agent worktrees are copies of this repository.
+  test: { environment: "happy-dom", exclude: [...configDefaults.exclude, "skills/**", ".claude/worktrees/**"] },
 });

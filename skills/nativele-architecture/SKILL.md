@@ -167,7 +167,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
     npm pkg set scripts.verify="npm run build && ts-dom doctor src && npm test && npm run test:browser && npm run test:e2e"
     ```
 
-    Add `test-results` and `playwright-report` to `.gitignore`, next to `*.html.ts` and `ts-dom-tags.ts`.
+    The build script is for a project whose type check is plain `tsc`: `ts-dom check` generates the files and type-checks. In a framework project, keep the framework's type check (`tsc -b`, `vue-tsc -b`, `svelte-check`) and put `ts-dom gen src &&` in front of it instead (the framework's Skill shows the script). Add `test-results` and `playwright-report` to `.gitignore`, next to `*.html.ts` and `ts-dom-tags.ts`.
 
 ## Example
 

@@ -162,18 +162,14 @@ define("shadow-card", ShadowCard);
 
 1. **Define before render.** Import every Nativele module before React first renders its tag (step 6). Otherwise props become attributes and object props are lost.
 2. **Event prop names.** Only `on` plus the exact event name works (`onitem-select`); `onItemSelect` and `onItem-select` never fire. Nativele events do not bubble by default, so put the handler on the element that emits. A ref with `addEventListener` in `useEffect` also works (remove it in the cleanup).
-3. **Light DOM slots and React children do not mix.** In the default Light DOM mode (`Component(tpl)` with no `shadow`), Nativele moves the host's children into its slot positions. When React later inserts, removes or reorders those children it fails (`insertBefore`/`removeChild` errors that unmount the root) or leaves nodes outside the slot. Changing text in place and appending at the end happen to work, but do not rely on that. Use one of:
-   - `shadow: true` on the component (children can then change freely), or
-   - one stable React element per slot, and let React change only what is inside it:
+3. **Light DOM slots and React children do not mix** (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework). When React inserts, removes or reorders the children of a Light DOM host with slots, it fails with `insertBefore`/`removeChild` errors that unmount the root, or leaves nodes outside the slot. Changing text in place and appending at the end happen to work, but do not rely on that. Use `shadow: true`, or one stable React element per slot and let React change only what is inside it:
 
-     ```tsx
-     <light-card>
-       <div slot="title">{showTitle && <span>{title}</span>}</div>
-       <div>{rows.map((r) => <p key={r.id}>{r.text}</p>)}</div>
-     </light-card>
-     ```
-
-     A stable but empty wrapper still fills its slot, so the slot's fallback content does not show; when the fallback matters, use `shadow: true`.
+   ```tsx
+   <light-card>
+     <div slot="title">{showTitle && <span>{title}</span>}</div>
+     <div>{rows.map((r) => <p key={r.id}>{r.text}</p>)}</div>
+   </light-card>
+   ```
 4. **New objects for changed props.** A Nativele component compares props by reference; pass a new object when the data changes (React state updates usually do).
 5. **TSX types need the declaration** in step 7; without it, every Nativele tag is `TS2339: Property 'info-card' does not exist on type 'JSX.IntrinsicElements'`. Check it with a `.tsx` that has a wrong prop under `// @ts-expect-error`, because `skipLibCheck` can hide mistakes inside the declaration itself. Keep these cases in a `.tsx` file of their own that the app never imports (the example uses `src/types-check.tsx`).
 6. Not verified: server-side rendering, form controls inside Nativele components submitting with a React form, and React versions other than 19.3.
