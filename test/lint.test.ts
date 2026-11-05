@@ -73,6 +73,12 @@ describe("dynamic access", () => {
     expect(d.some((x) => x.rule === "unused-ref" && x.message.includes(`data-ref="b"`))).toBe(true);
     expect(d.some((x) => x.message.includes(`data-ref="a"`))).toBe(false);
   });
+  it("refs, text or lists held in a variable count as using everything", () => {
+    const html = `<b data-ref="a"></b><i data-ref="b"></i><u>{{ x }}</u><template data-each="l"><li>{{ y }}</li></template>`;
+    expect(unusedMarkup(html, `const r = this.refs; r.a.focus(); const t = this.text; t.x = 1; const ls = this.lists; ls.l; y`)).toEqual([]);
+    const d = unusedMarkup(html, `const { a } = this.refs; a.focus(); this.text.x = 1; this.lists.l; y`);
+    expect(d.map((x) => x.message.match(/data-ref="(\w)"/)?.[1])).toEqual(["b"]);
+  });
 });
 
 describe("lintUsage", () => {

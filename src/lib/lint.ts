@@ -115,8 +115,8 @@ export function unusedMarkup(html: string, code: string): Diagnostic[] {
   const a = analyze(html);
   const add = (rule: keyof typeof UNUSED_MARKUP_RULES, message: string, key: string) =>
     out.push({ rule, severity: "error", message, ...at(a, key) });
-  // Dynamic access (refs[k], text[k], lists[k]) hides which names are used: treat everything as used.
-  const dynamic = (obj: string) => used(`\\b${obj}\\[\\s*[^"'\\s\\]]`);
+  // Dynamic access (refs[k], text[k], lists[k]) or an alias (const r = this.refs) hides which names are used: treat everything as used.
+  const dynamic = (obj: string) => used(`\\b${obj}\\[\\s*[^"'\\s\\]]`) || used(`[\\w$]\\s*=\\s*this\\.${obj}\\s*[;,)\\n]|[(,]\\s*this\\.${obj}\\s*[,)]`);
   const dynRefs = dynamic("refs");
   const dynText = dynamic("text");
   const dynLists = dynamic("lists");
