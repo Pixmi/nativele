@@ -10,7 +10,7 @@ export function parseJsonc(text: string): Record<string, unknown> {
 
 export interface TsConfig {
   compilerOptions: Record<string, unknown>;
-  /** include patterns made absolute against the folder of the config that declared them */
+  /** include patterns made absolute against the folder of the config that declared them; empty when only `files` is given, as tsc then includes nothing else */
   include?: string[];
 }
 
@@ -43,7 +43,7 @@ export function readTsConfig(file: string, depth = 0): TsConfig {
     merged = { compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions }, ...(base.include ?? merged.include ? { include: base.include ?? merged.include } : {}) };
   }
   const own = json.include as string[] | undefined;
-  const include = own ? own.map((p) => resolve(dirname(file), p).split("\\").join("/")) : merged.include;
+  const include = own ? own.map((p) => resolve(dirname(file), p).split("\\").join("/")) : (merged.include ?? (Array.isArray(json.files) ? [] : undefined));
   return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}) };
 }
 
