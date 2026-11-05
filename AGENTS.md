@@ -38,6 +38,7 @@ Integration with frameworks and other tools is delivered as Skills, not as runti
 - A Skill never adds a dependency to the library's core or changes its runtime.
 - Tiers: Official (verified and maintained by the maintainers, with an example project checked in CI), Community (contributed, with its author and last verified versions), Experimental (not fully verified yet). New contributions start as Experimental.
 - Skills live in `skills/<name>/SKILL.md` and follow `skills/README.md`. An Official Skill's `example/` is verified by `.github/workflows/skills.yml`; after changing the runtime or a Skill, run `npm run build:lib` and `npm run verify` in that example. A new minor version updates every Skill's `nativele` range and `verified` date once it has been verified again.
+- Reviewing a PR that adds or changes a Skill: follow "How a Skill pull request is accepted" in `skills/README.md`. Run the trial with a fresh subagent that gets only the packed package, the Skill and a task the Skill claims to cover, then check the result yourself instead of trusting the subagent's report. Report every guess or error the subagent hit that the Skill does not cover; the Skill is not accepted until a trial passes with nothing to add.
 
 ## Language
 

@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- Skill pull requests are accepted through an agent trial: a maintainer gives a fresh agent, in an empty project with only the packed package and the Skill, a task the Skill claims to cover, checks the result independently, and sends back every guess or error the agent hit that the Skill does not cover. A Skill becomes Community only after such a trial passes.
+
 ## 0.5.0
 
 Nativele is a light, composable UI layer that grows its integrations through Skills instead of through the library. This version ships the first Skills and the command that delivers them, types `changed` and list event handlers more precisely, and adds recipes for common screens.
