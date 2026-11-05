@@ -34,7 +34,7 @@ import { template } from "@nativele/ts-dom";
 import type { El } from "@nativele/ts-dom";
 export default template<{
   refs: { "toggle": El<"button"> };
-  lists: { "tags": { refs: {}; text: "label"; ifs: "hot" } };
+  lists: { "tags": { refs: Record<never, never>; text: "label"; ifs: "hot" } };
   ifs: "admin";
   slots: "extra";
   text: "name";

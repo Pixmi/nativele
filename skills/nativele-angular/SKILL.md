@@ -47,7 +47,7 @@ Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and
                scripts.pretest="ts-dom gen src/nv --whitespace=collapse"
    ```
 
-   `npm start`, `npm run build` and `npm test` then generate first (`npx ng ...` called directly does not, so a CI job runs these scripts or `ts-dom gen` first; see `npx ts-dom skills nativele-ci`). The CLI template sets up Prettier, and with a formatter the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`), which asks for `collapse`; every script that generates passes the same flag. Collapsing also drops the whitespace between tags, so `textContent` reads `x1A1:new`, not `x1 A1:new`; write test expectations that way.
+   `npm start`, `npm run build` and `npm test` then generate first (`npx ng ...` called directly does not, so a CI job runs these scripts or `ts-dom gen` first; see `npx ts-dom skills nativele-ci`). The CLI template sets up Prettier, and with a formatter the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`), which asks for `collapse`; every script that generates passes the same flag. With `collapse`, the line breaks between the inline tags of `info-card` become one space each, so with label `x`, count 1 and an item named `A1:new` its `textContent` reads `x 1 A1:new Pick`, as the page shows it; whitespace next to a block-level element (`<div>`, `<p>`, `<h2>`) is dropped instead. Write test expectations that way.
 
    While `npm start` runs, keep a second terminal with `npx ts-dom gen src/nv --watch --whitespace=collapse`: editing a template or adding a component regenerates its module, and `ng serve` rebuilds and reloads the page.
 
