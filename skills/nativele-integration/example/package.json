@@ -1,0 +1,19 @@
+{
+  "name": "nativele-integration-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify": "ts-dom check src/nv && ts-dom doctor src/nv && tsc -b && vite build && node verify.mjs"
+  },
+  "dependencies": {
+    "@nativele/ts-dom": "file:../../..",
+    "preact": "11.1.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "24.19.2",
+    "playwright-core": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6"
+  }
+}
