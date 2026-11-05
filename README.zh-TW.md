@@ -65,6 +65,7 @@ npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .
 | `nativele-vue` | 在 Vue 3 中使用 Nativele 元件：props、事件、`v-model`、slot、`<KeepAlive>`、範本型別 |
 | `nativele-svelte` | 在 Svelte 5 中使用 Nativele 元件：props、事件、slot、範本型別 |
 | `nativele-angular` | 在 Angular 中使用 Nativele 元件：綁定、變更偵測、建置流程、內容投影（Experimental） |
+| `nativele-architecture` | 應用的結構：功能資料夾、共用元件與 store、由 router 掛載的頁面、延遲載入、測試分層 |
 | `nativele-vite` | 在 Vite 應用中使用 Nativele：外掛與 `root`、多頁建置、熱更新 |
 | `nativele-integration` | 在沒有專屬 Skill 的框架（Preact、Solid 等）中使用 Nativele 元件：property、事件、slot、生命週期、範本型別（Experimental） |
 | `nativele-state-management` | 狀態放在哪裡；`createStore`，以及透過 `bind` 接上 Zustand、Redux Toolkit、nanostores |
@@ -228,6 +229,7 @@ define("task-board", TaskBoard);
 - [Components and data flow: state, props, derive, events, composition, stores](https://github.com/Pixmi/nativele/blob/main/docs/components.md)
 - [Recipes: loading and error states, store data, filtered lists, dialogs, form validation](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md)
 - [Lists: lists of components with `items =`, plain lists with `replace()`, moving items](https://github.com/Pixmi/nativele/blob/main/docs/lists.md)
+- [Architecture: feature folders, shared components and stores, pages mounted by a router, where state lives, testing strategy](https://github.com/Pixmi/nativele/blob/main/docs/architecture.md)
 - [Setup, checks and lint: installation, Vite, oxlint, `ts-dom check`, `ts-dom doctor`, accessibility](https://github.com/Pixmi/nativele/blob/main/docs/tooling.md)
 - [Performance: the large list benchmark](https://github.com/Pixmi/nativele/blob/main/docs/performance.md)
 - [Design: principles, deliberate decisions, limitations](https://github.com/Pixmi/nativele/blob/main/docs/design.md)

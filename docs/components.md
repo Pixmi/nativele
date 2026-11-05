@@ -292,7 +292,7 @@ class FormField extends Component(tpl, {
 
 ### Avoiding Layer-by-Layer Passing (lint: `ts-dom/data-flow`)
 
-A common problem in Vue is re-emitting layer by layer and passing props down layer by layer (prop drilling and emit chains), which is held back only by habit. Besides "events do not bubble by default", there are lint hints here (suggestions only, not errors):
+A common problem in Vue is re-emitting layer by layer and passing props down layer by layer (prop drilling and emit chains), which is held back only by habit. How an app decides where each piece of state lives is in [Architecture](architecture.md#where-state-lives). Besides "events do not bubble by default", there are lint hints here (suggestions only, not errors):
 
 | Id | Detection |
 |---|---|

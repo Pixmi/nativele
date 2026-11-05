@@ -1,0 +1,8 @@
+<h1>Projects</h1>
+<text-entry label="New project" action="Add project" data-on-entry-submit="onAdd"></text-entry>
+<ul>
+  <template data-each="cards" data-key="id" data-prop="project">
+    <project-card role="listitem"></project-card>
+  </template>
+</ul>
+<p data-if="empty">No projects yet.</p>
