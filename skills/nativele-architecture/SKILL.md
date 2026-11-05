@@ -35,7 +35,7 @@ metadata:
 | @vitest/browser-playwright | 5.1.0 |
 | playwright | 1.64.1 (drives the installed Chrome; no browser is downloaded) |
 | @playwright/test | 1.64.1 |
-| universal-router | 10.0.3 (checked by hand with the example's tests, see step 5; the example project does not run it) |
+| universal-router | 10.0.3 (checked by hand with the same tests as the Navigation API router, see step 5) |
 
 Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
 
@@ -139,7 +139,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
    }
    ```
 
-   `router.resolve()` returns `undefined` when an action returns nothing, so test the match with `!= null`. With this router, the example's unit tests and its end-to-end tests pass except the one for a browser without the Navigation API (links are always handled by the click handler) and the one that calls `navigation.navigate()`, which passes when it clicks a link instead; its browser router tests use the Navigation API and do not apply.
+   `router.resolve()` returns `undefined` when an action returns nothing, so test the match with `!= null`. With this router, the same unit tests and end-to-end tests pass except the one for a browser without the Navigation API (links are always handled by the click handler) and the one that calls `navigation.navigate()`, which passes when it clicks a link instead; its browser router tests use the Navigation API and do not apply.
 
 6. **Write each page as a component** in its feature folder: route params arrive as string props (`props: { projectId: "" }`), the page shows what an unknown id means, and it binds its stores in `connected()`. Everything a page must keep after the user leaves goes into a store: leaving removes the page, which ends its `bind` subscriptions, and coming back creates a new element.
 
@@ -171,7 +171,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
 
 ## Example
 
-The example project is a project tracker: a projects list (`/`), a project page with its tasks (`/projects/:id`) and a settings page (`/settings`).
+A project tracker: a projects list (`/`), a project page with its tasks (`/projects/:id`) and a settings page (`/settings`). Everything below is enough to build the same layout; the full project from the agent trial is in the repository only as a reference.
 
 ```
 index.html  package.json  tsconfig.json  vite.config.ts  playwright.config.ts
@@ -182,6 +182,16 @@ src/features/projects/projects-store.ts  projects-page.*  project-page.*  projec
 src/features/settings/settings-page.*  settings-page.test.ts
 e2e/app.spec.ts
 ```
+
+The small components the code below uses, by their interface (write them like any component, with the core Skill):
+
+| Component | Folder | Props | Events |
+|---|---|---|---|
+| `text-entry` | `src/shared/` | `label`, `action` (strings) | `entry-submit` with `{ value: string }` |
+| `progress-meter` | `src/shared/` | `done`, `total` (numbers) | none |
+| `task-row` | `src/features/projects/` | `task` (a `Task`) | `task-toggle`, no data |
+| `route-message` | `src/app/` | `heading`, `detail` (strings) | none |
+| `app-nav` | `src/app/` | none; it binds `currentPath` and `preferences` to mark the current link and show the user name | none |
 
 The router (Navigation API and `URLPattern`, no dependency):
 
@@ -264,7 +274,7 @@ export const currentPath = createStore(location.pathname);
 A feature store and a page of that feature:
 
 ```ts
-// src/features/projects/projects-store.ts (abridged: the example adds addProject and more seed data)
+// src/features/projects/projects-store.ts
 import { createStore } from "@nativele/ts-dom";
 
 export interface Project { id: string; name: string }
@@ -476,7 +486,7 @@ test("each page module is loaded only when its route is first shown", async ({ p
 
 1. **Scan one folder.** Several folders work too (`dirs: ["src/shared", "src/features"]`): a template imports a child defined in any scanned folder, and a tag defined in two of them is `duplicate-define`. But every folder then needs to be named in `tsDom({ dirs })`, `ts-dom check`, `ts-dom doctor` and the tsconfig `include` alike, and a folder left out of one of them is silently not generated or not checked there. One folder, `src`, avoids that. A component outside every scanned folder is not imported automatically: import its module where it is used.
 2. **Browser support.** The router needs `URLPattern`: without it the app stops at start-up with `URLPattern is not defined`. Without the Navigation API, `startRouter` attaches nothing, every link loads a new document, and the router renders the route at start-up (verified in Chrome with `navigation` removed). Only Chrome 148 was verified; check your target browsers, or use a History API router (step 5).
-3. **Keep the abort check.** Without `if (signal?.aborted) return;` after the import, a page module that loads slowly mounts over the page of a later navigation, and the address bar and the page disagree. The example's end-to-end test delays a chunk to prove the check, for both routers.
+3. **Keep the abort check.** Without `if (signal?.aborted) return;` after the import, a page module that loads slowly mounts over the page of a later navigation, and the address bar and the page disagree. To prove the check in a test, delay one page's chunk and navigate twice: the second page must stay.
 4. **Every app path must return `index.html`.** Deep links and reloads (and every link, without the Navigation API) ask the server for the page's path. `vite dev` and `vite preview` answer with `index.html`; a production server must be set up the same way (not verified here).
 5. **A page is a new element on every navigation.** Its `state` starts over, also on back and forward, and also between `/projects/p1` and `/projects/p2`. Keep what must survive in a store.
 6. **Feature stores live as long as the document.** A store created in a lazily loaded module is created on the first visit to the feature and kept until a reload; reset it in tests with `store.set(seed())` in `beforeEach`.
@@ -495,7 +505,7 @@ npm run test:browser       # expect: every src/**/*.browser.test.ts passes in he
 npm run test:e2e           # expect: every e2e spec passes against vite preview on the built app
 ```
 
-The example project's `npm run verify` runs exactly these, from a clean checkout with nothing generated; its output (the `info` lines left out):
+From a clean checkout with nothing generated, the output of these commands for the project tracker (the `info` lines left out):
 
 ```
 ts-dom check: no issues

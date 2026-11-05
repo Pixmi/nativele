@@ -129,7 +129,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create
 
 ## Example
 
-The component under test (from the example project, `src/nv/counter-card.*`):
+The component under test (`src/nv/counter-card.*`):
 
 ```html
 <!-- src/nv/counter-card.html -->
@@ -224,7 +224,7 @@ The steps every test follows:
 4. Assert at once. Rendering is synchronous: after `append`, a prop assignment, `setAttribute`, `el.click()` or `store.set()`, the DOM is already updated, and `emit` listeners have already run. For a form, set the input's `value`, then call `click()` on its submit button or `form.requestSubmit()`: both run the template's `data-on-submit` handler, in happy-dom too. The only waits are for slot changes made after connection (one microtask, below).
 5. Empty the document in `afterEach` (`document.body.replaceChildren()`): removing the elements runs `disconnected()` and ends their `bind`, `on` and `onCleanup` registrations.
 
-Other parts of the API, as in the example project's tests:
+Other parts of the API:
 
 ```ts
 // lists (test/todo-list.test.ts): items as components; an item's event reaches the parent with hit.key
@@ -286,7 +286,7 @@ test("Chrome moves a list item with moveBefore: it stays connected and keeps foc
 });
 ```
 
-Under happy-dom this test fails: there is no `moveBefore`, both callbacks run and the input loses focus. The example's `test/todo-list.test.ts` asserts the happy-dom behavior, so a later happy-dom release that adds `moveBefore` shows up as a failing test. The Vitest API in browser mode is the same: the example's other happy-dom tests also pass unchanged when run in the browser project, so moving a test there is a matter of renaming it.
+Under happy-dom this test fails: there is no `moveBefore`, both callbacks run and the input loses focus. A unit test can assert the happy-dom behavior, so that a later happy-dom release that adds `moveBefore` shows up as a failing test. The Vitest API in browser mode is the same: happy-dom tests also pass unchanged when run in the browser project, so moving a test there is a matter of renaming it.
 
 A page test with Playwright (the alternative):
 
@@ -336,7 +336,7 @@ npx vitest run --project browser   # expect: the *.browser.test.ts files pass in
 npx playwright test                # if you use the alternative: builds, serves on port 4432, passes
 ```
 
-The example project's `verify` script runs exactly these, plus the same unit tests under jsdom as a third Vitest project (`"environment": "jsdom"`), which shows that jsdom works for the same tests. Its tests prove each limitation above: the module import, per-file isolation, `define()` twice, `vi.resetModules()`, slot timing in both modes, and the move that happy-dom and Chrome handle differently.
+The same unit tests also pass under jsdom, as a third Vitest project with `"environment": "jsdom"`. Each limitation above was proved by a test in the agent trial: the module import, per-file isolation, `define()` twice, `vi.resetModules()`, slot timing in both modes, and the move that happy-dom and Chrome handle differently.
 
 ## Troubleshooting
 

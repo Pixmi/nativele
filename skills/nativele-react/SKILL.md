@@ -189,7 +189,7 @@ npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and
 
 Pass `tsc` the tsconfig from step 3. A root `tsconfig.json` that only lists `references` (as in Vite's template) checks nothing itself, so `tsc --noEmit` without `-p` passes even with type errors.
 
-In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. The example project's [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) does these checks with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
+In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) of the trial's example project, which does them with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
 
 ## Troubleshooting
 
