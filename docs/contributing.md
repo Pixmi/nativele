@@ -63,3 +63,18 @@ To verify a Skill's example project: `npm run build:lib`, then in `skills/<name>
 The tests always use `--no-sandbox --no-zygote`, which suits WSL and container environments; they can also run on an ordinary desktop.
 
 By default only Chromium is run, and CI also runs only Chromium: this library is a TS tool that relies on standard DOM APIs, not on CSS rendering, where browsers differ a lot. To try it on Firefox, use `BROWSER=firefox PLAYWRIGHT_BROWSERS_PATH=<path> npm run test:browser` (run `npx playwright-core install firefox` first; Firefox 157 has been verified to pass everything). WebKit is not verified.
+
+## CI
+
+A pull request runs only the jobs its changed files need, and a push to `main` does the same for the pushed commits. The jobs that are not needed still report as skipped, so the required checks pass.
+
+| Changed files | Jobs that run |
+|---|---|
+| `src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `.github/workflows/ci.yml` | all of `ci.yml`, and the Skill examples |
+| `test/`, `examples/`, `scripts/bench.ts`, `index.html` | types, unit tests and lint |
+| `browser/` | types, unit tests and lint, and the browser tests |
+| `scripts/consumer-smoke.sh`, `scripts/no-bundler-smoke.sh` | types, unit tests and lint, and that smoke test |
+| `skills/` | the `SKILL.md` format check (`skills-format.yml`); a change under `skills/*/example/` also runs that example (`skills.yml`) |
+| Markdown, `llms.txt`, `LICENSE`, `.gitignore`, other workflows | nothing |
+
+The Skill examples also run once a month, so a third-party release that breaks a Skill is found.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../src/lib/doctor.ts";
@@ -12,7 +12,9 @@ describe("Skills shipped with the package", () => {
   const skills = listSkills(skillsRoot());
 
   it("lists every skills/<name>/SKILL.md except the template", () => {
-    expect(skills.map((s) => s.name)).toEqual(["nativele-core", "nativele-integration", "nativele-react"]);
+    const dirs = readdirSync(skillsRoot()).filter((d) => d !== "_template" && existsSync(join(skillsRoot(), d, "SKILL.md")));
+    expect(skills.map((s) => s.name)).toEqual(dirs.sort());
+    expect(dirs).toContain("nativele-core");
   });
 
   it.each(listSkills(skillsRoot()).map((s) => [s.name, s] as const))("%s follows the specification", (name, s) => {

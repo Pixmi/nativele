@@ -5,10 +5,10 @@ name: Skills
 # release of a third-party tool that breaks a Skill is found. A change to SKILL.md alone runs skills-format.yml.
 on:
   pull_request:
-    paths: ["skills/*/example/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+    paths: ["skills/*/example/**", "src/**", "package.json", "package-lock.json", ".github/workflows/skills.yml"]
   push:
     branches: [main]
-    paths: ["skills/*/example/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+    paths: ["skills/*/example/**", "src/**", "package.json", "package-lock.json", ".github/workflows/skills.yml"]
   schedule:
     - cron: "0 3 1 * *"
   workflow_dispatch:
