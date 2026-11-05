@@ -1,14 +1,14 @@
 name: Skills
 
 # Runs the example project of every Official Skill against the library in this repository.
-# Not a required check: it runs when a Skill or the library changes, and once a month so that a new
-# release of a third-party tool that breaks a Skill is found.
+# Not a required check: it runs when an example or the library changes, and once a month so that a new
+# release of a third-party tool that breaks a Skill is found. A change to SKILL.md alone runs skills-format.yml.
 on:
   pull_request:
-    paths: ["skills/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+    paths: ["skills/*/example/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
   push:
     branches: [main]
-    paths: ["skills/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+    paths: ["skills/*/example/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
   schedule:
     - cron: "0 3 1 * *"
   workflow_dispatch:
