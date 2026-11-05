@@ -559,7 +559,7 @@ npx ts-dom check`,
 { "compilerOptions": { "strict": true, "lib": ["ES2022", "DOM"] }, "include": ["src"] }`,
   },
   "tsconfig-not-strict": {
-    why: "The names in the templates are checked with or without strict, but without it tsc does not report values that may be null (a querySelector result, an optional ref) or parameters that are implicitly any (a handler parameter without a type). TypeScript 6 and later turn strict on when it is left out; TypeScript 5 leaves it off, so there it has to be set.",
+    why: "The names in the templates are checked with or without strict, but without it tsc does not report values that may be null (a querySelector result, an optional ref) or parameters that are implicitly any (a handler parameter without a type). TypeScript 6 and later turn strict on when it is left out; TypeScript 5 leaves it off, so there it has to be set. When the project's TypeScript cannot be resolved, its version is unknown, and a missing strict is reported as on TypeScript 5.",
     bad: `// tsconfig.json
 { "compilerOptions": { "strict": false } }
 // or, with TypeScript 5, no "strict" at all`,
@@ -590,7 +590,7 @@ npx ts-dom check`,
 { "include": ["src"] }`,
   },
   "tsconfig-misses-tag-map": {
-    why: "ts-dom-tags.ts registers the components in HTMLElementTagNameMap, and no file imports it, so it is in the program only when include matches it and exclude does not remove it. Left out, tags are typed as plain HTMLElement and lists of item components fail with item-not-in-tag-map. The x.html.ts files do not have this problem: their components import them.",
+    why: "ts-dom-tags.ts registers the components in HTMLElementTagNameMap. Usually no file imports it, so it is in the program only when include matches it and exclude does not remove it; a file in the program that imports or re-exports it (a package entry with export type {} from \"./ts-dom-tags.js\") brings it in as well, and then nothing is reported. Left out, tags are typed as plain HTMLElement and lists of item components fail with item-not-in-tag-map. The x.html.ts files do not have this problem: their components import them. include, exclude and files are read through extends as tsc reads them: each from the nearest config that sets it.",
     bad: `// tsconfig.json
 { "include": ["src/**/*.tsx"] }
 { "include": ["src"], "exclude": ["**/ts-dom-tags.ts"] }`,
@@ -639,7 +639,7 @@ import viteConfig from "./vite.config";
 export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happy-dom" } }));`,
   },
   "oxlint-plugin-missing": {
-    why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI.",
+    why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI. In a package of a workspace, the nearest lint config up to the workspace root is read.",
     bad: `// .oxlintrc.json
 { "rules": {} }`,
     good: `// .oxlintrc.json
@@ -649,7 +649,7 @@ export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happ
 }`,
   },
   "formatter-whitespace": {
-    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page. The same warning is given when the scripts or the Vite config ask for collapse but the generated files were written with preserve: a run without --whitespace keeps the mode a file was last written with, so one run without the flag leaves the project on preserve.",
+    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page. The same warning is given when the scripts or the Vite config ask for collapse but the generated files were written with preserve: a run without --whitespace keeps the mode a file was last written with, so one run without the flag leaves the project on preserve. In a package of a workspace, the formatter's config files, the prettier key, dependencies and scripts in package.json, and .prettierignore are looked up to the workspace root, nearest first.",
     bad: `# formatter is configured, templates keep their whitespace
 npx ts-dom gen
 # or: package.json has "gen": "ts-dom gen src --whitespace=collapse", but the files came from a plain run

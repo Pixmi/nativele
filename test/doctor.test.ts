@@ -260,11 +260,14 @@ const paths = `"paths": { "@nativele/ts-dom": ["x"] }`;
 describe("ts-dom doctor: what the installed TypeScript does by default", () => {
   const config = (options: string) => ({ "tsconfig.json": `{ "compilerOptions": { ${paths}${options} } }`, "src/x.html": "<p></p>" });
 
-  it("strict left out is a warning on TypeScript 5 only; strict false is one on every version", () => {
+  it("strict left out is a warning on TypeScript 5 and when the version cannot be determined; strict false is one on every version", () => {
     expect(issuesOf(tree({ ...config(""), ...withTypeScript("6.0.3") }), "tsconfig-not-strict")).toEqual([]);
     expect(issuesOf(tree({ ...config(""), ...withTypeScript("7.0.2") }), "tsconfig-not-strict")).toEqual([]);
     const [five] = issuesOf(tree({ ...config(""), ...withTypeScript("5.9.3") }), "tsconfig-not-strict");
     expect(five?.message).toMatch(/^compilerOptions\.strict is not set, and TypeScript 5\.9\.3 leaves it off by default .* Fix: set "strict": true\.$/);
+    const [unknown] = issuesOf(tree(config("")), "tsconfig-not-strict");
+    expect(unknown).toMatchObject({ severity: "warning", file: "tsconfig.json" });
+    expect(unknown?.message).toMatch(/^compilerOptions\.strict is not set, and the TypeScript version could not be determined .*TypeScript 5 leaves strict off by default.* Fix: set "strict": true\.$/);
     const [off] = issuesOf(tree({ ...config(`, "strict": false`), ...withTypeScript("7.0.2") }), "tsconfig-not-strict");
     expect(off?.message).toMatch(/^compilerOptions\.strict is false, so tsc does not report values that may be null .*implicitly any/);
     expect(off?.message).not.toContain("wrong names");
@@ -317,6 +320,24 @@ describe("ts-dom doctor: ts-dom-tags.ts left out of the program", () => {
     const cwd = tree({ ...files(`{ "extends": "./configs/base.json", ${options} }`), "configs/base.json": `{ "include": ["../src"], "exclude": ["../src/ts-dom-tags.ts"] }` });
     expect(issuesOf(cwd, "tsconfig-misses-tag-map")).toHaveLength(1);
   });
+
+  it("a file that imports or re-exports it brings it into the program", () => {
+    const leftOut = files(`{ ${options}, "include": ["src"], "exclude": ["**/ts-dom-tags.ts"] }`);
+    for (const line of [`export type {} from "./ts-dom-tags.js";`, `import type {} from "./ts-dom-tags.js";`, `import "./ts-dom-tags.js";`, `/// <reference path="./ts-dom-tags.ts" />`]) {
+      expect(issuesOf(tree({ ...leftOut, "src/index.ts": `${line}\nexport { Card } from "./card.js";\n` }), "tsconfig-misses-tag-map"), line).toEqual([]);
+    }
+    expect(issuesOf(tree({ ...leftOut, "lib/index.ts": `export type {} from "../src/ts-dom-tags.js";\n`, "tsconfig.json": `{ ${options}, "include": ["src", "lib"], "exclude": ["**/ts-dom-tags.ts"] }` }), "tsconfig-misses-tag-map")).toEqual([]);
+    expect(issuesOf(tree({ ...leftOut, "src/index.ts": `export type {} from "./other/ts-dom-tags.js";\n` }), "tsconfig-misses-tag-map")).toHaveLength(1);
+  });
+
+  it("include and files are each inherited from the base that sets them, as tsc does", () => {
+    const bases = (include: string) => ({ "configs/a.json": `{ "include": ["${include}"] }`, "configs/b.json": `{ "files": ["../src/main.ts"] }`, "src/main.ts": "export {};\n" });
+    const both = files(`{ "extends": ["./configs/a.json", "./configs/b.json"], ${options} }`);
+    const covered = tree({ ...both, ...bases("../src") });
+    expect(issuesOf(covered, "tsconfig-misses-templates")).toEqual([]);
+    expect(issuesOf(covered, "tsconfig-misses-tag-map")).toEqual([]);
+    expect(issuesOf(tree({ ...both, ...bases("../src/**/*.tsx") }), "tsconfig-misses-tag-map")).toHaveLength(1);
+  });
 });
 
 describe("ts-dom doctor: configuration files in their other formats", () => {
@@ -360,6 +381,36 @@ describe("ts-dom doctor in a package of a workspace", () => {
       expect(issues.filter((i) => i.rule === "typecheck-before-gen"), name).toHaveLength(1);
       expect(issues.filter((i) => i.rule === "skill-available"), name).toEqual([]);
       expect(issues.filter((i) => i.rule === "skill-outdated").map((i) => i.file), name).toEqual(["../../.claude/skills/nativele-core/SKILL.md"]);
+    }
+  });
+
+  it("finds the formatter and the oxlint config set up at the workspace root, nearest first", () => {
+    const marker = { "package.json": JSON.stringify({ workspaces: ["packages/*"] }) };
+    const inPackage = (root: Record<string, string>, rule: string) => runDoctor({ dirs: ["src"], cwd: join(tree({ ...app, ...marker, ...root }), pkg) }).filter((i) => i.rule === rule);
+    const formatter = (root: Record<string, string>) => inPackage(root, "formatter-whitespace");
+    expect(formatter({ ".prettierrc.json": "{}" })).toMatchObject([{ file: "../../.prettierrc.json" }]);
+    expect(formatter({ "oxfmt.config.ts": "export default {};\n" })).toMatchObject([{ file: "../../oxfmt.config.ts" }]);
+    expect(formatter({ "package.json": JSON.stringify({ workspaces: ["packages/*"], devDependencies: { prettier: "3.9.10" } }) })).toMatchObject([{ file: "../../package.json" }]);
+    expect(formatter({ "package.json": JSON.stringify({ workspaces: ["packages/*"], prettier: {} }) })).toMatchObject([{ file: "../../package.json" }]);
+    expect(formatter({ ".prettierrc.json": "{}", ".prettierignore": "*.html\n" })).toEqual([]);
+    expect(formatter({ ".prettierrc.json": "{}", [`${pkg}/.prettierrc.yaml`]: "semi: false\n" })).toMatchObject([{ file: ".prettierrc.yaml" }]);
+    const oxlint = (root: Record<string, string>) => inPackage(root, "oxlint-plugin-missing");
+    expect(oxlint({ ".oxlintrc.json": `{ "rules": {} }` })).toMatchObject([{ file: "../../.oxlintrc.json" }]);
+    expect(oxlint({ ".oxlintrc.json": `{ "rules": {} }`, [`${pkg}/.oxlintrc.json`]: `{ "jsPlugins": [{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }] }` })).toEqual([]);
+  });
+
+  it("does not climb to a home directory managed as a git repository", () => {
+    const home = tree({ ".git/HEAD": "ref: refs/heads/main\n", ".gitignore": "*.html.ts\n", ".claude/skills/nativele-core/SKILL.md": "an older copy", ".prettierrc.json": "{}", ...app });
+    const before = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const issues = runDoctor({ dirs: ["src"], cwd: join(home, pkg) }).map((i) => i.rule);
+      expect(issues).not.toContain("typecheck-before-gen");
+      expect(issues).not.toContain("skill-outdated");
+      expect(issues).not.toContain("formatter-whitespace");
+      expect(runDoctor({ dirs: [], cwd: home }).filter((i) => i.rule === "skill-outdated")).toHaveLength(1);
+    } finally {
+      process.env.HOME = before;
     }
   });
 

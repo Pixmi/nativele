@@ -366,7 +366,12 @@ const BLOCK_LEVEL = new Set(["address", "article", "aside", "blockquote", "body"
 const INLINE_BLOCK = new Set(["audio", "button", "input", "marquee", "meter", "object", "progress", "select", "video"]);
 const HTML_WHITESPACE = /[ \t\n\f\r]+/g;
 
-const isBlockLevel = (n: Node | undefined): boolean => !!n && isEl(n) && (n.namespaceURI === SVG_NS ? n.tagName !== "svg" : n.namespaceURI === HTML_NS && BLOCK_LEVEL.has(n.tagName));
+// In SVG, only the content of a <text> element is rendered text, and it is laid out inline: <tspan>, <textPath> and <a> inside it are inline elements.
+const inSvgText = (n: Element): boolean => {
+  for (let p = n.parentNode; p && isEl(p) && p.namespaceURI === SVG_NS; p = p.parentNode) if (p.tagName === "text") return true;
+  return false;
+};
+const isBlockLevel = (n: Node | undefined): boolean => !!n && isEl(n) && (n.namespaceURI === SVG_NS ? n.tagName !== "svg" && !inSvgText(n) : n.namespaceURI === HTML_NS && BLOCK_LEVEL.has(n.tagName));
 const trimsEdges = (n: Element): boolean => isBlockLevel(n) || (n.namespaceURI === SVG_NS ? n.tagName === "svg" : n.namespaceURI === HTML_NS && INLINE_BLOCK.has(n.tagName));
 
 /** In `collapse`, `edges` says whether whitespace at the start and end of `parent`'s content is not rendered. */

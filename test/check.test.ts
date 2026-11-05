@@ -250,6 +250,34 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     expect(issues[3]?.message).not.toContain("follows from");
   });
 
+  it("only an error whose quoted type is the broken class follows from its contract error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    writeFileSync(join(dir, "index.html"), `<p>{{ missing }}</p>\n`);
+    writeFileSync(join(dir, "index.ts"), `import tpl from "./index.html.js";\nexport class Index extends Component(tpl) {}\nconst rows: Record<string, number> = row;\n`);
+    writeFileSync(join(dir, "task.html"), `<p>{{ missing }}</p>\n`);
+    writeFileSync(join(dir, "task.ts"), `import tpl from "./task.html.js";\nexport class Task extends Component(tpl) {}\n`);
+    const broken = (file: string, line: number) => ({ file, line, col: 21, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` });
+    const issues = mapTscErrors(
+      [
+        broken("index.ts", 2),
+        broken("task.ts", 2),
+        { file: "index.ts", line: 3, col: 7, code: "TS2322", message: "Type 'Row' is not assignable to type 'Record<string, number>'.\n  Index signature for type 'string' is missing in type 'Row'." },
+        { file: "other.ts", line: 5, col: 3, code: "TS2322", message: "Type 'string' is not assignable to type 'Task[\"status\"]'." },
+        { file: "other.ts", line: 6, col: 3, code: "TS2345", message: "Argument of type 'Task | null' is not assignable to parameter of type 'string | Node'." },
+      ],
+      dir,
+    );
+    expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([
+      ["index.html", 1, "missing-binding"],
+      ["task.html", 1, "missing-binding"],
+      ["index.ts", 3, "tsc"],
+      ["other.ts", 5, "tsc"],
+      ["other.ts", 6, "tsc"],
+    ]);
+    for (const i of issues.slice(2, 4)) expect(i.message).toMatch(/^TS2322: (?:(?!follows from).)* Fix: change the TypeScript/s);
+    expect(issues[4]?.message).toMatch(/follows from the contract error of Task at task\.html:1:4/);
+  });
+
   it("TypeScript that is not installed is an error, so the check does not pass without a type check", () => {
     const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
     mkdirSync(join(dir, "src"));

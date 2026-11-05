@@ -36,20 +36,24 @@ function resolveExtends(from: string, ext: string): string | null {
 }
 
 /** Read a tsconfig and the ones it extends (a relative path, a package, or an array of them), the later and nearer one winning. */
-export function readTsConfig(file: string, depth = 0): TsConfig {
+export function readTsConfig(file: string): TsConfig {
+  const config = readChain(file, 0);
+  return config.include === undefined && config.files ? { ...config, include: [] } : config;
+}
+
+/** include, exclude and files are each taken from the nearest config that sets it, as tsc does; the default include is decided only for the whole chain. */
+function readChain(file: string, depth: number): TsConfig {
   const json = parseJsonc(readFileSync(file, "utf8"));
   let merged: TsConfig = { compilerOptions: {} };
   const exts = typeof json.extends === "string" ? [json.extends] : Array.isArray(json.extends) ? (json.extends as string[]) : [];
   for (const ext of depth < 5 ? exts : []) {
     const target = resolveExtends(file, ext);
     if (!target) continue;
-    const base = readTsConfig(target, depth + 1);
+    const base = readChain(target, depth + 1);
     merged = { ...merged, ...base, compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions } };
   }
   const own = (key: "include" | "exclude" | "files") => (Array.isArray(json[key]) ? (json[key] as string[]).map((p) => resolve(dirname(file), p).split("\\").join("/")) : merged[key]);
-  const files = own("files");
-  const exclude = own("exclude");
-  const include = Array.isArray(json.include) ? own("include") : (merged.include ?? (Array.isArray(json.files) ? [] : undefined));
+  const [include, exclude, files] = [own("include"), own("exclude"), own("files")];
   return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}), ...(exclude ? { exclude } : {}), ...(files ? { files } : {}) };
 }
 

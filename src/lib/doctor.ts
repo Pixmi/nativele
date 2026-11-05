@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { listHtml, listTs, scanDefines, scanTags, staleGenerated } from "./codegen.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
@@ -9,11 +10,11 @@ import type { GenerateOptions } from "./codegen.ts";
 export const DOCTOR_RULES = {
   "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
   "no-tsconfig": "there is no tsconfig.json, so tsc cannot check the templates against the components",
-  "tsconfig-not-strict": "strict is off (set to false, or left out on TypeScript 5), so tsc does not report possibly null values or implicit any",
+  "tsconfig-not-strict": "strict is off (set to false, or left out on TypeScript 5 or a version that cannot be determined), so tsc does not report possibly null values or implicit any",
   "tsconfig-no-dom-lib": "lib leaves out DOM, so element types are missing",
   "tsconfig-classic-resolution": "modules resolve the classic way (moduleResolution classic, or the TypeScript 5 default for module ES2015 to ESNext), which cannot resolve the runtime package the generated files import; TypeScript 6 deprecates it and 7 removes it",
   "tsconfig-misses-templates": "include leaves out a folder with templates, so their generated types are not checked",
-  "tsconfig-misses-tag-map": "include or exclude leaves ts-dom-tags.ts out of the program, so custom element tags are typed as plain HTMLElement",
+  "tsconfig-misses-tag-map": "include or exclude leaves ts-dom-tags.ts out of the program and no file imports it, so custom element tags are typed as plain HTMLElement",
   "runtime-not-installed": "the runtime package the generated files import cannot be resolved",
   "template-import-without-js": "a template is imported as ./x.html instead of ./x.html.js",
   "stale-generated": "a generated file is missing, outdated or orphaned",
@@ -91,26 +92,47 @@ const implicitlyClassic = (o: Record<string, unknown>): boolean => {
   return !["", "es3", "es5"].includes(String(o.target ?? "").toLowerCase());
 };
 
-const hasWorkspaces = (dir: string): boolean => {
+interface PackageJson {
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  prettier?: unknown;
+  workspaces?: unknown;
+}
+
+const readPackageJson = (file: string): PackageJson => {
   try {
-    return "workspaces" in (JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as object);
+    return JSON.parse(readFileSync(file, "utf8")) as PackageJson;
   } catch {
-    return false;
+    return {};
   }
 };
 
-/** `cwd` and the folders above it up to the workspace root: the nearest folder with a package.json "workspaces" field or a pnpm-workspace.yaml, else the git root. Only `cwd` when neither is found. */
+/** `cwd` and the folders above it up to the workspace root: the nearest folder with a package.json "workspaces" field or a pnpm-workspace.yaml, else the git root. Only `cwd` when neither is found below the home directory or the filesystem root. */
 export function upToWorkspaceRoot(cwd: string): string[] {
+  const start = resolve(cwd);
+  const home = homedir();
   const chain: string[] = [];
-  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+  for (let dir = start; ; dir = dirname(dir)) {
+    // A home directory managed as a git repository (dotfiles) is not the root of the projects inside it.
+    if (dir === home && dir !== start) return [start];
     chain.push(dir);
-    if (existsSync(join(dir, "pnpm-workspace.yaml")) || hasWorkspaces(dir) || existsSync(join(dir, ".git"))) return chain;
-    if (dirname(dir) === dir) return chain.slice(0, 1);
+    if (existsSync(join(dir, "pnpm-workspace.yaml")) || "workspaces" in readPackageJson(join(dir, "package.json")) || existsSync(join(dir, ".git"))) return chain;
+    if (dirname(dir) === dir) return [start];
   }
 }
 
 const SCRIPT_EXTENSIONS = ["js", "cjs", "mjs", "ts", "cts", "mts"];
+const OXFMT_CONFIGS = [".oxfmtrc.json", ".oxfmtrc.jsonc", ...SCRIPT_EXTENSIONS.map((e) => `oxfmt.config.${e}`)];
 const PRETTIER_CONFIGS = [".prettierrc", ...["json", "json5", "yaml", "yml", "toml", ...SCRIPT_EXTENSIONS].map((e) => `.prettierrc.${e}`), ...SCRIPT_EXTENSIONS.map((e) => `prettier.config.${e}`)];
+
+const MODULE_SPECIFIERS = /\b(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']|<reference\s+path\s*=\s*["']([^"']+)["']/g;
+
+/** Whether `file` imports, re-exports or references `tagMap` through a relative path. */
+function importsTagMap(file: string, tagMap: string): boolean {
+  const target = tagMap.replace(/\.ts$/, "");
+  return [...(readText(file) ?? "").matchAll(MODULE_SPECIFIERS)].some((m) => resolve(dirname(file), (m[1] ?? m[2]) as string).replace(/\.[jt]s$/, "") === target);
+}
 
 const templateFolders =(dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
 const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
@@ -152,6 +174,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     if (covering.length && !covering.some((r) => r.path === configPath)) continue;
     const lost = "so tsc does not report values that may be null (a querySelector result or an optional ref used without a check) or parameters and variables that are implicitly any (a handler parameter without a type); the names in the templates are checked either way";
     if (o.strict === false) add("tsconfig-not-strict", "warning", `compilerOptions.strict is false, ${lost}. Fix: set "strict": true.`, { file });
+    else if (o.strict === undefined && tsMajor === null) add("tsconfig-not-strict", "warning", `compilerOptions.strict is not set, and the TypeScript version could not be determined (typescript is not resolvable from this project): TypeScript 5 leaves strict off by default (6 and later turn it on), ${lost}. Fix: set "strict": true.`, { file });
     else if (o.strict === undefined && tsMajor !== null && tsMajor < 6) add("tsconfig-not-strict", "warning", `compilerOptions.strict is not set, and TypeScript ${tsVersion} leaves it off by default (6 and later turn it on), ${lost}. Fix: set "strict": true.`, { file });
     const lib = o.lib as string[] | undefined;
     if (lib && !lib.some((l) => l.toLowerCase() === "dom")) add("tsconfig-no-dom-lib", "error", 'compilerOptions.lib leaves out DOM, so element types such as HTMLButtonElement are missing. Fix: add "DOM" to lib.', { file });
@@ -175,16 +198,18 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
       add("tsconfig-misses-templates", "error", `No tsconfig include covers ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file: rel(configs[0] as string) });
     }
   }
-  // Nothing imports ts-dom-tags.ts: it reaches the program only through include, unlike the x.html.ts files, which their components import.
+  // Unlike the x.html.ts files, which their components import, ts-dom-tags.ts usually reaches the program only through include; a package entry may import or re-export it.
   for (const { dir, folders } of scanned) {
     const tags = scanTags(dir).map((t) => `<${t.tag}>`);
     if (!tags.length) continue;
     const tagMap = join(dir, "ts-dom-tags.ts");
     const owners = read.filter(({ config: { include } }) => !include || (folders.length ? folders : [dir]).some((t) => include.some((p) => covers(p, t))));
-    const left = owners.map(({ path, config }) => ({ path, why: leftOutBy(config, dirname(path), tagMap) }));
+    const left = owners.map(({ path, config }) => ({ path, config, why: leftOutBy(config, dirname(path), tagMap) }));
     const first = left[0];
     if (!first?.why || left.some((l) => !l.why)) continue;
     const configDir = dirname(first.path);
+    const program = [...listTs(dir), ...(first.config.files ?? []), ...listTs(configDir).filter((f) => !leftOutBy(first.config, configDir, f))];
+    if (program.some((f) => importsTagMap(f, tagMap))) continue;
     const own = (p: string) => relative(configDir, p).split("\\").join("/") || ".";
     const effect = `so tsc types the tags defined in ${rel(dir)} (${tags.slice(0, 3).join(", ")}${tags.length > 3 ? ", ..." : ""}) as plain HTMLElement in document.createElement, querySelector and refs, and every list of item components fails with item-not-in-tag-map`;
     add(
@@ -245,17 +270,17 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     add("vite-plugin-missing", "warning", `${rel(vitestConfig)} replaces the Vite config for Vitest and does not use the ts-dom plugin, so the templates are not generated when the tests start and a clean checkout fails to resolve ./x.html.js. Fix: add tsDom() to its plugins, or merge the Vite config into it: mergeConfig(viteConfig, defineConfig({ test: { ... } })) with viteConfig imported from "./vite.config".`, { file: rel(vitestConfig) });
   }
 
-  const oxlintrc = [".oxlintrc.json", ".oxlintrc.jsonc", "oxlintrc.json", "oxlint.config.ts", "oxlint.config.mts"].map((n) => join(cwd, n)).find((f) => existsSync(f));
+  const workspace = upToWorkspaceRoot(cwd);
+  const nearest = (names: readonly string[]) => workspace.flatMap((d) => names.map((n) => join(d, n))).find((f) => existsSync(f));
+  const oxlintrc = nearest([".oxlintrc.json", ".oxlintrc.jsonc", "oxlintrc.json", "oxlint.config.ts", "oxlint.config.mts"]);
   const lintConfigs = [oxlintrc ? readText(oxlintrc) : null, vite && /\blint\s*:/.test(vite) ? vite : null].filter((t): t is string => t !== null);
   if (lintConfigs.length && !lintConfigs.some((t) => /@nativele\/ts-dom\/oxlint|oxlint-plugin(\.ts)?["']/.test(t))) {
     add("oxlint-plugin-missing", "warning", 'The lint config does not load the ts-dom oxlint plugin, so unused markup, data flow and accessibility rules do not run in the editor. Fix: add { name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" } to jsPlugins and enable "ts-dom/unused-markup".', { file: rel(oxlintrc ?? (viteConfig as string)) });
   }
 
   const pkgText = readText(join(cwd, "package.json"));
-  const pkg = pkgText ? (JSON.parse(pkgText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string>; prettier?: unknown }) : {};
+  const pkg = pkgText ? (JSON.parse(pkgText) as PackageJson) : {};
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  const scripts = Object.values(pkg.scripts ?? {});
-  const workspace = upToWorkspaceRoot(cwd);
 
   const ignoresGenerated = workspace.some((d) => (readText(join(d, ".gitignore")) ?? "").split("\n").some((l) => !l.trim().startsWith("!") && /\*\.html\.ts\s*$/.test(l)));
   if (ignoresGenerated && dirs.some(hasTemplates)) {
@@ -280,14 +305,18 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
       add("typecheck-before-gen", "warning", `The script "${name}" runs ${tool} before any ts-dom gen, and .gitignore leaves out *.html.ts, so on a clean checkout ${tool} fails with TS2307 (cannot find module './x.html.js'). Fix: put "ts-dom gen ${dirArgs} && " in front of it, or use "ts-dom check ${dirArgs}" as the type check when the project uses plain tsc.`, { file: "package.json", ...(line ? { line } : {}) });
     }
   }
-  const ignoredHtml = /(^|\n)\s*(\*\*\/)?\*\.html\s*($|\n)/.test(readText(join(cwd, ".prettierignore")) ?? "");
-  const formatter =
-    [".oxfmtrc.json", ".oxfmtrc.jsonc", ...SCRIPT_EXTENSIONS.map((e) => `oxfmt.config.${e}`)].some((n) => existsSync(join(cwd, n))) ||
-    ("oxfmt" in deps) ||
-    scripts.some((c) => /(^|[\s;&|])(oxfmt|vp fmt)(\s|$)/.test(c)) ||
-    (vite !== null && /\bfmt\s*:/.test(vite)) ||
-    (!ignoredHtml &&
-      (PRETTIER_CONFIGS.some((n) => existsSync(join(cwd, n))) || "prettier" in pkg || "prettier" in deps || scripts.some((c) => /(^|[\s;&|])prettier(\s|$)/.test(c))));
+  const prettierIgnore = nearest([".prettierignore"]);
+  const ignoredHtml = /(^|\n)\s*(\*\*\/)?\*\.html\s*($|\n)/.test(prettierIgnore ? (readText(prettierIgnore) ?? "") : "");
+  const formatterIn = (d: string): string | undefined => {
+    const file = join(d, "package.json");
+    const json = readPackageJson(file);
+    const ds = { ...json.dependencies, ...json.devDependencies };
+    const runs = (tool: RegExp) => Object.values(json.scripts ?? {}).some((c) => tool.test(c));
+    const oxfmt = OXFMT_CONFIGS.map((n) => join(d, n)).find((f) => existsSync(f)) ?? ("oxfmt" in ds || runs(/(^|[\s;&|])(oxfmt|vp fmt)(\s|$)/) ? file : undefined);
+    if (oxfmt || ignoredHtml) return oxfmt;
+    return PRETTIER_CONFIGS.map((n) => join(d, n)).find((f) => existsSync(f)) ?? ("prettier" in json || "prettier" in ds || runs(/(^|[\s;&|])prettier(\s|$)/) ? file : undefined);
+  };
+  const formatter = workspace.map(formatterIn).find((f) => f !== undefined) ?? (vite !== null && /\bfmt\s*:/.test(vite) ? viteConfig : undefined);
   const collapseScript = Object.entries(pkg.scripts ?? {}).find(([, c]) => c.includes("--whitespace=collapse"))?.[0];
   const collapseVite = vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite);
   const generatedModes = dirs.flatMap(listHtml).flatMap((f) => {
@@ -302,7 +331,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   const collapsed = collapseScript !== undefined || collapseVite || generatedModes.some((g) => g.collapse);
   if (formatter && !collapsed && dirs.some(hasTemplates)) {
-    add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).');
+    add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).', { file: rel(formatter) });
   }
 
   for (const skill of listSkills(options.skillsDir ?? skillsRoot())) {
