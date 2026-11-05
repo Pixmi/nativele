@@ -31,7 +31,7 @@ Nativele components are native custom elements. The framework renders their tags
 | @preact/preset-vite | 2.10.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template, with the example project in the Nativele repository (`skills/nativele-integration/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. The procedure was also followed earlier in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
+Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template, with the example project in the Nativele repository (`skills/nativele-integration/example`). The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
 
 ## Set-up
 

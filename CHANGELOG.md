@@ -58,6 +58,7 @@ Five new Official Skills cover the technical areas every Nativele project shares
 
 - `skills/README.md` has "How Skills work together": a Skill owns one task or technical area, states what it needs from another area instead of configuring it, keeps the user's existing configuration, acts on what the project has, and works without any other Skill installed. When two Skills disagree about one setting, the Skill that owns the setting decides.
 - The existing Skills no longer give their own instructions for the tsconfig, the linter, the formatter, CI or a workspace: each states its requirement in one sentence and points to the owning Skill, and keeps its own verified facts (framework behavior, the framework's type checker, the errors it hit). The Vite Skill now says that with a formatter the plugin and the scripts use the whitespace mode the formatting Skill decides, and the testing Skill notes that a formatter's whitespace can reach `textContent`.
+- The Skills state no verification process and name no file a reader cannot open; `nativele-zod` names the Zod and Valibot versions it was verified with, `nativele-monorepo` gives `tsc-not-found` as the error it is, `nativele-linting` leaves the build script to the build owner, and `nativele-angular` also generates before the template's `watch` script.
 
 ### Guides
 

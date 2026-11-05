@@ -105,7 +105,7 @@ A `ts-dom check` whose config does not cover the Nativele folder still runs and 
 This Skill decides what the tsconfig that covers the Nativele folder needs (the table in step 4); that applies unchanged when the checker is `vue-tsc`, `svelte-check` or `ngc`, which read the same tsconfig. The framework's Skill decides which checker runs, its script, its own config (`vueCompilerOptions`, Svelte or Angular options) and the declarations that type Nativele tags in the framework's templates. What this Skill states to them:
 
 - They need the generated files first, as in step 7.
-- They need TypeScript 6 today: `vue-tsc@3.3.14` with `typescript@7.0.2` stops with `Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './lib/tsc' is not defined by "exports"` (and `ts-dom check` reports that as `tsc-failed`); `svelte-check@4.7.8` declares the peer range `typescript@"^5.0.0 || ^6.0.0"` and npm refuses `typescript@7.0.2` with `ERESOLVE`; `@angular/compiler-cli@22.2.4` declares `typescript: '>=6.0 <6.1'`. The requirements in step 4 are the same on 6.0.3.
+- At the versions below they need TypeScript 6: `vue-tsc@3.3.14` with `typescript@7.0.2` stops with `Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './lib/tsc' is not defined by "exports"` (and `ts-dom check` reports that as `tsc-failed`); `svelte-check@4.7.8` declares the peer range `typescript@"^5.0.0 || ^6.0.0"` and npm refuses `typescript@7.0.2` with `ERESOLVE`; `@angular/compiler-cli@22.2.4` declares `typescript: '>=6.0 <6.1'`. The requirements in step 4 are the same on 6.0.3.
 - `ts-dom check` runs `vue-tsc` itself when `package.json` lists it (verified: it reported a `TS2322` inside an `.vue` file); it does not run `svelte-check` or `ngc`.
 
 ## Example

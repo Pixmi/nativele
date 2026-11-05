@@ -33,7 +33,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
+Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`). With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
 
 ## Set-up
 

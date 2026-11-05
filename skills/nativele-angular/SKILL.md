@@ -44,10 +44,11 @@ Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and
    ```sh
    npm pkg set scripts.prestart="ts-dom gen src/nv --whitespace=collapse" \
                scripts.prebuild="ts-dom gen src/nv --whitespace=collapse" \
-               scripts.pretest="ts-dom gen src/nv --whitespace=collapse"
+               scripts.pretest="ts-dom gen src/nv --whitespace=collapse" \
+               scripts.prewatch="ts-dom gen src/nv --whitespace=collapse"
    ```
 
-   `npm start`, `npm run build` and `npm test` then generate first (`npx ng ...` called directly does not, so a CI job runs these scripts or `ts-dom gen` first; see `npx ts-dom skills nativele-ci`). The CLI template sets up Prettier, and with a formatter the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`), which asks for `collapse`; every script that generates passes the same flag. With `collapse`, the line breaks between the inline tags of `info-card` become one space each, so with label `x`, count 1 and an item named `A1:new` its `textContent` reads `x 1 A1:new Pick`, as the page shows it; whitespace next to a block-level element (`<div>`, `<p>`, `<h2>`) is dropped instead. Write test expectations that way.
+   `npm start`, `npm run build`, `npm test` and the template's `npm run watch` then generate first (`npx ng ...` called directly does not, so a CI job runs these scripts or `ts-dom gen` first; see `npx ts-dom skills nativele-ci`). The CLI template sets up Prettier, and with a formatter the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`), which asks for `collapse`; every script that generates passes the same flag. Write test expectations from the collapsed text (rules in `nativele-formatting`): with label `x`, count 1 and an item named `A1:new`, `info-card`'s `textContent` reads `x 1 A1:new Pick`. Inline elements keep one space between them, while block elements (`<p>`, `<ul>`, `<li>`) drop the whitespace around them: a card whose items are `<li>` elements reads `Fruit 1applepearPick`.
 
    While `npm start` runs, keep a second terminal with `npx ts-dom gen src/nv --watch --whitespace=collapse`: editing a template or adding a component regenerates its module, and `ng serve` rebuilds and reloads the page.
 

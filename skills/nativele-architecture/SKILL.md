@@ -37,7 +37,7 @@ metadata:
 | @playwright/test | 1.64.1 |
 | universal-router | 10.0.3 (checked by hand with the same tests as the Navigation API router, see step 5) |
 
-Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package). The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 
