@@ -160,7 +160,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     const cls = i.rule === "tsc" ? classIn(i.message) : undefined;
     if (i.rule === "tsc" && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
     if (cls === undefined) return [i];
-    if (brokenFiles.has(i.file)) return [];
+    if (brokenFiles.has(i.file) || /(^|[\\/])node_modules[\\/]/.test(i.file)) return [];
     const cause = brokenClasses.get(cls) as TscError;
     const first = firstIssueOf.get(cause);
     const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cause.file))}:${cause.line}:${cause.col}`;
