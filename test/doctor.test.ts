@@ -151,6 +151,27 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
   });
 });
 
+describe("ts-dom doctor: another framework's templates in a scanned folder", () => {
+  it("an .html named as an Angular templateUrl is reported once, as an error at the template", () => {
+    const cwd = project({ "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/app.html": "<p>{{ user.name }}</p>", "src/card.html": "<p>{{ name }}</p>" });
+    writeFileSync(join(cwd, "src/app.ts"), `@Component({ selector: "app-root", templateUrl: './app.html' })\nexport class App {}\n`);
+    writeFileSync(join(cwd, "src/other.ts"), `@Component({ templateUrl: "./app.html" })\nexport class Other {}\n`);
+    const issues = runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "framework-template");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "error", file: "src/app.html" });
+    expect(issues[0]?.message).toMatch(/Angular template of src\/(app|other)\.ts.* Fix: scan only the folder with the Nativele templates/);
+  });
+
+  it("the invalid-hole and no-importer hints mention a folder that is not meant to be scanned", async () => {
+    const { analyze } = await import("../src/lib/codegen.ts");
+    const { lintUsage } = await import("../src/lib/lint.ts");
+    expect(analyze("<p>{{ user.name }}</p>").diagnostics[0]?.message).toContain("this folder is not meant to be scanned");
+    const cwd = project({ "src/lone.html": "<p></p>" });
+    const lone = lintUsage([join(cwd, "src")], []).find((i) => i.rule === "no-importer");
+    expect(lone?.message).toContain("this folder is not meant to be scanned");
+  });
+});
+
 describe("ts-dom doctor: a type check that runs before gen", () => {
   const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } }, "include": ["src"] }`, "src/x.html": "<p></p>", ".gitignore": "node_modules\n*.html.ts\n" };
   const scripts = (s: Record<string, string>, extra: Record<string, string> = {}) => project({ ...base, ...extra, "package.json": JSON.stringify({ scripts: s }, null, 2) });

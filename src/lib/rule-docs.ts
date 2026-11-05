@@ -594,6 +594,15 @@ npx ts-dom check`,
     bad: `import tpl from "./card.html";`,
     good: `import tpl from "./card.html.js";`,
   },
+  "framework-template": {
+    why: "Every .html in a scanned folder is read as a Nativele template. An Angular component's templateUrl file uses Angular syntax ({{ user.name }}, *ngIf, (click)), so gen reports errors whose hints ask to rewrite a file that belongs to another framework.",
+    bad: `// src/app/app.ts
+@Component({ selector: "app-root", templateUrl: "./app.html" })
+# package.json
+"build": "ts-dom gen src && ng build"`,
+    good: `# keep the Nativele components in their own folder and scan only it
+"build": "ts-dom gen src/nv && ng build"`,
+  },
   "typecheck-before-gen": {
     why: "The generated *.html.ts files are not committed. A script that runs tsc (or vue-tsc, svelte-check, ng build) before ts-dom gen works on a machine that has generated them once, and fails on a clean checkout or in CI with TS2307 for every ./x.html.js import.",
     bad: `// package.json, with *.html.ts in .gitignore

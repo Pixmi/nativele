@@ -16,7 +16,8 @@ export const DOCTOR_RULES = {
   "runtime-not-installed": "the runtime package the generated files import cannot be resolved",
   "template-import-without-js": "a template is imported as ./x.html instead of ./x.html.js",
   "stale-generated": "a generated file is missing, outdated or orphaned",
-  "typecheck-before-gen": "a package.json script type-checks before ts-dom gen while *.html.ts is git-ignored, so it fails on a clean checkout",
+  "framework-template": "a scanned .html is an Angular component's templateUrl, not a Nativele template",
+  "typecheck-before-gen":"a package.json script type-checks before ts-dom gen while *.html.ts is git-ignored, so it fails on a clean checkout",
   "vite-plugin-missing": "the Vite config does not use the ts-dom plugin, so templates are not regenerated while the dev server runs",
   "oxlint-plugin-missing": "the lint config does not load the ts-dom oxlint plugin, so the template rules do not run in the editor",
   "formatter-whitespace": "a formatter is set up while templates keep their whitespace, so reformatting can change the rendered spacing",
@@ -143,6 +144,18 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     }
     for (const s of staleGenerated(d, generate, defs, dirs)) {
       add("stale-generated", "warning", `The generated file is ${s.reason}. Fix: run ts-dom gen (or ts-dom check, which regenerates).`, { file: rel(s.file) });
+    }
+  }
+
+  const scannedHtml = new Set(dirs.flatMap(listHtml));
+  if (scannedHtml.size) {
+    for (const f of listTs(cwd)) {
+      for (const m of readFileSync(f, "utf8").matchAll(/templateUrl\s*:\s*["'`]([^"'`]+\.html)["'`]/g)) {
+        const html = resolve(dirname(f), m[1] as string);
+        if (!scannedHtml.has(html)) continue;
+        scannedHtml.delete(html);
+        add("framework-template", "error", `${rel(html)} is the Angular template of ${rel(f)} (templateUrl), not a Nativele template, so ts-dom gen reports its Angular syntax as errors. Fix: scan only the folder with the Nativele templates (for example ts-dom gen src/nv, and the same folder for check, doctor and tsDom({ dirs })).`, { file: rel(html) });
+      }
     }
   }
 

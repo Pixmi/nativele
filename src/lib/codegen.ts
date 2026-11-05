@@ -138,7 +138,7 @@ export function analyze(html: string): Analysis {
         report(
           "invalid-hole",
           "error",
-          `{{ ${inner} }} is not a valid hole: a hole must be a single identifier, paths and expressions are not supported. Fix: compute the value in TypeScript (state, derive or this.text) and use a named hole such as {{ name }}.`,
+          `{{ ${inner} }} is not a valid hole: a hole must be a single identifier, paths and expressions are not supported. Fix: compute the value in TypeScript (state, derive or this.text) and use a named hole such as {{ name }}. If the file is another framework's template, this folder is not meant to be scanned: scan only the folder with the Nativele templates, or leave the file out with --exclude.`,
           at,
         );
       }
