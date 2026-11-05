@@ -10,8 +10,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # A pull request that only changes Markdown outside skills/ (tests read skills/*/SKILL.md) skips the jobs below.
+      # They are skipped with `if`, not with paths-ignore, so the required checks still report. The matrix job skips its
+      # steps instead of the whole job, because a skipped matrix job does not report the per-version check names.
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
+          echo "$files"
+          if [ -z "$files" ] || echo "$files" | grep -qvE '\.md$' || echo "$files" | grep -q '^skills/'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: Types, unit tests and lint (Node ${{ matrix.node }})
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,20 +43,31 @@ jobs:
         node: [22, 24]
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+        if: needs.changes.outputs.code == 'true'
       - run: npm run gen
+        if: needs.changes.outputs.code == 'true'
       - run: npx tsc
+        if: needs.changes.outputs.code == 'true'
       - run: npm test
+        if: needs.changes.outputs.code == 'true'
       - run: npm run lint
+        if: needs.changes.outputs.code == 'true'
       - run: npm run lint:html
+        if: needs.changes.outputs.code == 'true'
       - run: npm run verify:pack
+        if: needs.changes.outputs.code == 'true'
 
   browser:
     name: Real browser tests (Chromium)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,6 +83,8 @@ jobs:
 
   no-bundler:
     name: Fresh project with only typescript (no Vite)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -61,6 +98,8 @@ jobs:
 
   consumer:
     name: Fresh project with Vite
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
