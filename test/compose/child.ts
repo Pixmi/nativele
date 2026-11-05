@@ -14,7 +14,7 @@ export class FieldChild extends Component(tpl, {
   close(): void {
     this.emit("closed");
   }
-  override render(v: { value: string }, changed: ReadonlySet<string>): void {
+  override render(v: { value: string }, changed: ReadonlySet<"value">): void {
     this.renders++;
     // Do not write input.value every time: writing the same value moves the caret to the end
     if (changed.has("value") && this.refs.input.value !== v.value) this.refs.input.value = v.value;

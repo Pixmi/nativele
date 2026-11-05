@@ -61,7 +61,7 @@ export class SignupForm extends Component(tpl, {
     return nameError(this.state) === "" && emailError(this.state) === "" && this.state.agree;
   }
 
-  override render(v: DeepReadonly<State> & { nameError: string; emailError: string; canSubmit: boolean }, changed: ReadonlySet<string>): void {
+  override render(v: DeepReadonly<State> & { nameError: string; emailError: string; canSubmit: boolean }, changed: ReadonlySet<"entries">): void {
     // Data flows down: the children's props are fully typed, so a wrong name or type is a tsc error
     this.refs.name.value = v.name;
     this.refs.name.error = v.nameError;

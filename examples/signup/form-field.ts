@@ -21,7 +21,7 @@ export class FormField extends Component(tpl, {
     this.set({ touched: true });
   }
 
-  override render(v: { value: string; type: string; error: string; showError: boolean }, changed: ReadonlySet<string>): void {
+  override render(v: { value: string; type: string; error: string; showError: boolean }, changed: ReadonlySet<"value" | "type">): void {
     // Only write the value when it really differs: while the user types, the value is emitted to the parent and comes back through props;
     // writing the same value again would move the caret to the end
     if (changed.has("value") && this.refs.input.value !== v.value) this.refs.input.value = v.value;

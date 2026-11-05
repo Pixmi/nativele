@@ -10,7 +10,7 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 用來建構 Web Components 的輕量函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。它為型別安全與 AI agent 協作而設計：`tsc` 會檢查 HTML 用到的每個名稱，每則診斷都說明怎麼修。複雜的介面以原生自訂元素組合而成。
 
-**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom check`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[給 AI agent 的規則](#給-ai-agent-的規則) 則是可以直接貼進專案 agent 指引檔的清單。
+**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom check`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[Nativele Skills](#nativele-skills) 則提供 agent 經過驗證的流程，用於開發元件以及與其他工具整合。
 
 ```html
 <!-- user-card.html：HTML 只描述結構、資料要放的位置、事件要找哪個方法 -->
@@ -46,17 +46,28 @@ HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法�
 5. **props 往下、事件往上**：父元件設定 props；子元件呼叫 `this.emit("name", detail)`，父元件在子元件的標籤上用 `data-on-name` 處理。
 6. **處理方法是公開方法** `(event, hit)`；在清單項目內 `hit.key` 就是該項目的 key。
 
-## 給 AI agent 的規則
+## Nativele Skills
 
-把這些貼進專案的 agent 指引檔（`AGENTS.md`、`CLAUDE.md` 等）：
+Nativele 隨套件提供 Skill：給 coding agent 的任務流程，每份都有設定步驟、完整範例、已知限制、驗證結果的指令，以及驗證時使用的確切版本。API 的事實寫在指南裡；Skill 告訴 agent 怎麼用它們完成一件工作。
 
-- 元件的 `.html` 與 `.ts` 一起寫；不要編輯 `x.html.ts` 與 `ts-dom-tags.ts`，它們是 `ts-dom gen` 產生的。
-- 改了任何 `.html` 或元件之後，執行 `npx ts-dom check`（加 `--json` 以資料形式讀取結果）。它會重新產生產生檔（工作目錄不能被修改時改用 `--no-write`）、執行 `tsc`、把範本契約的錯誤對應回範本的行列，並跑 lint 規則。照每則的 `Fix:` 提示修好所有回報的問題，不要用型別斷言蓋掉型別錯誤。
-- 範本一律以 `./x.html.js` 匯入。
-- HTML 裡不放表達式：計算值放進 `derive`，state 只用 `this.set()` 改。
-- `ts-dom gen` 與 `ts-dom lint` 的每則診斷結尾都有 `Fix:` 提示，照做。`npx ts-dom rules` 列出所有規則編號，`npx ts-dom lint --a11y` 另外檢查無障礙。
-- `data-each` 清單不能巢狀：把內層清單放進自己的 `.html`，當成子元件。
-- 元件組成的清單：在 `<template data-each>` 寫 `data-key` 與 `data-prop`，在 `<ul>` 或 `<ol>` 裡的項目元件加 `role="listitem"`，以 `this.lists.x.items = ...` 指派，變動的項目要給新物件（不要就地修改已指派的物件），並讓 `tsc` 檢查項目型別。
+```sh
+npx ts-dom skills                      # 列出已安裝版本提供的 Skill
+npx ts-dom skills nativele-core        # 顯示其中一份
+npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .claude 時）或 .agents/skills/
+```
+
+`npx ts-dom doctor` 會讀取你的 `package.json` 並建議相符的 Skill，例如相依 React 時建議 `nativele-react`。
+
+| Skill | 內容 |
+|---|---|
+| `nativele-core` | 開發元件：`ts-dom check` 循環、範本、state、清單、資料流 |
+| `nativele-react` | 在 React 19 中使用 Nativele 元件：props、事件、子元素與 slot、生命週期、TSX 型別 |
+
+等級：Official 由維護者以 CI 中的範例專案驗證；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
+
+Nativele 維持輕量的 UI 層，整合能力透過 Skill 擴展：新增 Skill 不改動執行期程式碼，也不增加依賴。規劃中的 Skill 與貢獻方式見 [Skills 指南](https://github.com/Pixmi/nativele/blob/main/skills/README.md)。
+
+如果你的 agent 不會載入 Skill，在它的指引檔（`AGENTS.md`、`CLAUDE.md` 等）加一行：「處理 Nativele 元件前，先執行 `npx ts-dom skills nativele-core` 並照著做。」
 
 ## 快速開始
 
@@ -174,16 +185,16 @@ export class TaskBoard extends Component(tpl, { state: { tasks: [] as Task[], ne
     this.refs.title.value = "";
   }
   // A changed task is a new object: the list sets the prop only on items that are not the same object as before.
-  toggleTask(_e: Event, hit: EventHit): void {
+  toggleTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.map((t) => (t.id === hit.key ? { ...t, done: !t.done } : t)) }));
   }
-  removeTask(_e: Event, hit: EventHit): void {
+  removeTask(_e: Event, hit: EventHit<Task, "id">): void {
     this.set((s) => ({ tasks: s.tasks.filter((t) => t.id !== hit.key) }));
   }
   sortByTitle(): void {
     this.set((s) => ({ tasks: [...s.tasks].sort((a, b) => a.title.localeCompare(b.title)) }));
   }
-  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<string>): void {
+  override render(view: { tasks: readonly Task[] }, changed: ReadonlySet<"tasks">): void {
     if (changed.has("tasks")) this.lists.tasks.items = view.tasks;
   }
 }
@@ -197,6 +208,7 @@ define("task-board", TaskBoard);
 - [examples/signup](examples/signup/signup-form.ts)：註冊表單。三個元件組合（`signup-form` → `form-field`、`entry-row`），涵蓋 `props` 往下、`emits` 往上、清單內的子元件（`hit.key`）、`derive` 驗證、表單輸入不跳游標；對應的真實 Chrome 測試在 [browser/signup.test.ts](browser/signup.test.ts)。
 - [examples/user-card](examples/user-card.ts)：最小範例，涵蓋 `state` 自動綁定、`data-on-click`、清單、slot。
 - [examples/todo](examples/todo/todo-app.ts)：完整的待辦清單，涵蓋 `state` 與 `derive`、`data-on-*` 事件委派（含清單項目的 `hit.key`）、篩選、空狀態、`aria-pressed`、`skipUnchanged`；有對應的真實 Chrome 端對端測試（[browser/todo.test.ts](browser/todo.test.ts)）。
+- [examples/recipes](examples/recipes/contact-app.ts)：[Recipes](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md) 指南使用的聯絡人畫面，涵蓋共用 store 的載入與錯誤狀態、篩選清單、帶表單驗證的對話框，以及有型別的 `hit.key`；對應的真實 Chrome 測試是 [browser/recipes.test.ts](browser/recipes.test.ts)。
 
 ## 文件
 
@@ -204,6 +216,7 @@ define("task-board", TaskBoard);
 
 - [Templates: HTML syntax, generated types, templates without a component, Trusted Types, translations and icons](https://github.com/Pixmi/nativele/blob/main/docs/templates.md)
 - [Components and data flow: state, props, derive, events, composition, stores](https://github.com/Pixmi/nativele/blob/main/docs/components.md)
+- [Recipes: loading and error states, store data, filtered lists, dialogs, form validation](https://github.com/Pixmi/nativele/blob/main/docs/recipes.md)
 - [Lists: lists of components with `items =`, plain lists with `replace()`, moving items](https://github.com/Pixmi/nativele/blob/main/docs/lists.md)
 - [Setup, checks and lint: installation, Vite, oxlint, `ts-dom check`, `ts-dom doctor`, accessibility](https://github.com/Pixmi/nativele/blob/main/docs/tooling.md)
 - [Performance: the large list benchmark](https://github.com/Pixmi/nativele/blob/main/docs/performance.md)

@@ -42,14 +42,16 @@ describe("state: automatic {{ }} and data-if binding", () => {
     expect(c.querySelector("h1")?.textContent).toBe("T");
     expect(c.refs.p.textContent).toBe("1 items, 2 total");
     expect(c.renders.length).toBe(1);
-    expect([...(last(c) ?? [])].sort()).toEqual(["count", "open", "rows", "title"]);
+    expect([...(last(c) ?? [])].sort()).toEqual(["count", "double", "open", "rows", "title"]);
   });
-  it("set merges the patch; changed only holds the fields that changed; derived values update in sync", () => {
+  it("set merges the patch; changed holds the fields and derived values that changed; derived values update in sync", () => {
     const c = make();
     c.set({ count: 5 });
     expect(c.refs.p.textContent).toBe("5 items, 10 total");
-    expect([...(last(c) ?? [])]).toEqual(["count"]);
+    expect([...(last(c) ?? [])]).toEqual(["count", "double"]);
     expect(c.state.title).toBe("T");
+    c.set({ title: "U" });
+    expect([...(last(c) ?? [])]).toEqual(["title"]);
   });
   it("when no field actually changes, nothing updates and render is not called", () => {
     const c = make();
@@ -92,7 +94,7 @@ describe("state: batch and set inside render", () => {
       c.set({ count: 3 });
     });
     expect(c.renders.length).toBe(n + 1);
-    expect([...(last(c) ?? [])].sort()).toEqual(["count", "title"]);
+    expect([...(last(c) ?? [])].sort()).toEqual(["count", "double", "title"]);
     expect(c.querySelector("h1")?.textContent).toBe("X");
   });
   it("nested batch only updates when the outermost one ends", () => {

@@ -46,7 +46,7 @@ export class TodoApp extends Component(tpl, {
   }
 
   // ---- View: what automatic binding cannot do (attributes, lists) lives here ----
-  override render(v: DeepReadonly<State>, changed: ReadonlySet<string>): void {
+  override render(v: DeepReadonly<State>, changed: ReadonlySet<"items" | "filter">): void {
     if (changed.has("filter")) {
       for (const f of FILTERS) this.refs[f].setAttribute("aria-pressed", String(f === v.filter));
     }

@@ -17,7 +17,7 @@ export class UserCard extends Component(tpl, {
   }
 
   /** Updates that automatic binding cannot do (the list) go here; `changed` tells you which fields changed */
-  override render(v: { tags: readonly Tag[] }, changed: ReadonlySet<string>): void {
+  override render(v: { tags: readonly Tag[] }, changed: ReadonlySet<"tags">): void {
     if (!changed.has("tags")) return;
     this.lists.tags.replace(
       v.tags,

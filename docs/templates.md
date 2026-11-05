@@ -22,6 +22,8 @@ Rules for holes:
 - Content inside `<style>` and `<script>` is not treated as holes.
 - A value of `null`, `undefined`, or `false` is displayed as an empty string.
 
+A hidden `data-if` block is kept in memory, not destroyed: `refs` and holes inside it stay usable while it is hidden, so you can fill a form before showing it, and showing it again puts back the same elements with their state.
+
 ## How Types Are Generated
 
 Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.

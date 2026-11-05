@@ -1,0 +1,39 @@
+name: Skills
+
+# Runs the example project of every Official Skill against the library in this repository.
+# Not a required check: it runs when a Skill or the library changes, and once a month so that a new
+# release of a third-party tool that breaks a Skill is found.
+on:
+  pull_request:
+    paths: ["skills/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+  push:
+    branches: [main]
+    paths: ["skills/**", "src/lib/**", "package.json", ".github/workflows/skills.yml"]
+  schedule:
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: skills-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Skill examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:lib
+      - name: npm run verify in each skills/*/example
+        run: |
+          set -euo pipefail
+          for example in skills/*/example; do
+            echo "::group::$example"
+            (cd "$example" && npm install --no-audit --no-fund && npm run verify)
+            echo "::endgroup::"
+          done

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { listHtml, listTs, staleGenerated } from "./codegen.ts";
+import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
 import { projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
 
@@ -18,13 +19,15 @@ export const DOCTOR_RULES = {
   "vite-plugin-missing": "the Vite config does not use the ts-dom plugin, so templates are not regenerated while the dev server runs",
   "oxlint-plugin-missing": "the lint config does not load the ts-dom oxlint plugin, so the template rules do not run in the editor",
   "formatter-whitespace": "a formatter is set up while templates keep their whitespace, so reformatting can change the rendered spacing",
+  "skill-available": "the project uses a tool that a Nativele Skill covers, and the project has no copy of that Skill",
+  "skill-outdated": "the project's copy of a Nativele Skill differs from the one shipped with the installed version",
 } as const;
 
 export type DoctorRule = keyof typeof DOCTOR_RULES;
 
 export interface DoctorIssue {
   rule: DoctorRule;
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "info";
   message: string;
   file?: string;
   line?: number;
@@ -34,6 +37,8 @@ export interface DoctorOptions {
   dirs: string[];
   generate?: GenerateOptions;
   cwd?: string;
+  /** The Skills to recommend from (default: the ones shipped with this package) */
+  skillsDir?: string;
 }
 
 const readText = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
@@ -149,6 +154,20 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     dirs.some((d) => listHtml(d).some((f) => (readText(`${f}.ts`) ?? "").split("\n", 3).includes("// whitespace: collapse")));
   if (formatter && !collapsed && dirs.some(hasTemplates)) {
     add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).');
+  }
+
+  for (const skill of listSkills(options.skillsDir ?? skillsRoot())) {
+    const copies = installedCopies(cwd, skill.name);
+    const shipped = readFileSync(join(skill.dir, "SKILL.md"), "utf8");
+    for (const copy of copies) {
+      if (readFileSync(join(copy, "SKILL.md"), "utf8") !== shipped) {
+        add("skill-outdated", "info", `${rel(copy)} differs from the ${skill.name} Skill shipped with the installed Nativele. Fix: run ts-dom skills add ${skill.name} to replace it with the shipped version.`, { file: rel(join(copy, "SKILL.md")) });
+      }
+    }
+    const found = skill.detects.filter((d) => d in deps);
+    if (!copies.length && found.length) {
+      add("skill-available", "info", `${found.join(", ")} ${found.length > 1 ? "are dependencies" : "is a dependency"}, and the ${skill.name} Skill covers it: ${skill.description} Fix: run ts-dom skills add ${skill.name}, or read it with ts-dom skills ${skill.name}.`, { file: "package.json" });
+    }
   }
   return issues;
 }
