@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
 import { HOLE_ANY, holeName, IDENT } from "./holes.ts";
@@ -46,7 +46,7 @@ export const CODEGEN_RULES = {
   "forbidden-tag": "<script> cannot be in a template (it would run code)",
   "forbidden-attribute": "on* event attributes and srcdoc cannot be in a template (they run code or are blocked by Trusted Types)",
   "unsafe-url": "href / src / action / formaction cannot start with javascript:",
-  "duplicate-define": "a custom element tag can be defined only once per scanned directory",
+  "duplicate-define": "a custom element tag can be defined only once across the scanned directories",
 } as const;
 
 export interface Loc {
@@ -503,6 +503,9 @@ export interface DefineDef {
   /** The class is exported, so a type can be generated for it */
   exported: boolean;
   isDefault: boolean;
+  /** Position of the define() call */
+  line?: number;
+  col?: number;
 }
 
 /** Ranges [start, end) of the string literals, template literals and comments of a piece of TypeScript source. */
@@ -528,13 +531,15 @@ function nonCodeRanges(code: string): [number, number][] {
 }
 
 /**
- * Scan a directory for every `define("my-tag", MyClass)` call.
+ * Scan one or more directories for every `define("my-tag", MyClass)` call; a file under two of them is read once.
  * Calls that only appear inside a string or a comment (for example sample code in a test or in documentation) are ignored.
  */
-export function scanDefines(dir: string): DefineDef[] {
+export function scanDefines(dirs: string | readonly string[]): DefineDef[] {
   const defs: DefineDef[] = [];
   const re = /\bdefine\(\s*(["'])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g;
-  for (const file of listTs(dir)) {
+  const files = new Map<string, string>();
+  for (const dir of typeof dirs === "string" ? [dirs] : dirs) for (const f of listTs(dir)) if (!files.has(resolve(f))) files.set(resolve(f), f);
+  for (const file of files.values()) {
     const code = readFileSync(file, "utf8");
     const skip = nonCodeRanges(code);
     const inCode = (pos: number) => !skip.some(([a, b]) => pos >= a && pos < b);
@@ -544,7 +549,8 @@ export function scanDefines(dir: string): DefineDef[] {
       const [, , tag, className] = m as unknown as [string, string, string, string];
       const named = has(new RegExp(`export\\s+class\\s+${className}\\b`, "g")) || has(new RegExp(`export\\s*\\{[^}]*\\b${className}\\b[^}]*\\}`, "g"));
       const isDefault = has(new RegExp(`export\\s+default\\s+class\\s+${className}\\b`, "g"));
-      defs.push({ tag, className, file, exported: named || isDefault, isDefault });
+      const before = code.slice(0, m.index);
+      defs.push({ tag, className, file, exported: named || isDefault, isDefault, line: before.split("\n").length, col: m.index - before.lastIndexOf("\n") });
     }
   }
   return defs.sort((a, b) => a.tag.localeCompare(b.tag));
@@ -554,6 +560,24 @@ const relImport = (fromDir: string, file: string) => {
   const r = relative(fromDir, file).split(sep).join("/").replace(/\.ts$/, ".js");
   return r.startsWith(".") ? r : `./${r}`;
 };
+
+/**
+ * A tag that two of the directories define with different classes, reported at its second define() call.
+ * A tag defined twice within one directory is reported by `generateTags` instead.
+ */
+export function crossDirDuplicates(dirs: readonly string[]): (Diagnostic & { file: string })[] {
+  const byTag = new Map<string, DefineDef[]>();
+  for (const d of scanDefines(dirs)) byTag.set(d.tag, [...(byTag.get(d.tag) ?? []), d]);
+  const inside = (dir: string, file: string) => resolve(file).startsWith(resolve(dir) + sep);
+  const out: (Diagnostic & { file: string })[] = [];
+  for (const [tag, defs] of byTag) {
+    const [first, second] = defs as [DefineDef, DefineDef];
+    if (defs.length < 2 || dirs.some((dir) => defs.every((d) => inside(dir, d.file)))) continue;
+    const at = (d: DefineDef) => `${relative(process.cwd(), d.file)}:${d.line ?? 1}`;
+    out.push({ file: second.file, line: second.line ?? 1, col: second.col ?? 1, severity: "error", rule: "duplicate-define", message: `The tag <${tag}> is defined more than once in the scanned folders (${at(first)} and ${at(second)}), so the second define() fails at runtime. Fix: each custom element name can be defined only once; rename one of them.` });
+  }
+  return out;
+}
 
 /** Scan `define("my-tag", MyClass)` calls and return the components a type can be generated for (the class must be exported). */
 export function scanTags(dir: string): TagDef[] {
@@ -612,10 +636,9 @@ export interface StaleFile {
  * Everything `generateAll` would write for a directory, in memory: generated path to content, or null for a file that should not exist.
  * Templates with error diagnostics are left out and their messages returned in `errors`.
  */
-export function planGenerated(dir: string, options: GenerateOptions = {}): { files: Map<string, string | null>; errors: string[] } {
+export function planGenerated(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir)): { files: Map<string, string | null>; errors: string[] } {
   const files = new Map<string, string | null>();
   const errors: string[] = [];
-  const defs = scanDefines(dir);
   for (const f of listHtml(dir)) {
     if (!isSelected(dir, f, options)) continue;
     try {
@@ -638,13 +661,13 @@ export function planGenerated(dir: string, options: GenerateOptions = {}): { fil
 }
 
 /** Generated files under `dir` that differ from what `ts-dom gen` would write now. */
-export function staleGenerated(dir: string, options: GenerateOptions = {}): StaleFile[] {
-  return checkGenerated(dir, options).stale;
+export function staleGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[]): StaleFile[] {
+  return checkGenerated(dir, options, defs).stale;
 }
 
 /** `staleGenerated`, plus the errors that would make `ts-dom gen` fail (template diagnostics, a tag defined twice). */
-export function checkGenerated(dir: string, options: GenerateOptions = {}): { stale: StaleFile[]; errors: string[] } {
-  const plan = planGenerated(dir, options);
+export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[]): { stale: StaleFile[]; errors: string[] } {
+  const plan = planGenerated(dir, options, defs);
   const out: StaleFile[] = [];
   for (const [file, next] of plan.files) {
     const prev = existsSync(file) ? readFileSync(file, "utf8") : null;
@@ -667,11 +690,13 @@ function listGenerated(dir: string): string[] {
   return out;
 }
 
-/** Generate every `x.html.ts` (and the tag map) under a directory; collects all errors and throws them together. */
-export function generateAll(dir: string, options: GenerateOptions = {}): string[] {
+/**
+ * Generate every `x.html.ts` (and the tag map) under a directory; collects all errors and throws them together.
+ * `defs` are the define() calls templates import child components from (default: those under `dir`).
+ */
+export function generateAll(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir)): string[] {
   const written: string[] = [];
   const errors: string[] = [];
-  const defs = scanDefines(dir);
   for (const f of listHtml(dir)) {
     if (!isSelected(dir, f, options)) continue;
     try {
@@ -693,6 +718,24 @@ export function generateAll(dir: string, options: GenerateOptions = {}): string[
   return written;
 }
 
+/** `generateAll` for every directory, with the define() calls of all of them: a template imports a child component defined in another directory. */
+export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}): string[] {
+  const defs = scanDefines(dirs);
+  const written: string[] = [];
+  const errors: string[] = [];
+  for (const dir of dirs) {
+    try {
+      written.push(...generateAll(dir, options, defs));
+    } catch (e) {
+      if (e instanceof CodegenError) errors.push(e.message);
+      else throw e;
+    }
+  }
+  for (const d of crossDirDuplicates(dirs)) errors.push(formatDiagnostics(d.file, [d]));
+  if (errors.length) throw new CodegenError(errors.join("\n"));
+  return written;
+}
+
 /** Watch .html (and define() calls in .ts) under the directories and regenerate; returns a stop function. Errors go to onError and never stop the watcher. */
 export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: (file: string) => void; onError?: (message: string) => void } = {}): () => void {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -700,12 +743,10 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
     watch(dir, { recursive: true }, (_event, name) => {
       if (!name || name.includes("node_modules")) return;
       if (name.endsWith(".ts") && !name.endsWith(".html.ts") && !name.endsWith(".d.ts") && !name.endsWith(TAGS_FILE)) {
-        const key = `${dir}:tags`;
-        clearTimeout(timers.get(key));
-        timers.set(key, setTimeout(() => {
+        clearTimeout(timers.get("tags"));
+        timers.set("tags", setTimeout(() => {
           try {
-            // define("tag", Class) may have changed: regenerate the tag types and every template's child-component imports
-            for (const f of generateAll(dir, opts)) opts.onGenerate?.(f);
+            for (const f of generateDirs(dirs, opts)) opts.onGenerate?.(f);
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;
@@ -721,7 +762,7 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         setTimeout(() => {
           try {
             if (!existsSync(file) || !isSelected(dir, file, opts) || isFullPage(readFileSync(file, "utf8"))) return;
-            opts.onGenerate?.(generateFile(file, opts, dir));
+            opts.onGenerate?.(generateFile(file, opts, scanDefines(dirs)));
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
-import { analyze, CodegenError, generateAll, isSelected, listHtml, listTs, renderTags, staleGenerated } from "./codegen.ts";
+import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, listHtml, listTs, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
 import { lintDataFlow, lintUsage } from "./lint.ts";
@@ -190,20 +190,20 @@ export function runCheck(options: CheckOptions): LintIssue[] {
       issues.push({ file: rel(dir), line: 1, col: 1, rule: "duplicate-define", severity: "error", message: e.message.replace(/^[^[]*\[duplicate-define\]\s*/, "") });
     }
   }
+  for (const d of crossDirDuplicates(dirs)) issues.push({ ...d, file: rel(d.file) });
 
   if (options.write === false) {
+    const defs = scanDefines(dirs);
     for (const dir of dirs) {
-      for (const s of staleGenerated(dir, generate)) {
+      for (const s of staleGenerated(dir, generate, defs)) {
         issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
       }
     }
   } else {
-    for (const dir of dirs) {
-      try {
-        generateAll(dir, generate);
-      } catch (e) {
-        if (!(e instanceof CodegenError)) throw e;
-      }
+    try {
+      generateDirs(dirs, generate);
+    } catch (e) {
+      if (!(e instanceof CodegenError)) throw e;
     }
   }
 
