@@ -141,13 +141,20 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
 }
 
 // vue-tsc takes tsc's arguments and prints tsc's output, and it also understands the .vue files a Vue project imports.
-function findTsc(cwd: string): string | null {
+// It is used only when this project lists it: in a monorepo it can be hoisted for a sibling package.
+function findTsc(cwd: string): { name: string; bin: string } | null {
   const req = createRequire(join(cwd, "package.json"));
-  for (const [pkg, name] of [["vue-tsc", "vue-tsc"], ["typescript", "tsc"]]) {
+  let deps: Record<string, unknown> = {};
+  try {
+    const json = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> };
+    deps = { ...json.dependencies, ...json.devDependencies };
+  } catch {}
+  const candidates: [string, string][] = "vue-tsc" in deps ? [["vue-tsc", "vue-tsc"], ["typescript", "tsc"]] : [["typescript", "tsc"]];
+  for (const [pkg, name] of candidates) {
     try {
       const pkgPath = req.resolve(`${pkg}/package.json`);
-      const bin = (JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: Record<string, string> }).bin?.[name as string];
-      if (bin) return resolve(dirname(pkgPath), bin);
+      const bin = (JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: Record<string, string> }).bin?.[name];
+      if (bin) return { name, bin: resolve(dirname(pkgPath), bin) };
     } catch {}
   }
   return null;
@@ -209,13 +216,13 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     const runs = configs.length ? configs.map((c) => ["-p", c]) : [options.project ? ["-p", options.project] : []];
     const parsed: TscError[] = [];
     for (const extra of runs) {
-      const run = spawnSync(process.execPath, [tsc, "--noEmit", "--pretty", "false", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+      const run = spawnSync(process.execPath, [tsc.bin, "--noEmit", "--pretty", "false", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
       const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
       const errors = parseTscOutput(output);
       parsed.push(...errors);
       if (run.error || (run.status !== 0 && !errors.length)) {
         const detail = run.error ? String(run.error.message) : output.trim().split("\n").slice(0, 5).join(" ");
-        issues.push({ file: extra[1] ? rel(extra[1]) : ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `tsc did not check the types: ${detail} Fix: make \`npx tsc --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
+        issues.push({ file: extra[1] ? rel(extra[1]) : ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `${tsc.name} did not check the types: ${detail} Fix: make \`npx ${tsc.name} --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
       }
     }
     issues.push(...mapTscErrors(parsed, cwd));
