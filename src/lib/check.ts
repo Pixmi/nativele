@@ -140,15 +140,17 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
   return out.filter((i) => i.rule !== "tsc" || !followsBroken(i.message));
 }
 
+// vue-tsc takes tsc's arguments and prints tsc's output, and it also understands the .vue files a Vue project imports.
 function findTsc(cwd: string): string | null {
-  try {
-    const req = createRequire(join(cwd, "package.json"));
-    const pkgPath = req.resolve("typescript/package.json");
-    const bin = (JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: { tsc?: string } }).bin?.tsc;
-    return bin ? resolve(dirname(pkgPath), bin) : null;
-  } catch {
-    return null;
+  const req = createRequire(join(cwd, "package.json"));
+  for (const [pkg, name] of [["vue-tsc", "vue-tsc"], ["typescript", "tsc"]]) {
+    try {
+      const pkgPath = req.resolve(`${pkg}/package.json`);
+      const bin = (JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: Record<string, string> }).bin?.[name as string];
+      if (bin) return resolve(dirname(pkgPath), bin);
+    } catch {}
   }
+  return null;
 }
 
 /**

@@ -31,7 +31,7 @@ Nativele components are native custom elements. React renders them like any othe
 | @vitejs/plugin-react | 6.2.1 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), which CI runs again when the Skill or the library changes and once a month. With a different major version of React, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), which CI runs again when the example or the library changes and once a month. With a different major version of React, treat every step as unverified.
 
 ## Set-up
 

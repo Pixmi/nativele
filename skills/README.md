@@ -92,7 +92,7 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 
 - `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a short real-browser test of what the Skill promises.
 - `nativele-core` has no example of its own: the library's CI, which checks every example in the repository, verifies it.
-- The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when anything under that Skill changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. It is not a required check for `main`.
+- The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when an `example/` changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. A pull request that changes only Markdown skips the full CI; when it touches `skills/`, `.github/workflows/skills-format.yml` checks every `SKILL.md` against this specification instead. Neither is a required check for `main`.
 - The monthly run opens nothing by itself; a failure is reported in the workflow run, and the Skill is fixed or moved to Experimental.
 
 ## Contributing a Skill
@@ -125,7 +125,7 @@ Otherwise the maintainers send the gaps back to the contributor as review commen
 |---|---|---|---|
 | `nativele-core` | Official | available | building with Nativele itself: the `ts-dom check` loop, components, lists, data flow |
 | `nativele-react` | Official | available | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
-| `nativele-integration` | Official | planned | what every framework integration shares: properties and attributes, events, slots, lifecycle, types |
+| `nativele-integration` | Experimental | available | Nativele components in a framework without its own Skill: defining before render, properties and attributes, events, slots, lifecycle, types; verified with Vue |
 | `nativele-vite` | Official | planned | the Vite plugin, `root`, hot updates |
 | `nativele-vue` | Official | planned | Nativele components in Vue |
 | `nativele-state-management` | Official | planned | `createStore`, and Zustand or Redux through `bind` |

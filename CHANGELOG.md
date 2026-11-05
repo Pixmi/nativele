@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- `ts-dom check` runs `vue-tsc` instead of `tsc` when the project has it: it takes the same arguments and prints the same errors, and it also reads the `.vue` files a Vue app imports, which plain `tsc` reports as `TS2307: Cannot find module './App.vue'`.
+- New Experimental Skill `nativele-integration`: using Nativele components in a framework that has no Skill of its own. It shows how to find out how the framework treats custom elements (property or attribute, event names, managed children), defines components before the app mounts, types the framework's templates from `ts-dom-tags.ts`, and lists the limits every framework shares. `ts-dom doctor` suggests it for Vue, Svelte, Angular, Preact and Solid projects. Verified with Vue.
+
 ## 0.5.1
 
 - `ts-dom doctor` checks `strict`, `lib` and `moduleResolution` only in the tsconfig files that cover the component folders, when there are any. A project with several referenced configs, such as Vite's templates with `tsconfig.app.json` and `tsconfig.node.json`, no longer gets `tsconfig-no-dom-lib` and `tsconfig-not-strict` for the config that only covers `vite.config.ts`.

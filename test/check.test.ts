@@ -94,6 +94,28 @@ describe("ts-dom check: more cases", () => {
     expect((JSON.parse(out) as { issues: { rule: string }[] }).issues.map((i) => i.rule)).toContain("dir-not-found");
   }, 30_000);
 
+  it("a project with vue-tsc is checked with vue-tsc", () => {
+    const dir = join(process.cwd(), "check-fixture-vue");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(join(dir, "node_modules/vue-tsc/bin"), { recursive: true });
+    try {
+      writeFileSync(join(dir, "package.json"), `{ "type": "module" }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "include": ["."] }`);
+      writeFileSync(join(dir, "node_modules/vue-tsc/package.json"), `{ "name": "vue-tsc", "bin": { "vue-tsc": "./bin/vue-tsc.js" } }`);
+      writeFileSync(join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"), `console.log("App.vue(3,5): error TS2322: Reported by vue-tsc."); process.exit(2);\n`);
+      let out = "";
+      try {
+        execFileSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "check", ".", "--json"], { cwd: dir, encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.message.split(" Fix:")[0]])).toEqual([["App.vue", "TS2322: Reported by vue-tsc."]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("a solution-style tsconfig checks its referenced projects", () => {
     const dir = join(process.cwd(), "check-fixture-solution");
     rmSync(dir, { recursive: true, force: true });

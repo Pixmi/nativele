@@ -1,0 +1,19 @@
+name: Skill format
+
+# A pull request that changes only Markdown skips ci.yml; this checks that every SKILL.md still follows skills/README.md.
+on:
+  pull_request:
+    paths: ["skills/**", ".github/workflows/skills-format.yml"]
+
+jobs:
+  format:
+    name: SKILL.md format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run test/skills.test.ts
