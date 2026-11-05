@@ -466,7 +466,7 @@ this.refs.list.items = ["a", "b"];`,
 
   // CHECK_RULES
   "stale-generated": {
-    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned, tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
+    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
     bad: `# card.html was edited, card.html.ts was not regenerated
 npx ts-dom check --no-write`,
     good: `npx ts-dom gen

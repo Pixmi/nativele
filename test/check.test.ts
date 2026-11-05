@@ -161,6 +161,20 @@ describe("ts-dom check: more cases", () => {
     }
   }, 30_000);
 
+  it("a tsc error in a generated file says to regenerate or delete it, not to change the TypeScript there", () => {
+    const issues = mapTscErrors(
+      [
+        { file: "src/card.html.ts", line: 3, col: 1, code: "TS2307", message: "Cannot find module './card.js'." },
+        { file: "src/old/ts-dom-tags.ts", line: 2, col: 1, code: "TS2717", message: "Subsequent property declarations must have the same type." },
+      ],
+      process.cwd(),
+    );
+    for (const i of issues) {
+      expect(i.message).not.toContain("change the TypeScript");
+      expect(i.message).toMatch(/Fix: run ts-dom gen .*delete it\.$/);
+    }
+  });
+
   it("a plain tsc error carries a Fix hint", () => {
     const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], process.cwd());
     expect(issue?.message).toMatch(/Fix: /);

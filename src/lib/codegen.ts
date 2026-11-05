@@ -628,15 +628,16 @@ export function renderTags(dir: string): { out: string; next: string | null } {
 /** A generated file that does not match what `ts-dom gen` would write now. */
 export interface StaleFile {
   file: string;
-  /** missing: not generated yet; outdated: its template or a define() changed since; orphan: its template was deleted */
+  /** missing: not generated yet; outdated: its template or a define() changed since; orphan: its template was deleted, or a ts-dom-tags.ts sits in a folder that is not scanned */
   reason: "missing" | "outdated" | "orphan";
 }
 
 /**
  * Everything `generateAll` would write for a directory, in memory: generated path to content, or null for a file that should not exist.
  * Templates with error diagnostics are left out and their messages returned in `errors`.
+ * `scanned` are all the directories of the run: a ts-dom-tags.ts in a subfolder is an orphan unless that subfolder is one of them.
  */
-export function planGenerated(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir)): { files: Map<string, string | null>; errors: string[] } {
+export function planGenerated(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir), scanned: readonly string[] = [dir]): { files: Map<string, string | null>; errors: string[] } {
   const files = new Map<string, string | null>();
   const errors: string[] = [];
   for (const f of listHtml(dir)) {
@@ -656,36 +657,37 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs: 
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of listGenerated(dir)) if (!files.has(f) && !existsSync(f.slice(0, -3))) files.set(f, null);
+  for (const f of listGenerated(dir, scanned)) if (!files.has(f) && !existsSync(f.slice(0, -3))) files.set(f, null);
   return { files, errors };
 }
 
 /** Generated files under `dir` that differ from what `ts-dom gen` would write now. */
-export function staleGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[]): StaleFile[] {
-  return checkGenerated(dir, options, defs).stale;
+export function staleGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[]): StaleFile[] {
+  return checkGenerated(dir, options, defs, scanned).stale;
 }
 
 /** `staleGenerated`, plus the errors that would make `ts-dom gen` fail (template diagnostics, a tag defined twice). */
-export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[]): { stale: StaleFile[]; errors: string[] } {
-  const plan = planGenerated(dir, options, defs);
+export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[]): { stale: StaleFile[]; errors: string[] } {
+  const plan = planGenerated(dir, options, defs, scanned);
   const out: StaleFile[] = [];
   for (const [file, next] of plan.files) {
     const prev = existsSync(file) ? readFileSync(file, "utf8") : null;
     if (next === null) {
-      if (prev !== null && prev.startsWith(TAGS_HEADER)) out.push({ file, reason: file.endsWith(".html.ts") ? "orphan" : "outdated" });
+      if (prev !== null && prev.startsWith(TAGS_HEADER)) out.push({ file, reason: file === join(dir, TAGS_FILE) ? "outdated" : "orphan" });
     } else if (prev === null) out.push({ file, reason: "missing" });
     else if (prev !== next) out.push({ file, reason: "outdated" });
   }
   return { stale: out.sort((a, b) => a.file.localeCompare(b.file)), errors: plan.errors };
 }
 
-function listGenerated(dir: string): string[] {
+function listGenerated(dir: string, scanned: readonly string[], top = true): string[] {
   const out: string[] = [];
+  const ownTags = top || scanned.some((d) => resolve(d) === resolve(dir));
   for (const name of readdirSync(dir)) {
     if (name === "node_modules") continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...listGenerated(full));
-    else if (name.endsWith(".html.ts") && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
+    if (statSync(full).isDirectory()) out.push(...listGenerated(full, scanned, false));
+    else if ((name.endsWith(".html.ts") || (name === TAGS_FILE && !ownTags)) && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
   }
   return out;
 }
@@ -694,7 +696,7 @@ function listGenerated(dir: string): string[] {
  * Generate every `x.html.ts` (and the tag map) under a directory; collects all errors and throws them together.
  * `defs` are the define() calls templates import child components from (default: those under `dir`).
  */
-export function generateAll(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir)): string[] {
+export function generateAll(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir), scanned: readonly string[] = [dir]): string[] {
   const written: string[] = [];
   const errors: string[] = [];
   for (const f of listHtml(dir)) {
@@ -713,7 +715,7 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs: re
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of listGenerated(dir)) if (!existsSync(f.slice(0, -3))) unlinkSync(f);
+  for (const f of listGenerated(dir, scanned)) if (!existsSync(f.slice(0, -3))) unlinkSync(f);
   if (errors.length) throw new CodegenError(errors.join("\n"));
   return written;
 }
@@ -725,7 +727,7 @@ export function generateDirs(dirs: readonly string[], options: GenerateOptions =
   const errors: string[] = [];
   for (const dir of dirs) {
     try {
-      written.push(...generateAll(dir, options, defs));
+      written.push(...generateAll(dir, options, defs, dirs));
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
       else throw e;

@@ -124,7 +124,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
         if (m) add("template-import-without-js", "error", `${m[1]} is imported without .js, which works only through a bundler plugin that Nativele does not provide. Fix: import "${m[1]}.js" (TypeScript maps it to the generated ${m[1]}.ts).`, { file: rel(f), line: i + 1 });
       });
     }
-    for (const s of staleGenerated(d, generate, defs)) {
+    for (const s of staleGenerated(d, generate, defs, dirs)) {
       add("stale-generated", "warning", `The generated file is ${s.reason}. Fix: run ts-dom gen (or ts-dom check, which regenerates).`, { file: rel(s.file) });
     }
   }

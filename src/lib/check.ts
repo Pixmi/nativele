@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, listHtml, listTs, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
@@ -135,7 +135,9 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
       named = true;
       issue(rule, `${e.message.split("\n")[0]} Fix: ${fix}.`);
     }
-    if (!named) issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
+    if (named) continue;
+    if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
+    else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
   return out.filter((i) => i.rule !== "tsc" || !followsBroken(i.message));
 }
@@ -195,7 +197,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   if (options.write === false) {
     const defs = scanDefines(dirs);
     for (const dir of dirs) {
-      for (const s of staleGenerated(dir, generate, defs)) {
+      for (const s of staleGenerated(dir, generate, defs, dirs)) {
         issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
       }
     }

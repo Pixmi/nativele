@@ -148,7 +148,7 @@ if (!dirs.length) dirs.push("src");
 try {
   if (cmd === "gen" && flags.has("--check")) {
     const defs = scanDefines(dirs);
-    const results = dirs.map((d) => checkGenerated(d, generate, defs));
+    const results = dirs.map((d) => checkGenerated(d, generate, defs, dirs));
     const stale = results.flatMap((r) => r.stale);
     const errors = [...results.flatMap((r) => r.errors), ...crossDirDuplicates(dirs).map((d) => formatDiagnostics(d.file, [d]))];
     if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));
