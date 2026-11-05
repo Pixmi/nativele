@@ -38,7 +38,7 @@ Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`. Write them with the core Skill: `npx ts-dom skills add nativele-core`.
 2. Install: `npm i @nativele/ts-dom`.
-3. The tsconfig that covers `src/nv` must meet Nativele's requirements, `strict` among them, which the Angular 22 CLI template leaves out (`tsconfig.app.json` and `tsconfig.spec.json` extend the root `tsconfig.json`). Check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`), which also covers turning `strict` on for the Nativele folder only.
+3. The tsconfig that covers `src/nv` must meet Nativele's requirements (`tsconfig.app.json` and `tsconfig.spec.json` extend the root `tsconfig.json`). Check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`). The Angular 22 CLI template leaves `strict` out, which is on by default in TypeScript 6 (the version this Skill was verified with), so doctor reports `tsconfig-not-strict` only for an explicit `"strict": false`; on TypeScript 5 it must be set.
 4. Generate the template modules before every Angular command. The Angular CLI build (`@angular/build:application`) takes no Vite plugins from the project, so `tsDom()` cannot be added; run `ts-dom gen` from npm's `pre` scripts instead:
 
    ```sh
@@ -322,7 +322,7 @@ With Playwright, wait for each expected change instead of reading the DOM right 
 | The element stays empty | its module is not imported | import it in `src/main.ts` (step 7) |
 | A slotted child shows in the wrong slot or the slot fallback stays visible | `@if`/`@for` directly inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
 | `ts-dom check` reports `invalid-hole` or `no-importer` in `src/app/app.html` | the command ran without a folder and read Angular templates | pass the Nativele folder: `ts-dom check src/nv` |
-| `ts-dom doctor` warns `tsconfig-not-strict` | the Angular 22 CLI template does not set `strict` | step 3 (`nativele-typescript`) |
+| `ts-dom doctor` warns `tsconfig-not-strict` | `"strict": false` in the config (an absent `strict` is on with TypeScript 6; TypeScript 5 needs it set) | step 3 (`nativele-typescript`) |
 | `ts-dom doctor` warns `formatter-whitespace` | Prettier is set up and no script generates with `--whitespace=collapse` | step 4 (`nativele-formatting`) |
 | `Property 'info-card' does not exist on type 'HTMLElementTagNameMap'` in a spec | `tsconfig.spec.json` does not include `ts-dom-tags.ts` | import the component class type instead; whether the spec tsconfig should cover the Nativele folder is for `nativele-typescript` |
 | The Angular view does not update after a store change or a timer | zoneless change detection does not run for plain fields changed outside template listeners | keep that value in a signal |
