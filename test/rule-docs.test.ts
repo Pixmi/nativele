@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { A11Y_RULES } from "../src/lib/a11y.ts";
 import { CHECK_RULES } from "../src/lib/check.ts";
 import { CODEGEN_RULES } from "../src/lib/codegen.ts";
@@ -16,4 +17,14 @@ describe("rule docs", () => {
     }
     expect(Object.keys(RULE_DOCS).filter((id) => !ids.has(id))).toEqual([]);
   });
+
+  it("ts-dom rules names every lint rule id that has no rule of its own in the oxlint plugin", async () => {
+    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
+    const out = execFileSync(process.execPath, ["src/cli.ts", "rules"], { encoding: "utf8" });
+    for (const [group, rules] of [["lint: unused-markup", UNUSED_MARKUP_RULES], ["lint: data-flow", DATA_FLOW_RULES], ["lint: a11y", A11Y_RULES]] as const) {
+      const heading = out.split("\n").find((l) => l.startsWith(`${group}:`)) as string;
+      expect(heading, group).toContain("ts-dom/<id>");
+      for (const id of Object.keys(rules).filter((id) => !(id in plugin.rules))) expect(heading, `${group} ${id}`).toMatch(new RegExp(`\\b${id}\\b only from \`ts-dom lint\``));
+    }
+  }, 30_000);
 });

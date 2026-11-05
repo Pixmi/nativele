@@ -1,18 +1,19 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
-import { listHtml, listTs, scanDefines, staleGenerated } from "./codegen.ts";
+import { listHtml, listTs, scanDefines, scanTags, staleGenerated } from "./codegen.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
-import { projectConfigs, readTsConfig } from "./tsconfig.ts";
+import { leftOutBy, projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
 
 export const DOCTOR_RULES = {
   "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
   "no-tsconfig": "there is no tsconfig.json, so tsc cannot check the templates against the components",
-  "tsconfig-not-strict": "strict is off, so tsc lets wrong names and null values through",
+  "tsconfig-not-strict": "strict is off (set to false, or left out on TypeScript 5), so tsc does not report possibly null values or implicit any",
   "tsconfig-no-dom-lib": "lib leaves out DOM, so element types are missing",
-  "tsconfig-classic-resolution": "moduleResolution classic cannot resolve ./x.html.js to the generated x.html.ts",
+  "tsconfig-classic-resolution": "modules resolve the classic way (moduleResolution classic, or the TypeScript 5 default for module ES2015 to ESNext), which cannot resolve the runtime package the generated files import; TypeScript 6 deprecates it and 7 removes it",
   "tsconfig-misses-templates": "include leaves out a folder with templates, so their generated types are not checked",
+  "tsconfig-misses-tag-map": "include or exclude leaves ts-dom-tags.ts out of the program, so custom element tags are typed as plain HTMLElement",
   "runtime-not-installed": "the runtime package the generated files import cannot be resolved",
   "template-import-without-js": "a template is imported as ./x.html instead of ./x.html.js",
   "stale-generated": "a generated file is missing, outdated or orphaned",
@@ -39,6 +40,8 @@ export interface DoctorOptions {
   dirs: string[];
   generate?: GenerateOptions;
   cwd?: string;
+  /** tsconfig path; default: tsconfig.json in cwd */
+  project?: string;
   /** The Skills to recommend from (default: the ones shipped with this package) */
   skillsDir?: string;
 }
@@ -72,6 +75,43 @@ function scriptSteps(scripts: Record<string, string>, name: string, depth = 0): 
   return [...scriptSteps(scripts, `pre${name}`, depth + 1), ...own, ...scriptSteps(scripts, `post${name}`, depth + 1)];
 }
 
+/** The version of the TypeScript the project resolves, or null when it has none. */
+function typescriptVersion(cwd: string): string | null {
+  try {
+    return (JSON.parse(readFileSync(createRequire(join(cwd, "package.json")).resolve("typescript/package.json"), "utf8")) as { version?: string }).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// TypeScript 5 picks moduleResolution from module, and module from target: ES2015 and later modules (and amd, umd, system, none) resolve the classic way.
+const TS5_CLASSIC_MODULES = new Set(["es6", "es2015", "es2020", "es2022", "esnext", "amd", "umd", "system", "none"]);
+const implicitlyClassic = (o: Record<string, unknown>): boolean => {
+  if (o.module !== undefined) return TS5_CLASSIC_MODULES.has(String(o.module).toLowerCase());
+  return !["", "es3", "es5"].includes(String(o.target ?? "").toLowerCase());
+};
+
+const hasWorkspaces = (dir: string): boolean => {
+  try {
+    return "workspaces" in (JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as object);
+  } catch {
+    return false;
+  }
+};
+
+/** `cwd` and the folders above it up to the workspace root: the nearest folder with a package.json "workspaces" field or a pnpm-workspace.yaml, else the git root. Only `cwd` when neither is found. */
+export function upToWorkspaceRoot(cwd: string): string[] {
+  const chain: string[] = [];
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    chain.push(dir);
+    if (existsSync(join(dir, "pnpm-workspace.yaml")) || hasWorkspaces(dir) || existsSync(join(dir, ".git"))) return chain;
+    if (dirname(dir) === dir) return chain.slice(0, 1);
+  }
+}
+
+const SCRIPT_EXTENSIONS = ["js", "cjs", "mjs", "ts", "cts", "mts"];
+const PRETTIER_CONFIGS = [".prettierrc", ...["json", "json5", "yaml", "yml", "toml", ...SCRIPT_EXTENSIONS].map((e) => `.prettierrc.${e}`), ...SCRIPT_EXTENSIONS.map((e) => `prettier.config.${e}`)];
+
 const templateFolders =(dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
 const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
 
@@ -89,11 +129,14 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     else add("dir-not-found", "error", `The folder ${rel(d)} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).`, { file: rel(d) });
   }
 
-  const configs = projectConfigs(cwd);
+  const configs = projectConfigs(cwd, options.project);
   let paths: Record<string, unknown> = {};
   if (!configs.length) {
-    add("no-tsconfig", "error", 'There is no tsconfig.json. Fix: add one with "strict": true, "lib": ["ES2022", "DOM"] and "moduleResolution": "bundler" (or "NodeNext").');
+    if (options.project) add("no-tsconfig", "error", `The tsconfig ${options.project} given with --project does not exist. Fix: pass the path of the tsconfig the project type-checks with.`);
+    else add("no-tsconfig", "error", 'There is no tsconfig.json. Fix: add one with "strict": true, "lib": ["ES2022", "DOM"] and "moduleResolution": "bundler" (or "NodeNext").');
   }
+  const tsVersion = typescriptVersion(cwd);
+  const tsMajor = tsVersion === null ? null : Number.parseInt(tsVersion, 10);
   const includes: string[] = [];
   let everyConfigIncludes = true;
   const scanned = dirs.map((dir) => ({ dir, folders: templateFolders(dir) }));
@@ -107,11 +150,22 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     if (config.include) includes.push(...config.include);
     else everyConfigIncludes = false;
     if (covering.length && !covering.some((r) => r.path === configPath)) continue;
-    if (o.strict !== true) add("tsconfig-not-strict", "warning", 'compilerOptions.strict is not true, so tsc lets wrong names and null values through. Fix: set "strict": true.', { file });
+    const lost = "so tsc does not report values that may be null (a querySelector result or an optional ref used without a check) or parameters and variables that are implicitly any (a handler parameter without a type); the names in the templates are checked either way";
+    if (o.strict === false) add("tsconfig-not-strict", "warning", `compilerOptions.strict is false, ${lost}. Fix: set "strict": true.`, { file });
+    else if (o.strict === undefined && tsMajor !== null && tsMajor < 6) add("tsconfig-not-strict", "warning", `compilerOptions.strict is not set, and TypeScript ${tsVersion} leaves it off by default (6 and later turn it on), ${lost}. Fix: set "strict": true.`, { file });
     const lib = o.lib as string[] | undefined;
     if (lib && !lib.some((l) => l.toLowerCase() === "dom")) add("tsconfig-no-dom-lib", "error", 'compilerOptions.lib leaves out DOM, so element types such as HTMLButtonElement are missing. Fix: add "DOM" to lib.', { file });
+    const cannotResolve = `which cannot resolve the package "${runtime}" that every generated file imports (TS2792 Cannot find module), so no component gets its types`;
     if (String(o.moduleResolution ?? "").toLowerCase() === "classic") {
-      add("tsconfig-classic-resolution", "error", 'moduleResolution "classic" cannot resolve ./x.html.js to the generated x.html.ts. Fix: use "bundler" or "NodeNext".', { file });
+      const why =
+        tsMajor === null ? `${cannotResolve}; TypeScript 6 deprecates it (TS5107) and 7 removes it (TS5108)`
+        : tsMajor >= 7 ? `which TypeScript ${tsVersion} no longer supports, so tsc stops with TS5108 before checking anything`
+        : tsMajor === 6 ? `which TypeScript ${tsVersion} deprecates, so tsc stops with TS5107 before checking anything`
+        : cannotResolve;
+      add("tsconfig-classic-resolution", "error", `moduleResolution is "classic", ${why}. Fix: use "bundler" (or "NodeNext" with "module": "NodeNext").`, { file });
+    } else if (o.moduleResolution === undefined && tsMajor !== null && tsMajor < 6 && implicitlyClassic(o)) {
+      const by = o.module !== undefined ? `"module": ${JSON.stringify(o.module)}` : `"target": ${JSON.stringify(o.target)} (which makes module ES2015 or later)`;
+      add("tsconfig-classic-resolution", "error", `${by} without "moduleResolution" makes TypeScript ${tsVersion} resolve modules the classic way, ${cannotResolve}. Fix: add "moduleResolution": "bundler" (or set "module" and "moduleResolution" to "NodeNext").`, { file });
     }
   }
   if (configs.length && everyConfigIncludes) {
@@ -120,6 +174,27 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     for (const folder of missed) {
       add("tsconfig-misses-templates", "error", `No tsconfig include covers ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file: rel(configs[0] as string) });
     }
+  }
+  // Nothing imports ts-dom-tags.ts: it reaches the program only through include, unlike the x.html.ts files, which their components import.
+  for (const { dir, folders } of scanned) {
+    const tags = scanTags(dir).map((t) => `<${t.tag}>`);
+    if (!tags.length) continue;
+    const tagMap = join(dir, "ts-dom-tags.ts");
+    const owners = read.filter(({ config: { include } }) => !include || (folders.length ? folders : [dir]).some((t) => include.some((p) => covers(p, t))));
+    const left = owners.map(({ path, config }) => ({ path, why: leftOutBy(config, dirname(path), tagMap) }));
+    const first = left[0];
+    if (!first?.why || left.some((l) => !l.why)) continue;
+    const configDir = dirname(first.path);
+    const own = (p: string) => relative(configDir, p).split("\\").join("/") || ".";
+    const effect = `so tsc types the tags defined in ${rel(dir)} (${tags.slice(0, 3).join(", ")}${tags.length > 3 ? ", ..." : ""}) as plain HTMLElement in document.createElement, querySelector and refs, and every list of item components fails with item-not-in-tag-map`;
+    add(
+      "tsconfig-misses-tag-map",
+      "error",
+      first.why.by === "include"
+        ? `The include of ${rel(first.path)} does not match ${rel(tagMap)}, and no file imports it, ${effect}. Fix: add "${own(tagMap)}" to include.`
+        : `The exclude pattern "${own(first.why.pattern)}" in ${rel(first.path)} removes ${rel(tagMap)} from the program, and no file imports it, ${effect}. Fix: narrow the pattern so it leaves ts-dom-tags.ts in, or add "${own(tagMap)}" to files (files are kept even when exclude matches them).`,
+      { file: rel(first.path) },
+    );
   }
 
   let resolvable = Object.keys(paths).includes(runtime);
@@ -170,18 +245,19 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     add("vite-plugin-missing", "warning", `${rel(vitestConfig)} replaces the Vite config for Vitest and does not use the ts-dom plugin, so the templates are not generated when the tests start and a clean checkout fails to resolve ./x.html.js. Fix: add tsDom() to its plugins, or merge the Vite config into it: mergeConfig(viteConfig, defineConfig({ test: { ... } })) with viteConfig imported from "./vite.config".`, { file: rel(vitestConfig) });
   }
 
-  const oxlintrc = [".oxlintrc.json", "oxlintrc.json"].map((n) => join(cwd, n)).find((f) => existsSync(f));
+  const oxlintrc = [".oxlintrc.json", ".oxlintrc.jsonc", "oxlintrc.json", "oxlint.config.ts", "oxlint.config.mts"].map((n) => join(cwd, n)).find((f) => existsSync(f));
   const lintConfigs = [oxlintrc ? readText(oxlintrc) : null, vite && /\blint\s*:/.test(vite) ? vite : null].filter((t): t is string => t !== null);
   if (lintConfigs.length && !lintConfigs.some((t) => /@nativele\/ts-dom\/oxlint|oxlint-plugin(\.ts)?["']/.test(t))) {
     add("oxlint-plugin-missing", "warning", 'The lint config does not load the ts-dom oxlint plugin, so unused markup, data flow and accessibility rules do not run in the editor. Fix: add { name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" } to jsPlugins and enable "ts-dom/unused-markup".', { file: rel(oxlintrc ?? (viteConfig as string)) });
   }
 
   const pkgText = readText(join(cwd, "package.json"));
-  const pkg = pkgText ? (JSON.parse(pkgText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> }) : {};
+  const pkg = pkgText ? (JSON.parse(pkgText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string>; prettier?: unknown }) : {};
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const scripts = Object.values(pkg.scripts ?? {});
+  const workspace = upToWorkspaceRoot(cwd);
 
-  const ignoresGenerated = (readText(join(cwd, ".gitignore")) ?? "").split("\n").some((l) => !l.trim().startsWith("!") && /\*\.html\.ts\s*$/.test(l));
+  const ignoresGenerated = workspace.some((d) => (readText(join(d, ".gitignore")) ?? "").split("\n").some((l) => !l.trim().startsWith("!") && /\*\.html\.ts\s*$/.test(l)));
   if (ignoresGenerated && dirs.some(hasTemplates)) {
     const all = pkg.scripts ?? {};
     const checksTemplates = (step: string) => {
@@ -206,12 +282,12 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   const ignoredHtml = /(^|\n)\s*(\*\*\/)?\*\.html\s*($|\n)/.test(readText(join(cwd, ".prettierignore")) ?? "");
   const formatter =
-    [".oxfmtrc.json", ".oxfmtrc.jsonc"].some((n) => existsSync(join(cwd, n))) ||
+    [".oxfmtrc.json", ".oxfmtrc.jsonc", ...SCRIPT_EXTENSIONS.map((e) => `oxfmt.config.${e}`)].some((n) => existsSync(join(cwd, n))) ||
     ("oxfmt" in deps) ||
     scripts.some((c) => /(^|[\s;&|])(oxfmt|vp fmt)(\s|$)/.test(c)) ||
     (vite !== null && /\bfmt\s*:/.test(vite)) ||
     (!ignoredHtml &&
-      ([".prettierrc", ".prettierrc.json", ".prettierrc.js", "prettier.config.js", "prettier.config.mjs"].some((n) => existsSync(join(cwd, n))) || "prettier" in deps || scripts.some((c) => /(^|[\s;&|])prettier(\s|$)/.test(c))));
+      (PRETTIER_CONFIGS.some((n) => existsSync(join(cwd, n))) || "prettier" in pkg || "prettier" in deps || scripts.some((c) => /(^|[\s;&|])prettier(\s|$)/.test(c))));
   const collapseScript = Object.entries(pkg.scripts ?? {}).find(([, c]) => c.includes("--whitespace=collapse"))?.[0];
   const collapseVite = vite !== null && /whitespace\s*:\s*["']collapse["']/.test(vite);
   const generatedModes = dirs.flatMap(listHtml).flatMap((f) => {
@@ -230,7 +306,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
 
   for (const skill of listSkills(options.skillsDir ?? skillsRoot())) {
-    const copies = installedCopies(cwd, skill.name);
+    const copies = workspace.flatMap((d) => installedCopies(d, skill.name));
     const shipped = readFileSync(join(skill.dir, "SKILL.md"), "utf8");
     for (const copy of copies) {
       if (readFileSync(join(copy, "SKILL.md"), "utf8") !== shipped) {

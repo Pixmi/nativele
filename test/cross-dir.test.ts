@@ -89,6 +89,8 @@ describe("several scanned folders share their define() calls", () => {
     const gen = run(["gen", "a", "b"], dir);
     expect(gen.status).toBe(1);
     expect(gen.stderr).toMatch(/^b\/card\.ts:3:1 error \[duplicate-define\] The tag <x-card> is defined more than once in the scanned folders \(a\/card\.ts:2 and b\/card\.ts:3\).+ Fix: /m);
+    expect(gen.stderr).toContain("only the class whose define() runs first is registered, and the other define() is skipped without an error");
+    expect(gen.stderr).not.toContain("fails at runtime");
     expect(run(["gen", "--check", "a", "b"], dir).stderr).toContain("[duplicate-define]");
 
     const check = run(["check", "a", "b", "--json"], dir);

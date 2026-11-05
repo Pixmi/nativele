@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mapTscErrors, parseTscOutput } from "../src/lib/check.ts";
+import { mapTscErrors, parseTscOutput, runCheck } from "../src/lib/check.ts";
 
 describe("ts-dom check: tsc output", () => {
   it("parses errors and joins indented continuation lines", () => {
@@ -200,5 +201,59 @@ describe("ts-dom check: more cases", () => {
   it("a plain tsc error carries a Fix hint", () => {
     const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], process.cwd());
     expect(issue?.message).toMatch(/Fix: /);
+  });
+});
+
+describe("ts-dom check: causes the tsc text alone does not name", () => {
+  it("a tag declared with another class by a second tag map is a duplicate-define, not a request to regenerate", () => {
+    const [issue] = mapTscErrors(
+      [{ file: "lib/ts-dom-tags.ts", line: 6, col: 5, code: "TS2717", message: `Subsequent property declarations must have the same type.  Property '"hello-card"' must be of type 'HelloCard', but here has type 'HelloCard'.` }],
+      process.cwd(),
+    );
+    expect(issue).toMatchObject({ rule: "duplicate-define", file: "lib/ts-dom-tags.ts", line: 6 });
+    expect(issue?.message).toMatch(/^The tag <hello-card> is declared with another class by a second tag map.* Fix: rename the tag/);
+    expect(issue?.message).not.toContain("run ts-dom gen");
+  });
+
+  it("an item component missing from the tag map names the tsconfig as a cause too", () => {
+    const [issue] = mapTscErrors(
+      [{ file: "src/board.ts", line: 25, col: 31, code: "TS2322", message: `Type 'readonly Task[]' is not assignable to type '{ itemComponentMissingFromTagMap: "task-row"; }'.` }],
+      process.cwd(),
+    );
+    expect(issue?.rule).toBe("item-not-in-tag-map");
+    expect(issue?.message).toMatch(/Fix: run ts-dom gen .*include or exclude leaves ts-dom-tags\.ts out of the program/);
+  });
+
+  it("errors in other files that follow from a contract error are kept and point at it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    writeFileSync(join(dir, "hello-card.html"), `<p>{{ missing }}</p>\n`);
+    writeFileSync(join(dir, "hello-card.ts"), `import tpl from "./hello-card.html.js";\nexport class HelloCard extends Component(tpl, { props: { name: "" } }) {}\ndefine("hello-card", HelloCard);\n`);
+    const issues = mapTscErrors(
+      [
+        { file: "hello-card.ts", line: 2, col: 32, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` },
+        { file: "hello-card.ts", line: 3, col: 22, code: "TS2345", message: "Argument of type 'typeof HelloCard' is not assignable to parameter of type 'abstract new (...args: never[]) => HTMLElement'." },
+        { file: "host.ts", line: 9, col: 27, code: "TS2345", message: "Argument of type 'HelloCard & { extra: number; }' is not assignable to parameter of type 'string | Node'." },
+        { file: "main.ts", line: 4, col: 6, code: "TS2339", message: "Property 'name' does not exist on type 'HelloCard'." },
+        { file: "main.ts", line: 8, col: 1, code: "TS2304", message: "Cannot find name 'HelloCards'." },
+      ],
+      dir,
+    );
+    expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([
+      ["hello-card.html", 1, "missing-binding"],
+      ["host.ts", 9, "tsc"],
+      ["main.ts", 4, "tsc"],
+      ["main.ts", 8, "tsc"],
+    ]);
+    for (const i of issues.slice(1, 3)) {
+      expect(i.message).toMatch(/^TS\d+: .* This error follows from the contract error of HelloCard at hello-card\.html:1:4 \[missing-binding\].* Fix: fix that error first/);
+    }
+    expect(issues[3]?.message).not.toContain("follows from");
+  });
+
+  it("TypeScript that is not installed is an error, so the check does not pass without a type check", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "package.json"), "{}");
+    expect(runCheck({ dirs: ["src"], cwd: dir }).find((i) => i.rule === "tsc-not-found")).toMatchObject({ severity: "error" });
   });
 });

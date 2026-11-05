@@ -12,6 +12,10 @@ export interface TsConfig {
   compilerOptions: Record<string, unknown>;
   /** include patterns made absolute against the folder of the config that declared them; empty when only `files` is given, as tsc then includes nothing else */
   include?: string[];
+  /** exclude patterns, made absolute the same way */
+  exclude?: string[];
+  /** files, made absolute the same way */
+  files?: string[];
 }
 
 function resolveExtends(from: string, ext: string): string | null {
@@ -40,11 +44,42 @@ export function readTsConfig(file: string, depth = 0): TsConfig {
     const target = resolveExtends(file, ext);
     if (!target) continue;
     const base = readTsConfig(target, depth + 1);
-    merged = { compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions }, ...(base.include ?? merged.include ? { include: base.include ?? merged.include } : {}) };
+    merged = { ...merged, ...base, compilerOptions: { ...merged.compilerOptions, ...base.compilerOptions } };
   }
-  const own = json.include as string[] | undefined;
-  const include = own ? own.map((p) => resolve(dirname(file), p).split("\\").join("/")) : (merged.include ?? (Array.isArray(json.files) ? [] : undefined));
-  return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}) };
+  const own = (key: "include" | "exclude" | "files") => (Array.isArray(json[key]) ? (json[key] as string[]).map((p) => resolve(dirname(file), p).split("\\").join("/")) : merged[key]);
+  const files = own("files");
+  const exclude = own("exclude");
+  const include = Array.isArray(json.include) ? own("include") : (merged.include ?? (Array.isArray(json.files) ? [] : undefined));
+  return { compilerOptions: { ...merged.compilerOptions, ...(json.compilerOptions as Record<string, unknown> | undefined) }, ...(include ? { include } : {}), ...(exclude ? { exclude } : {}), ...(files ? { files } : {}) };
+}
+
+/** A tsconfig include or exclude pattern (absolute, forward slashes) as tsc matches it: `**` crosses folders, `*` and `?` stay within one, a last segment without a wildcard or an extension names a folder, and an exclude also removes everything under a folder it matches. */
+function globRegExp(pattern: string, exclude: boolean): RegExp {
+  const last = pattern.slice(pattern.lastIndexOf("/") + 1);
+  const full = !exclude && !/[*?]/.test(last) && !/\.[^.]+$/.test(last) ? `${pattern.replace(/\/$/, "")}/**/*` : pattern;
+  const segments = full.split("/");
+  const body = segments
+    .map((seg, i) => {
+      const end = i === segments.length - 1;
+      if (seg === "**") return end ? ".*" : "(?:[^/]+/)*";
+      const text = seg.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]");
+      return end ? text : `${text}/`;
+    })
+    .join("");
+  return new RegExp(`^${body}${exclude ? "(?:$|/)" : "$"}`);
+}
+
+/**
+ * Why tsc leaves `file` out of the program of a config whose folder is `configDir`, unless another file imports it: include does not match it, or an exclude pattern removes it.
+ * null when files, or include without a matching exclude, take it in.
+ */
+export function leftOutBy(config: TsConfig, configDir: string, file: string): { by: "include" } | { by: "exclude"; pattern: string } | null {
+  const f = file.split("\\").join("/");
+  if (config.files?.includes(f)) return null;
+  const include = config.include ?? [`${configDir.split("\\").join("/")}/**/*`];
+  if (!include.some((p) => globRegExp(p, false).test(f))) return { by: "include" };
+  const pattern = config.exclude?.find((p) => globRegExp(p, true).test(f));
+  return pattern === undefined ? null : { by: "exclude", pattern };
 }
 
 /**
