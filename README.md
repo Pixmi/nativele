@@ -67,6 +67,11 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection (Experimental) |
 | `nativele-vite` | Nativele in a Vite app: the plugin and `root`, multi-page builds, hot updates |
 | `nativele-integration` | Nativele components in a framework without its own Skill (Preact, Solid, ...): properties, events, slots, lifecycle, template types (Experimental) |
+| `nativele-state-management` | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` |
+| `nativele-testing` | component tests with Vitest, real-browser tests |
+| `nativele-tanstack-query` | data fetching with `@tanstack/query-core` (Experimental) |
+| `nativele-zod` | form validation with Zod or Valibot (Experimental) |
+| `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM (Experimental) |
 
 Tiers: Official Skills are verified by the maintainers against an example project in CI; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
 

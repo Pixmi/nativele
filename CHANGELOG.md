@@ -10,15 +10,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.2
 
-- Fixed: `unused-ref` (and the matching checks for holes and lists) reported every ref as unused when the class held `this.refs` in a variable (`const r = this.refs; r.name.focus()`). Such an alias now counts as using every name, like `this.refs[k]`; destructuring (`const { name } = this.refs`) is still checked name by name.
-- Fixed: in a list item, a `data-ref` on an element inside a `data-if` block was missing from the item's `refs` (the generated type declared it, so the code compiled and then threw). The refs are now collected before the item hides its `data-if` blocks.
+Skills for the libraries a Nativele app most often sits next to: state stores, testing, data fetching, form validation and Tailwind CSS. Each was accepted through agent trials, and the trials found two bugs in the library, fixed here.
+
+### Skills
+
+- New `nativele-state-management` (Official): where state lives (component `state`, `createStore` or an external store), and a selector adapter that connects Zustand, Redux Toolkit or nanostores to `bind`, so a component re-renders only when its slice changes. Its example project runs in CI.
+- New `nativele-testing` (Official): component tests with Vitest and happy-dom or jsdom, real-browser tests with Vitest browser mode, and end-to-end tests with Playwright. It covers what the unit-test DOM cannot do (`moveBefore`, focus during a reorder), forms, slots, isolation between test files, and a clean checkout. Its example project runs in CI.
+- New `nativele-tanstack-query` (Experimental): `@tanstack/query-core` observers through `bind`. It covers loading, error and refreshing states; keys from props; shared requests; mutations; and stopping requests when a component is removed.
+- New `nativele-zod` (Experimental): form validation with Zod or Valibot. It covers per-field messages, nested and array fields, `aria-invalid` and descriptions (also with several instances on a page), cross-field checks, and the emitted data typed from the schema.
+- New `nativele-tailwind` (Experimental): Tailwind CSS v4 in templates. It covers source detection (and excluding the installed Skills), `shadow: true` with an adopted stylesheet, `<style scoped>` defaults in a layer so utilities win, class-based dark mode in a shadow root, and templates outside the project.
 - `nativele-integration` is now Official, verified with Preact 11 and an example project in CI. Its worked example is Preact:
   - the JSX declaration that types Nativele tags;
   - `onitem-select` event props;
   - a ref that sets the property for a component defined after render;
   - keyed moves, which keep the element connected where the browser has `moveBefore`.
+
+### Fixes
+
+- In a list item, a `data-ref` on an element inside a `data-if` block was missing from the item's `refs` (the generated type declared it, so the code compiled and then threw). The refs are now collected before the item hides its `data-if` blocks.
+- `unused-ref` (and the matching checks for holes and lists) reported every ref as unused when the class held `this.refs` in a variable (`const r = this.refs; r.name.focus()`). Such an alias now counts as using every name, like `this.refs[k]`; destructuring (`const { name } = this.refs`) is still checked name by name.
+
+### Documentation
+
+- `bind`: it calls back at once and on every change, and only a `bind` in `connected()` comes back after re-insertion. A source's `subscribe` must return its unsubscribe function and must not call the listener when subscribing.
+- Styles:
+  - a template's `<style>` is not in a cascade layer, so it beats layered framework styles unless its rules are put in a layer;
+  - a `shadow: true` component uses an outside stylesheet through `adoptedStyleSheets`.
+- Lists: without `moveBefore` (older browsers, happy-dom, jsdom), a moved item reconnects and loses focus.
+- Slots: children added later are placed after a microtask.
+- `define()`: defining a name a second time keeps the first class.
+- Form recipe: `aria-invalid` must be `"true"`, and blur validation needs `data-on-focusout`.
 
 ## 0.5.1
 

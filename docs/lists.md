@@ -140,7 +140,7 @@ Notes:
 
 ### Moving items, connecting and subscriptions
 
-- In a browser with `moveBefore`, a moved item stays connected: neither `disconnected()` nor `connected()` runs, and its focus, scroll position and subscriptions are untouched.
+- In a browser with `moveBefore`, a moved item stays connected: neither `disconnected()` nor `connected()` runs, and its focus, scroll position and subscriptions are untouched. Without it (older browsers, and DOM implementations for tests such as happy-dom and jsdom), a moved item is removed and inserted again: `disconnected()` then `connected()` run, and a focused input in it loses focus.
 - In a browser without it, a moved item is taken out and put back: `disconnected()` runs and releases everything registered with `bind`, `on` and `onCleanup`, then `connected()` runs again. Its element, props and state stay the same.
 - So subscribe in `connected()` (`this.bind(store, ...)`, `this.on(...)`), not in the constructor or a field initializer: then the subscription is made again after a move in every browser. A subscription made in the constructor is released by the first move and never comes back.
 - Data that every item needs (a theme, the current user, a registry) belongs in a `createStore` that the item component binds in `connected()`, not copied into every item object.

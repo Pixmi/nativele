@@ -130,6 +130,9 @@ Otherwise the maintainers send the gaps back to the contributor as review commen
 | `nativele-vue` | Official | available | Nativele components in Vue 3: `isCustomElement`, props, events, `v-model`, slots, `<KeepAlive>`, template types |
 | `nativele-svelte` | Experimental | available | Nativele components in Svelte 5: props, event attributes, slots, `bind:this`, template types |
 | `nativele-angular` | Experimental | available | Nativele components in Angular: `CUSTOM_ELEMENTS_SCHEMA`, bindings, zoneless change detection, `ts-dom gen` in the build, content projection |
-| `nativele-state-management` | Official | planned | `createStore`, and Zustand or Redux through `bind` |
-| `nativele-testing` | Official | planned | Vitest and Playwright |
-| Tailwind CSS, TanStack Query, Zod | Experimental or Community | open for contributions | |
+| `nativele-state-management` | Official | available | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` with a selector adapter |
+| `nativele-testing` | Official | available | component tests with Vitest and happy-dom or jsdom, real-browser tests with Vitest browser mode or Playwright |
+| `nativele-tanstack-query` | Experimental | available | `@tanstack/query-core` observers through `bind`: loading and error states, keys from props, mutations |
+| `nativele-zod` | Experimental | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
+| `nativele-tailwind` | Experimental | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
+| Other libraries | Experimental or Community | open for contributions | |

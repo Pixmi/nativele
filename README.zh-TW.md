@@ -67,6 +67,11 @@ npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .
 | `nativele-angular` | 在 Angular 中使用 Nativele 元件：綁定、變更偵測、建置流程、內容投影（Experimental） |
 | `nativele-vite` | 在 Vite 應用中使用 Nativele：外掛與 `root`、多頁建置、熱更新 |
 | `nativele-integration` | 在沒有專屬 Skill 的框架（Preact、Solid 等）中使用 Nativele 元件：property、事件、slot、生命週期、範本型別（Experimental） |
+| `nativele-state-management` | 狀態放在哪裡；`createStore`，以及透過 `bind` 接上 Zustand、Redux Toolkit、nanostores |
+| `nativele-testing` | 用 Vitest 做元件測試、真實瀏覽器測試 |
+| `nativele-tanstack-query` | 用 `@tanstack/query-core` 取資料（Experimental） |
+| `nativele-zod` | 用 Zod 或 Valibot 驗證表單（Experimental） |
+| `nativele-tailwind` | 在範本與 Shadow DOM 中使用 Tailwind CSS（Experimental） |
 
 等級：Official 由維護者以 CI 中的範例專案驗證；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
 

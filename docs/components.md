@@ -87,7 +87,9 @@ Provided members:
 | `root` | The element itself (default), or the `ShadowRoot` (`shadow: true`) |
 | `connected()` / `disconnected()` | Override to attach your own behavior |
 
-The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`; you can also override them directly (remember to call `super`).
+The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`; you can also override them directly (remember to call `super`). Children a framework or your code adds after the element is connected are placed in their slot in a microtask (a `MutationObserver` in Light mode, native `slotchange` in Shadow mode), so read `assignedNodes` after `await Promise.resolve()`.
+
+`define(name, Class)` registers the element once: calling it again with a name that is already defined does nothing and keeps the first class (`customElements.define` itself would throw). A test that re-imports a component module therefore keeps the first class.
 
 ### Light (default) and Shadow
 
@@ -139,6 +141,8 @@ A top-level `<style>` in a template can be written in two ways in Light mode:
 - In supporting browsers, `scoped` uses native CSS `@scope (<tag name>)`; where it is unsupported it falls back to CSS nesting automatically (`<tag name> { ... }`, with `:scope` converted to `&`). Neither needs a CSS parser. The precedence of `@scope` is decided by "proximity to the root", not by specificity alone.
 - In Light mode `:host` has no effect, and a warning is logged to the console at runtime; use a tag selector or `:scope` instead.
 - With `shadow: true`, `<style>` stays inside the shadow root and the `scoped` attribute has no effect.
+- The injected `<style>` is not in a cascade layer, so it wins over styles in a layer (a CSS framework's utilities, for example) whatever their specificity. To let layered styles override a template's defaults, put the template's rules in a layer: `<style scoped> @layer components { .tag { color: gray } } </style>`.
+- Document styles do not reach a `shadow: true` component. To use a stylesheet there, adopt it in the constructor after `super()`: `this.shadowRoot!.adoptedStyleSheets = [sheet]`, with one `CSSStyleSheet` shared by every instance.
 
 ## Data and View: state (optional)
 
@@ -342,4 +346,4 @@ const off = store.subscribe((s) => console.log(s)); // returns an unsubscribe fu
 
 `store.set` replaces the whole value; it does not merge like a component's `this.set`, because a store can hold any value (a number, an array). For an object with several fields, spread the rest yourself: `store.set((s) => ({ ...s, status: "loading" }))`.
 
-`this.bind` also accepts a read-only source that has only `get` and `subscribe`. There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.
+`this.bind` also accepts a read-only source that has only `get` and `subscribe`. There is no dependency tracking: after `set`, all subscribers are called; if the value is the same under `Object.is`, no notification is sent. `bind(source, callback)` calls the callback at once with `source.get()`, then with every value `subscribe` delivers, and unsubscribes when the element is removed. A `bind` made in `connected()` is made again on re-insertion, and then delivers the current value at once; a `bind` made elsewhere (for example in the constructor) ends on removal and does not come back. The source's `subscribe` must return the function that unsubscribes, and must not call the listener when it subscribes: a store whose `subscribe` does (nanostores' atoms, for example) calls the callback twice at connect; pass `{ get: atom.get, subscribe: atom.listen }` instead. It is a small utility for when the `state` option is not used, and you may also skip it entirely, manage state yourself, and write directly to `refs` / `text`. When you need automatic binding and `render`, use `state` above instead.

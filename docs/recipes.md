@@ -186,4 +186,4 @@ submit(e: Event): void {
 }
 ```
 
-For larger forms, a schema library can produce the messages; the component still keeps them in state and shows them the same way.
+For larger forms, a schema library can produce the messages; the component still keeps them in state and shows them the same way. The `nativele-zod` Skill (`npx ts-dom skills nativele-zod`) does it with Zod or Valibot, including nested and array fields. Two details hold for any form: `aria-invalid` must be `"true"` (an empty `aria-invalid=""` counts as not invalid), and validating on blur needs `data-on-focusout` on the form, because `blur` does not bubble.
