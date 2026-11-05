@@ -10,6 +10,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+### Changed
+
+- Whitespace `collapse` keeps the whitespace the browser renders, so a formatter's line breaks and indentation no longer change the text on the page. It follows the default display of each element, as Prettier and oxfmt assume it. The generated data of existing `collapse` projects changes:
+  - A run of whitespace between two inline-level siblings (text, phrasing elements such as `<a>`, `<b>`, `<span>`, `<time>`, inline-blocks such as `<button>` and `<input>`, custom and unknown elements) becomes one space even when it contains a line break; it used to be dropped. `<a>{{ author }}</a>\n  <time>{{ date }}</time>` renders `ann 2 days ago` as the browser does, not `ann2 days ago`. The same holds at the start and end of an inline element's content (`<a>\n  <x-icon></x-icon>\n  Label\n</a>`), so `childNodes` and `textContent` gain those spaces, and a space now separates custom elements written on separate lines.
+  - Whitespace next to a block-level element (`<div>`, `<p>`, `<section>`, `<ul>`, `<li>`, headings, table parts, ...) and at the start and end of a block or inline-block element's content is dropped, with or without a line break: `<button>\n  Toggle\n</button>` has the text `"Toggle"`, no longer `" Toggle "`, and `<div>a</div> <div>b</div>` no longer has a `" "` between the blocks.
+  - Only HTML whitespace (space, tab, line feed, form feed, carriage return) is collapsed: a non-breaking space (`&nbsp;`) is kept; it used to become a plain space.
+  - `&#32;` between two inline elements is no longer needed to keep a space a formatter turns into a line break (it still works).
+  - `<pre>`, `<textarea>`, `<style>`, `<script>` and `preserve` are unchanged.
+
 ## 0.5.5
 
 Skills are verified by agent trials and stand on their own: each Skill can be followed and is accurate without its example project, which stays in the repository only as a reference.
