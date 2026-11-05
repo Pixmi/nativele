@@ -12,7 +12,7 @@ describe("Skills shipped with the package", () => {
   const skills = listSkills(skillsRoot());
 
   it("lists every skills/<name>/SKILL.md except the template", () => {
-    expect(skills.map((s) => s.name)).toEqual(["nativele-core", "nativele-react"]);
+    expect(skills.map((s) => s.name)).toEqual(["nativele-core", "nativele-integration", "nativele-react"]);
   });
 
   it.each(listSkills(skillsRoot()).map((s) => [s.name, s] as const))("%s follows the specification", (name, s) => {
@@ -94,7 +94,8 @@ describe("ts-dom doctor and Skills", () => {
       ["skill-available", "info", "package.json"],
     ]);
     expect(issues[1]?.message).toContain("ts-dom skills add nativele-react");
-    expect(skillIssues(project({ dependencies: { vue: "3" } }))).toEqual([]);
+    expect(skillIssues(project({ dependencies: { lodash: "4" } }))).toEqual([]);
+    expect(skillIssues(project({ dependencies: { vue: "3" } }))[0]?.message).toContain("ts-dom skills add nativele-integration");
   });
 
   it("stops recommending a copied Skill, and reports a copy that differs from the shipped one", () => {

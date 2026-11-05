@@ -62,6 +62,7 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 |---|---|
 | `nativele-core` | building components: the `ts-dom check` loop, templates, state, lists, data flow |
 | `nativele-react` | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
+| `nativele-integration` | Nativele components in a framework without its own Skill (Vue, Svelte, Angular, ...): properties, events, slots, lifecycle, template types (Experimental) |
 
 Tiers: Official Skills are verified by the maintainers against an example project in CI; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
 

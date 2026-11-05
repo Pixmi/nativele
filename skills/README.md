@@ -125,7 +125,7 @@ Otherwise the maintainers send the gaps back to the contributor as review commen
 |---|---|---|---|
 | `nativele-core` | Official | available | building with Nativele itself: the `ts-dom check` loop, components, lists, data flow |
 | `nativele-react` | Official | available | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
-| `nativele-integration` | Official | planned | what every framework integration shares: properties and attributes, events, slots, lifecycle, types |
+| `nativele-integration` | Experimental | available | Nativele components in a framework without its own Skill: defining before render, properties and attributes, events, slots, lifecycle, types; verified with Vue |
 | `nativele-vite` | Official | planned | the Vite plugin, `root`, hot updates |
 | `nativele-vue` | Official | planned | Nativele components in Vue |
 | `nativele-state-management` | Official | planned | `createStore`, and Zustand or Redux through `bind` |
