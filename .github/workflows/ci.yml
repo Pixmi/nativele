@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -39,7 +39,7 @@ jobs:
           if [ -z "$files" ] || has '^(src/|package(-lock)?\.json$|tsconfig\.json$|vite\.config\.ts$|\.github/workflows/ci\.yml$)'; then all=true; fi
           check=$all; browser=$all; smoke=$all; nobundler=$all
           if echo "$files" | grep -qvE '(\.md$|^LICENSE$|^llms\.txt$|^\.gitignore$|^skills/|^\.github/)'; then check=true; fi
-          if has '^browser/'; then browser=true; fi
+          if has '^(browser|examples)/'; then browser=true; fi
           if has '^scripts/consumer-smoke\.sh$'; then smoke=true; fi
           if has '^scripts/no-bundler-smoke\.sh$'; then nobundler=true; fi
           { echo "check=$check"; echo "browser=$browser"; echo "smoke=$smoke"; echo "nobundler=$nobundler"; } | tee -a "$GITHUB_OUTPUT"

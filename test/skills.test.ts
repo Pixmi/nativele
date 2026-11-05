@@ -11,8 +11,8 @@ const skillText = (name: string, meta: string) => `---\nname: ${name}\ndescripti
 describe("Skills shipped with the package", () => {
   const skills = listSkills(skillsRoot());
 
-  it("lists every skills/<name>/SKILL.md except the template", () => {
-    const dirs = readdirSync(skillsRoot()).filter((d) => d !== "_template" && existsSync(join(skillsRoot(), d, "SKILL.md")));
+  it("lists every skills/<name>/SKILL.md except the _-prefixed ones", () => {
+    const dirs = readdirSync(skillsRoot()).filter((d) => !d.startsWith("_") && existsSync(join(skillsRoot(), d, "SKILL.md")));
     expect(skills.map((s) => s.name)).toEqual(dirs.sort());
     expect(dirs).toContain("nativele-core");
   });

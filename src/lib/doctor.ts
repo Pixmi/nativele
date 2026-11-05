@@ -78,10 +78,8 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   const includes: string[] = [];
   let everyConfigIncludes = true;
-  const targets = dirs.flatMap((d) => {
-    const folders = templateFolders(d);
-    return folders.length ? folders : [d];
-  });
+  const scanned = dirs.map((dir) => ({ dir, folders: templateFolders(dir) }));
+  const targets = scanned.flatMap(({ dir, folders }) => (folders.length ? folders : [dir]));
   const read = configs.map((path) => ({ path, config: readTsConfig(path) }));
   const covering = read.filter(({ config: { include } }) => !include || targets.some((t) => include.some((p) => covers(p, t))));
   for (const { path: configPath, config } of read) {
@@ -100,7 +98,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   if (configs.length && everyConfigIncludes) {
     const missed = new Set<string>();
-    for (const d of dirs) for (const folder of templateFolders(d)) if (!includes.some((p) => covers(p, folder))) missed.add(rel(folder));
+    for (const folder of scanned.flatMap((s) => s.folders)) if (!includes.some((p) => covers(p, folder))) missed.add(rel(folder));
     for (const folder of missed) {
       add("tsconfig-misses-templates", "error", `No tsconfig include covers ${folder}, which has templates, so their generated types are never checked. Fix: add "${folder === "." ? "**/*" : `${folder}/**/*`}" to include.`, { file: rel(configs[0] as string) });
     }

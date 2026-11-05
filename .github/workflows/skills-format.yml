@@ -2,6 +2,9 @@ name: Skill format
 
 # A pull request that changes only Markdown skips ci.yml; this checks that every SKILL.md still follows skills/README.md.
 on:
+  push:
+    branches: [main]
+    paths: ["skills/**", ".github/workflows/skills-format.yml"]
   pull_request:
     paths: ["skills/**", ".github/workflows/skills-format.yml"]
 
