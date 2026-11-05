@@ -1,35 +1,85 @@
 name: Skills
 
-# Runs the example project of every Official Skill against the library in this repository.
-# Not a required check: it runs when an example or the library changes, and once a month so that a new
-# release of a third-party tool that breaks a Skill is found. A change to SKILL.md alone runs skills-format.yml.
+# Required checks: they run on every pull request and push, and skip their steps (not the job) when nothing they
+# depend on changed, so the check always reports. Once a month the examples run anyway, so that a new release of a
+# third-party tool that breaks a Skill is found.
 on:
   pull_request:
-    paths: ["skills/*/example/**", "src/**", "package.json", "package-lock.json", ".github/workflows/skills.yml"]
   push:
     branches: [main]
-    paths: ["skills/*/example/**", "src/**", "package.json", "package-lock.json", ".github/workflows/skills.yml"]
   schedule:
     - cron: "0 3 1 * *"
   workflow_dispatch:
 
 concurrency:
   group: skills-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    name: Verify Skill examples
+  changes:
+    name: Detect Skill changes
+    runs-on: ubuntu-latest
+    outputs:
+      format: ${{ steps.diff.outputs.format }}
+      examples: ${{ steps.diff.outputs.examples }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) range="${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" ;;
+            push) range="${{ github.event.before }}..${{ github.sha }}" ;;
+            *) range="" ;;
+          esac
+          files=""
+          if [ -n "$range" ]; then files="$(git diff --name-only "$range" 2>/dev/null || true)"; fi
+          echo "$files"
+          has() { echo "$files" | grep -qE "$1"; }
+          all=false
+          if [ -z "$files" ] || has '^\.github/workflows/skills\.yml$'; then all=true; fi
+          format=$all; examples=$all
+          # test/skills.test.ts also checks the links in the READMEs, llms.txt and the guides.
+          if has '^(skills/|docs/|README|llms\.txt$|test/skills\.test\.ts$|src/)'; then format=true; fi
+          if has '^(skills/[^/]+/example/|src/|package(-lock)?\.json$)'; then examples=true; fi
+          { echo "format=$format"; echo "examples=$examples"; } | tee -a "$GITHUB_OUTPUT"
+
+  format:
+    name: SKILL.md format
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.format == 'true'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.format == 'true'
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+        if: needs.changes.outputs.format == 'true'
+      - run: npx vitest run test/skills.test.ts
+        if: needs.changes.outputs.format == 'true'
+
+  verify:
+    name: Verify Skill examples
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        if: needs.changes.outputs.examples == 'true'
+      - uses: actions/setup-node@v7
+        if: needs.changes.outputs.examples == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        if: needs.changes.outputs.examples == 'true'
       - run: npm run build:lib
+        if: needs.changes.outputs.examples == 'true'
       - name: npm run verify in each skills/*/example
+        if: needs.changes.outputs.examples == 'true'
         run: |
           set -euo pipefail
           for example in skills/*/example; do

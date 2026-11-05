@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 |
+| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |

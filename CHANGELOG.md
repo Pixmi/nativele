@@ -10,6 +10,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- Each Skill's Versions table says how far its verification reaches: an Official Skill reads "<first version> and every later release", because CI runs its example on every change, and an Experimental Skill names the version of its last agent trial. `test/skills.test.ts` keeps the row consistent with the tier.
+- The Skill checks are required for `main`: "Verify Skill examples" and "SKILL.md format" (now one workflow, `skills.yml`) report on every pull request and skip their steps when nothing they check changed. The format check also covers the links in the READMEs, `llms.txt` and the guides.
+- `skills/README.md` gives a fixed form for the agent trial record added to a Skill pull request.
+
 ## 0.5.4
 
 The guides, the Skills and the tools agree with each other: wrong statements in the guides are fixed, facts the Skills repeated now live in the guides, and the tools report the traps the Skill trials hit instead of staying silent.
