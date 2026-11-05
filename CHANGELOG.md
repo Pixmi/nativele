@@ -10,6 +10,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+### New checks
+
+- `ts-dom doctor` reports `typecheck-before-gen` (warning): a package.json script, with its `pre` script and the scripts it runs through `npm run` (or pnpm, yarn, bun), that runs `tsc`, `vue-tsc`, `svelte-check` or `ng build`/`serve`/`test` before any `ts-dom gen` or `ts-dom check` while `.gitignore` leaves out `*.html.ts`; on a clean checkout it fails with TS2307. A `tsc -p` whose config covers none of the scanned folders is skipped.
+- `ts-dom doctor` reports `framework-template` (error): an `.html` in a scanned folder that a TypeScript file names as an Angular `templateUrl`. The `invalid-hole` and `no-importer` hints now also say that the folder may not be meant to be scanned.
+- `formatter-whitespace` also reports generated files written with `preserve` while a package.json script or the Vite config asks for `--whitespace=collapse`, with the command to regenerate them.
+- `vite-plugin-missing` also reports a `vitest.config.*` that replaces the Vite config for Vitest without the `tsDom()` plugin and without importing `./vite.config`.
+
+### Fixes
+
+- The Vite plugin warns (`dir-not-found`) when a `tsDom({ dirs })` entry does not exist under Vite's `root`, instead of skipping it silently.
+- A generated `ts-dom-tags.ts` in a subfolder that is not itself scanned (left over after components moved) is an orphan: `gen` deletes it, and `gen --check`, `check --no-write` and `doctor` report it as `stale-generated`.
+- A `tsc` error located in a generated `x.html.ts` or `ts-dom-tags.ts` now says to run `ts-dom gen` or delete the leftover file, not to change the TypeScript there.
+- `ts-dom check` leaves out `tsc` errors inside the body of a class it already reported for a contract error (for example an implicit `any` on a `bind` callback's parameter next to a `{{ hole }}` that names nothing).
+- `ts-dom --help` lists `--include`, `--exclude` and `--whitespace` under `check` and `doctor`, which accept them.
+
+### Documentation
+
+- `docs/tooling.md`: the new checks; the bare specifier to map is `@nativele/ts-dom`; the Vite plugin generates when the build, the dev server or Vitest starts, never type-checks, prints rejected templates only in the terminal, and sends a full reload to every client; a run without `--whitespace` keeps each file's recorded mode; `check` runs `tsc` once per referenced project of a solution-style tsconfig.
+
 ## 0.5.3
 
 How to lay out an app with several pages: a new architecture guide, an Official Skill that applies it, and a medium example app checked in CI. Building the example found a codegen bug with several scanned folders, fixed here.

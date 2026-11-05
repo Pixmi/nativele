@@ -36,7 +36,7 @@ npx ts-dom gen        # generate x.html.ts for every x.html under src/
 npx tsc               # type-check and compile to out/
 ```
 
-Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone.
+Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone. Each generated file records its mode, and a run without `--whitespace` keeps the mode a file was last written with (a new file gets `preserve`), so pass `--whitespace=preserve` to switch back. `check` and `doctor` accept `--whitespace=`, `--include=` and `--exclude=` as `gen` does, and use them to decide which generated files are stale.
 
 To scan several folders, list them: `npx ts-dom gen src packages/ui` (the same for `--check`, `--watch`, `check`, `doctor` and `lint`, and the Vite plugin's `dirs` option). The folders are generated together: a template in one folder that uses a component defined in another gets the import of that component, as the relative path from the template to the file with the `define()`, and a tag defined with different classes in two folders is a `duplicate-define` error.
 
@@ -44,7 +44,7 @@ During development, use `npx ts-dom gen --watch` to keep watching `.html` files,
 
 The generated files (`x.html.ts` next to each template, and `ts-dom-tags.ts` in each scanned folder) are derived from the templates, so most projects do not commit them: add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.
 
-`npx ts-dom gen --check` writes nothing: it lists generated files that are missing, outdated (their template or a `define()` changed) or orphaned (their template was deleted), and exits with code 1 if there are any (`--json` for machine-readable output). Use it in CI if your project commits the generated files, or to confirm they are fresh before reading type errors.
+`npx ts-dom gen --check` writes nothing: it lists generated files that are missing, outdated (their template or a `define()` changed) or orphaned (their template was deleted, or a `ts-dom-tags.ts` is left in a subfolder that is not itself scanned, for example after the components moved), and exits with code 1 if there are any (`--json` for machine-readable output). Use it in CI if your project commits the generated files, or to confirm they are fresh before reading type errors.
 
 In your code, import templates with a `.js` suffix (standard NodeNext style; TS maps it to the generated `x.html.ts`):
 
@@ -54,7 +54,7 @@ import tpl from "./user-card.html.js";
 
 ### Running in the browser (no bundler)
 
-The compiled JS is standard ES modules. Only one bare module specifier, `ts-dom`, needs to be mapped, and an import map does it:
+The compiled JS is standard ES modules. Only one bare module specifier, `@nativele/ts-dom`, needs to be mapped, and an import map does it:
 
 ```html
 <script type="importmap">
@@ -68,7 +68,7 @@ This workflow (installing only `typescript`, no Vite, from `gen` to running in a
 
 ### With Vite (optional)
 
-When you use a bundler you do not need an import map. The `@nativele/ts-dom/vite` plugin is just a convenience: it generates `.html.ts` automatically at build time, watches `.html` and regenerates during dev, and offers optional ARIA warnings.
+When you use a bundler you do not need an import map. The `@nativele/ts-dom/vite` plugin is just a convenience: it generates the `.html.ts` files when the build, the dev server or Vitest starts, watches `.html` and regenerates during dev, and offers optional ARIA warnings. It never type-checks: run `ts-dom check` (or `ts-dom gen` and `tsc`) for that. A template that codegen rejects is printed only in the terminal that runs Vite (at build start the build fails; in dev the page keeps the last generated module), not in the browser.
 
 ```ts
 import { defineConfig } from "vite-plus"; // or "vite"
@@ -79,7 +79,9 @@ export default defineConfig({
 });
 ```
 
-While the dev server runs, the plugin keeps the generated files in step: adding or editing a template regenerates its `x.html.ts` and reloads the page once if a page uses it (a save that changes nothing does not reload), deleting a template removes its `x.html.ts`, and adding or removing a `define()` updates `ts-dom-tags.ts` and the child imports of the templates. `dirs` are relative to Vite's `root`. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
+While the dev server runs, the plugin keeps the generated files in step: adding or editing a template regenerates its `x.html.ts` and, when the module has been loaded, sends a full reload to every connected client (a save that changes nothing does not reload), deleting a template removes its `x.html.ts`, and adding or removing a `define()` updates `ts-dom-tags.ts` and the child imports of the templates. `dirs` are relative to Vite's `root`, not the working directory; an entry that does not exist there is reported as a `dir-not-found` warning when the build or dev server starts. The page reloads rather than hot-swapping the component because a custom element tag can be defined only once, so a new class cannot replace the running one.
+
+A `vitest.config.ts` replaces `vite.config.ts` for Vitest, so add `tsDom()` to its `plugins` too, or merge the Vite config into it (`mergeConfig(viteConfig, defineConfig({ test: {} }))` with `viteConfig` imported from `./vite.config`); otherwise the tests start without generated files.
 
 Vite loads `vite.config.ts` as an ES module only when `package.json` has `"type": "module"` (`npm pkg set type=module`); without it, Vite warns that the config is loaded as CommonJS.
 
@@ -142,15 +144,15 @@ Each tool checks what it can see, and none repeats another:
 
 Four complementary checks. **Every message has a stable rule id and explains what is wrong, why, and how to fix it**; `npx ts-dom rules` lists all rules.
 
-**When the set-up itself may be wrong: `npx ts-dom doctor [dirs...]`.** It checks what a project needs before any of the checks can work: a tsconfig with `strict`, the DOM lib, a module resolution that maps `./x.html.js` to the generated file and an `include` that covers the template folders; the runtime package being installed; templates imported as `./x.html.js` (not `./x.html`); generated files that are stale; the Vite plugin and the oxlint plugin being configured; and, when a formatter such as oxfmt or Prettier is set up, templates generated with whitespace `collapse`. Every issue has a stable rule id and a `Fix:` hint, and `--json` prints them as data.
+**When the set-up itself may be wrong: `npx ts-dom doctor [dirs...]`.** It checks what a project needs before any of the checks can work: a tsconfig with `strict`, the DOM lib, a module resolution that maps `./x.html.js` to the generated file and an `include` that covers the template folders; the runtime package being installed; templates imported as `./x.html.js` (not `./x.html`); generated files that are stale; the Vite plugin and the oxlint plugin being configured, including a `vitest.config.*` that replaces the Vite config without the plugin (`vite-plugin-missing`); when a formatter such as oxfmt or Prettier is set up, templates generated with whitespace `collapse`, and generated files that were written with `preserve` while the scripts or the Vite config ask for `collapse` (`formatter-whitespace`); a package.json script (with its `pre` script and the scripts it runs through `npm run`) that runs `tsc`, `vue-tsc`, `svelte-check` or `ng build`/`serve`/`test` before any `ts-dom gen` or `ts-dom check` while `.gitignore` leaves out `*.html.ts`, which fails with TS2307 on a clean checkout (`typecheck-before-gen`, skipped for a `tsc -p` whose config covers none of the scanned folders); and an `.html` in a scanned folder that a TypeScript file names as an Angular `templateUrl`, which is a framework template and means the folder should not be scanned (`framework-template`). Every issue has a stable rule id and a `Fix:` hint, and `--json` prints them as data.
 
-**One command for all of them: `npx ts-dom check [dirs...]`.** It reports template diagnostics, regenerates the generated files (with `--no-write` it reports stale ones instead), runs the project's own `tsc` (TypeScript 5, 6 or 7; `--project=` picks the tsconfig; when the project's package.json lists `vue-tsc` in dependencies or devDependencies, it runs that instead, so `.vue` files are checked too), and runs the lint rules (`--a11y` adds the accessibility checks). TypeScript errors that come from the template contract point at the template, not at the `Component(...)` call: a `{{ title }}` with nothing named `title` is reported at its line and column in the `.html` as `missing-binding`, and a missing handler as `missing-handler`; item component problems get their own rule ids, and the errors that only follow from a broken class are left out. `--json` prints the issues as data, and the exit code is 1 when there is an error (with `--strict`, a warning too).
+**One command for all of them: `npx ts-dom check [dirs...]`.** It reports template diagnostics, regenerates the generated files (with `--no-write` it reports stale ones instead), runs the project's own `tsc` (TypeScript 5, 6 or 7; `--project=` picks the tsconfig, and a solution-style tsconfig, with `"files": []` and `references`, runs `tsc` once per referenced project; when the project's package.json lists `vue-tsc` in dependencies or devDependencies, it runs that instead, so `.vue` files are checked too), and runs the lint rules (`--a11y` adds the accessibility checks). TypeScript errors that come from the template contract point at the template, not at the `Component(...)` call: a `{{ title }}` with nothing named `title` is reported at its line and column in the `.html` as `missing-binding`, and a missing handler as `missing-handler`; item component problems get their own rule ids, and the errors that only follow from a broken class are left out, including those inside its body (a `bind` callback's parameter without a type, say). An error located in a generated `x.html.ts` or `ts-dom-tags.ts` says to run `ts-dom gen`, or to delete the file when it is left over from a template or folder that is no longer scanned, instead of to edit it. `--json` prints the issues as data, and the exit code is 1 when there is an error (with `--strict`, a warning too).
 
 Which command writes files:
 
 | Command | Writes | Runs |
 |---|---|---|
-| `ts-dom gen` | the generated `x.html.ts` files and `ts-dom-tags.ts` | codegen only |
+| `ts-dom gen` | the generated `x.html.ts` files and `ts-dom-tags.ts`, and deletes orphaned ones | codegen only |
 | `ts-dom gen --check` | nothing | codegen only: lists missing, outdated or orphaned generated files |
 | `ts-dom check` | the generated files (they are derived and not committed, so this is what a developer or an agent wants after a change) | codegen, `tsc`, lint |
 | `ts-dom check --no-write` | nothing: stale generated files are reported instead of refreshed, and `tsc` runs on the files as they are | codegen, `tsc`, lint |
