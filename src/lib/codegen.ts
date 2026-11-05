@@ -590,7 +590,7 @@ export function crossDirDuplicates(dirs: readonly string[]): (Diagnostic & { fil
     const [first, second] = defs as [DefineDef, DefineDef];
     if (defs.length < 2 || dirs.some((dir) => defs.every((d) => inside(dir, d.file)))) continue;
     const at = (d: DefineDef) => `${relative(process.cwd(), d.file)}:${d.line ?? 1}`;
-    out.push({ file: second.file, line: second.line ?? 1, col: second.col ?? 1, severity: "error", rule: "duplicate-define", message: `The tag <${tag}> is defined more than once in the scanned folders (${at(first)} and ${at(second)}), so the second define() fails at runtime. Fix: each custom element name can be defined only once; rename one of them.` });
+    out.push({ file: second.file, line: second.line ?? 1, col: second.col ?? 1, severity: "error", rule: "duplicate-define", message: `The tag <${tag}> is defined more than once in the scanned folders (${at(first)} and ${at(second)}), so at runtime only the class whose define() runs first is registered, and the other define() is skipped without an error. Fix: each custom element name can be defined only once; rename one of them.` });
   }
   return out;
 }
@@ -630,7 +630,7 @@ export function renderTags(dir: string): { out: string; next: string | null } {
   for (const d of defs) {
     const prev = seen.get(d.tag);
     if (prev && (prev.from !== d.from || prev.className !== d.className)) {
-      throw new CodegenError(`${dir}: [duplicate-define] the tag <${d.tag}> is defined more than once (${prev.from} and ${d.from}). Fix: each custom element name can be defined only once; rename one of them.`);
+      throw new CodegenError(`${dir}: [duplicate-define] the tag <${d.tag}> is defined more than once (${prev.from} and ${d.from}), so at runtime only the class whose define() runs first is registered, and the other define() is skipped without an error. Fix: each custom element name can be defined only once; rename one of them.`);
     }
     seen.set(d.tag, d);
   }

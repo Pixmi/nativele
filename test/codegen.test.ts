@@ -265,6 +265,7 @@ describe("rule ids and diagnostic shape", () => {
     expect(err).toBeInstanceOf(CodegenError);
     expect((err as Error).message).toContain("[duplicate-define]");
     expect((err as Error).message).toContain("Fix:");
+    expect((err as Error).message).toContain("only the class whose define() runs first is registered, and the other define() is skipped without an error");
   });
   it("every analyze diagnostic has line >= 1, col >= 1, a rule, a severity and a Fix: hint", () => {
     for (const [rule, html] of Object.entries(RULE_INPUTS)) {

@@ -19,7 +19,7 @@ export const CHECK_RULES = {
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
   "item-class-not-exported": "the item component class passed to define() is not exported (found by tsc)",
   tsc: "any other TypeScript error, as tsc reports it",
-  "tsc-not-found": "TypeScript is not installed in the project, so types were not checked",
+  "tsc-not-found": "TypeScript is not installed in the project, so types were not checked and the check fails",
   "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
   "tsc-failed": "tsc did not run to completion (no tsconfig, a bad option, a crash), so types were not checked",
 } as const;
@@ -60,7 +60,7 @@ const CONTRACT: [string, string, string][] = [
   ["reservedPropNames", "reserved-prop", "rename the prop (for example title -> titleText)"],
   ["nativeEventNames", "native-event-name", "rename the event, for example with a prefix such as item-"],
   ["dataPropNotOnItemComponent", "item-prop-missing", "declare the property in the item component's props, or change data-prop"],
-  ["itemComponentMissingFromTagMap", "item-not-in-tag-map", "run ts-dom gen so ts-dom-tags.ts lists the item component"],
+  ["itemComponentMissingFromTagMap", "item-not-in-tag-map", "run ts-dom gen so ts-dom-tags.ts lists the item component; if it already does, the tsconfig include or exclude leaves ts-dom-tags.ts out of the program (ts-dom doctor reports it as tsconfig-misses-tag-map): make include match it"],
   ["itemComponentClassNotExported", "item-class-not-exported", "export the class passed to define() so its prop types can be read"],
 ];
 
@@ -97,9 +97,10 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     }
     return undefined;
   };
-  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file: those follow-up errors repeat the first one.
+  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file.
+  // In its own file those follow-up errors repeat the first one and are dropped; in other files they are kept, pointing at the error they follow from.
   // Inside the body of such a class `this` has no usable type either, so errors there (a bind callback's parameter without a type, say) follow from it as well.
-  const brokenClasses = new Set<string>();
+  const brokenClasses = new Map<string, TscError>();
   const brokenBodies: { file: string; from: number; to: number }[] = [];
   for (const e of errors) {
     if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames/.test(e.message)) continue;
@@ -107,14 +108,14 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     const lines = text.split("\n");
     const m = /class\s+([A-Za-z_$][\w$]*)\s+extends\s+Component\s*\(/.exec(lines[e.line - 1] ?? "");
     if (!m?.[1]) continue;
-    brokenClasses.add(m[1]);
+    if (!brokenClasses.has(m[1])) brokenClasses.set(m[1], e);
     const start = lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + m.index + m[0].length - 1;
     const end = classBodyEnd(text, start);
     if (end !== -1) brokenBodies.push({ file: rel(resolve(cwd, e.file)), from: e.line, to: text.slice(0, end).split("\n").length });
   }
-  const followsBroken = (i: LintIssue) =>
-    [...brokenClasses].some((c) => i.message.includes(`'${c}'`) || i.message.includes(`'typeof ${c}'`)) || brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to);
+  const firstIssueOf = new Map<TscError, LintIssue>();
   for (const e of errors) {
+    const before = out.length;
     const file = resolve(cwd, e.file);
     const where = `${rel(file)}:${e.line}:${e.col}`;
     const issue = (rule: string, message: string, at?: { file: string; line: number; col: number }) =>
@@ -143,11 +144,28 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
       named = true;
       issue(rule, `${e.message.split("\n")[0]} Fix: ${fix}.`);
     }
-    if (named) continue;
-    if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
+    if (named) {
+      firstIssueOf.set(e, out[before] as LintIssue);
+      continue;
+    }
+    const tag = /Property '"([^"]+)"' must be of type/.exec(e.message)?.[1];
+    if (e.code === "TS2717" && tag && file.endsWith(`${sep}ts-dom-tags.ts`)) {
+      issue("duplicate-define", `The tag <${tag}> is declared with another class by a second tag map in the same program (another generated ts-dom-tags.ts, from a folder that is scanned separately or from a package), so two components share one custom element name, and at runtime only the class whose define() runs first is registered: the other define() is skipped without an error (tsc ${e.code} at ${where}). Fix: rename the tag in one of the define() calls and in the templates that use it; editing this generated file does not help.`);
+    } else if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
     else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
-  return out.filter((i) => i.rule !== "tsc" || !followsBroken(i));
+  const brokenFiles = new Set([...brokenClasses.values()].map((e) => rel(resolve(cwd, e.file))));
+  const classIn = (message: string) => [...brokenClasses.keys()].find((c) => new RegExp(`(?<![\\w$.])${c.replace(/\$/g, "\\$")}(?![\\w$])`).test(message));
+  return out.flatMap((i) => {
+    const cls = i.rule === "tsc" ? classIn(i.message) : undefined;
+    if (i.rule === "tsc" && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
+    if (cls === undefined) return [i];
+    if (brokenFiles.has(i.file)) return [];
+    const cause = brokenClasses.get(cls) as TscError;
+    const first = firstIssueOf.get(cause);
+    const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cause.file))}:${cause.line}:${cause.col}`;
+    return [{ ...i, message: `${i.message.replace(/ Fix: .*$/s, "")} This error follows from the contract error of ${cls} at ${at}, which makes tsc type ${cls} as that error instead of an element. Fix: fix that error first; this one then goes away.` }];
+  });
 }
 
 /** The offset of the `}` that closes a class body, given the offset of the `(` of its `extends Component(`; -1 when it cannot be found. Strings and comments are skipped. */
@@ -240,7 +258,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
 
   const tsc = findTsc(cwd);
   if (!tsc) {
-    issues.push({ file: ".", line: 1, col: 1, rule: "tsc-not-found", severity: "warning", message: "TypeScript is not installed in this project, so types were not checked. Fix: npm i -D typescript." });
+    issues.push({ file: ".", line: 1, col: 1, rule: "tsc-not-found", severity: "error", message: "TypeScript is not installed in this project, so no types were checked, and a check without them would pass with nothing looked at. Fix: npm i -D typescript (in CI, install the dev dependencies before ts-dom check)." });
   } else {
     // A solution-style tsconfig checks nothing itself: check each referenced project instead.
     const configs = projectConfigs(cwd, options.project);
