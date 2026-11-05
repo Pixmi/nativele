@@ -630,11 +630,14 @@ export default defineConfig({ plugins: [tsDom()] });`,
 }`,
   },
   "formatter-whitespace": {
-    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page.",
+    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page. The same warning is given when the scripts or the Vite config ask for collapse but the generated files were written with preserve: a run without --whitespace keeps the mode a file was last written with, so one run without the flag leaves the project on preserve.",
     bad: `# formatter is configured, templates keep their whitespace
-npx ts-dom gen`,
+npx ts-dom gen
+# or: package.json has "gen": "ts-dom gen src --whitespace=collapse", but the files came from a plain run
+npx ts-dom check src`,
     good: `npx ts-dom gen --whitespace=collapse
-// or in vite.config.ts: tsDom({ whitespace: "collapse" })`,
+// or in vite.config.ts: tsDom({ whitespace: "collapse" })
+# and after a plain run: npm run gen (the script with the flag) once`,
   },
   "skill-available": {
     why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",

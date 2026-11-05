@@ -151,6 +151,30 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
   });
 });
 
+describe("ts-dom doctor: whitespace asked for and whitespace on disk", () => {
+  const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/x.html": "<p>\n  hi\n</p>" };
+  const whitespace = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "formatter-whitespace");
+
+  it("a script asks for collapse while the generated files were written with preserve", async () => {
+    const { generateAll } = await import("../src/lib/codegen.ts");
+    const cwd = project({ ...base, "package.json": JSON.stringify({ scripts: { gen: "ts-dom gen src --whitespace=collapse" } }) });
+    generateAll(join(cwd, "src"));
+    const [issue, ...rest] = whitespace(cwd);
+    expect(rest).toEqual([]);
+    expect(issue).toMatchObject({ severity: "warning", file: "src/x.html.ts" });
+    expect(issue?.message).toMatch(/^The script "gen" asks for whitespace "collapse", but this generated file was written with "preserve".* Fix: regenerate with the flag once: npm run gen\.$/);
+    generateAll(join(cwd, "src"), { whitespace: "collapse" });
+    expect(whitespace(cwd)).toEqual([]);
+  });
+
+  it("the Vite config asks for collapse while the generated files were written with preserve", async () => {
+    const { generateAll } = await import("../src/lib/codegen.ts");
+    const cwd = project({ ...base, "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom({ whitespace: "collapse" })] };` });
+    generateAll(join(cwd, "src"));
+    expect(whitespace(cwd).map((i) => i.message)).toEqual([expect.stringMatching(/^The Vite config asks .* Fix: regenerate with the flag once: ts-dom gen src --whitespace=collapse\.$/)]);
+  });
+});
+
 describe("ts-dom doctor: another framework's templates in a scanned folder", () => {
   it("an .html named as an Angular templateUrl is reported once, as an error at the template", () => {
     const cwd = project({ "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/app.html": "<p>{{ user.name }}</p>", "src/card.html": "<p>{{ name }}</p>" });
