@@ -299,7 +299,9 @@ const union = (xs: Iterable<string>) => {
   const arr = [...new Set(xs)];
   return arr.length ? arr.map(q).join(" | ") : "never";
 };
-const obj = (m: Map<string, string>) => `{ ${[...m].map(([n, t]) => `${q(n)}: ${t}`).join("; ")} }`;
+const EMPTY_OBJECT = "Record<never, never>";
+const members = (entries: readonly string[]) => (entries.length ? `{ ${entries.join("; ")} }` : EMPTY_OBJECT);
+const obj = (m: Map<string, string>) => members([...m].map(([n, t]) => `${q(n)}: ${t}`));
 
 /** The type of the template's only top-level element (a `<style>` does not count); `never` when there is not exactly one, or other text sits beside it. */
 function rootElementType(html: string): string {
@@ -407,11 +409,10 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
       const source = !def ? "external" : def.exported ? "local" : "unexported";
       const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)}; source: ${q(source)} }` : "";
       return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}${item} }`;
-    })
-    .join("; ");
+    });
   const type = `{
   refs: ${obj(a.scope.refs)};
-  lists: { ${lists} };
+  lists: ${members(lists)};
   ifs: ${union(a.scope.ifs)};
   slots: ${union(a.slots)};
   rootElement: ${rootElementType(html)};

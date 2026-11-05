@@ -89,9 +89,15 @@ describe("codegen diagnostics", () => {
   it("the generated module contains text and list types and is valid TS", () => {
     const m = generateModule(`<p>{{ a }}</p><template data-each="l"><i>{{ b }}</i></template>`);
     expect(m).toContain(`text: "a"`);
-    expect(m).toContain(`"l": { refs: {  }; text: "b"; ifs: never }`);
+    expect(m).toContain(`"l": { refs: Record<never, never>; text: "b"; ifs: never }`);
     expect(m).toContain(`export default template<`);
     expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
+  });
+  it("the generated types have no empty object type literal, which typescript-eslint's no-empty-object-type reports", () => {
+    const type = (html: string) => generateModule(html).split("export default template<")[1]?.split(">([")[0] ?? "";
+    expect(type(`<p>x</p>`)).toMatch(/refs: Record<never, never>;\n  lists: Record<never, never>;/);
+    expect(type(`<p>x</p>`)).not.toMatch(/\{\s*\}/);
+    expect(type(`<template data-each="l"><i>{{ b }}</i></template>`)).not.toMatch(/\{\s*\}/);
   });
   it("does not import El when there is no ref (avoids noUnusedLocals errors)", () => {
     expect(generateModule(`<p>{{ a }}</p><p></p>`)).not.toContain("import type { El }");

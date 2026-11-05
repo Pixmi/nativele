@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   - `&#32;` between two inline elements is no longer needed to keep a space a formatter turns into a line break (it still works).
   - `<pre>`, `<textarea>`, `<style>`, `<script>` and `preserve` are unchanged.
 
+### Fixes
+
+- The generated `x.html.ts` files write an empty `refs` or `lists` as `Record<never, never>` instead of `{}`, so typescript-eslint's `recommended` config (`@typescript-eslint/no-empty-object-type`) reports nothing on them. The types mean the same to `tsc`.
+
 ## 0.5.5
 
 Skills are verified by agent trials and stand on their own: each Skill can be followed and is accurate without its example project, which stays in the repository only as a reference.
