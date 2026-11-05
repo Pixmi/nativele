@@ -598,7 +598,7 @@ export function renderTags(dir: string): { out: string; next: string | null } {
   const alias = (d: TagDef) => `Tag${[...seen.keys()].indexOf(d.tag)}`;
   const imports = [...seen.values()].map((d) => `import type { ${d.isDefault ? "default" : d.className} as ${alias(d)} } from ${JSON.stringify(d.from)};`);
   const entries = [...seen.values()].map((d) => `    ${JSON.stringify(d.tag)}: ${alias(d)};`);
-  return { out, next: `${TAGS_HEADER}\n${imports.join("\n")}\n\ndeclare global {\n  interface HTMLElementTagNameMap {\n${entries.join("\n")}\n  }\n}\n\nexport {};\n` };
+  return { out, next: `${TAGS_HEADER}\n${imports.join("\n")}\n\ndeclare global {\n  interface HTMLElementTagNameMap {\n${entries.join("\n")}\n  }\n}\n` };
 }
 
 /** A generated file that does not match what `ts-dom gen` would write now. */

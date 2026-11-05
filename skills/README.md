@@ -6,6 +6,8 @@ Skills extend what Nativele can be used with, without growing the library: each 
 
 A Skill is a task procedure for a coding agent: how to do one integration or one kind of work with Nativele, step by step, with a complete example, the known limitations, and commands that prove it worked. It is not reference documentation: facts about the library's API live in `docs/`, and a Skill links to them instead of restating them.
 
+An integration Skill (a framework, a build tool, a library) starts from a project that already uses that tool and teaches how to bring Nativele into it: what to add, what to change, and what to watch for. It does not teach how to set the tool itself up from nothing; the tool's own documentation and starter projects cover that.
+
 A Skill never changes the library's runtime and never adds a dependency to the library's core. Third-party packages a Skill uses are dependencies of the user's project, installed by the Skill's own steps.
 
 ## Layout
@@ -50,7 +52,7 @@ Required sections, in this order:
 
 1. **When to use**: the situation and the signals (dependencies, files) that call for this Skill, and when not to use it.
 2. **Versions**: a table of every tool and the exact version it was verified with, and the date. If the project uses a different major version of a tool, the Skill says so and stops treating its steps as verified.
-3. **Set-up**: numbered steps with the exact commands and file contents.
+3. **Set-up**: numbered steps with the exact commands and file contents, starting from a working project of the tool (for an integration Skill) and covering only what Nativele adds or changes.
 4. **Example**: a complete, minimal working example (every file it needs, short).
 5. **Known limitations**: what does not work or needs care, each with what to do instead. An agent must never have to guess these.
 6. **Verify**: the commands that prove the integration works in the user's project (for example `npx ts-dom check`, `npx tsc --noEmit`, the project's build, a test), with the output to expect.
@@ -68,11 +70,11 @@ Rules for the content:
 
 | Tier | Who maintains it | Requirements | Shown by `ts-dom skills` |
 |---|---|---|---|
-| Official | the Nativele maintainers | an `example/` project that `npm run verify` checks in CI; verified within the last 6 months | as official |
-| Community | its author | the full SKILL.md format, `author` and `verified` filled in, the verification commands run by the author | as community, with the author |
+| Official | the Nativele maintainers | accepted through an agent trial, and an `example/` project that `npm run verify` checks in CI; verified within the last 6 months | as official |
+| Community | its author | the full SKILL.md format, `author` and `verified` filled in, accepted through a maintainer's agent trial | as community, with the author |
 | Experimental | its author | the SKILL.md format; verification not complete | as experimental, with a warning |
 
-- A new contribution starts as Experimental. It becomes Community when a reviewer has run its verification commands with the stated versions, and Official when the maintainers adopt it with an `example/` project in CI.
+- A new contribution starts as Experimental. It becomes Community when it passes a maintainer's agent trial (see "How a Skill pull request is accepted"), and Official when the maintainers adopt it with an `example/` project in CI.
 - A Skill whose `verified` date is older than 6 months, or whose `nativele` range does not include the installed version, is shown as stale. A stale Official Skill whose CI check fails is moved to Experimental until fixed.
 
 ## Delivering Skills to projects
@@ -98,7 +100,24 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 - Copy `skills/_template/SKILL.md`, fill in every section, set `tier: experimental`.
 - Run the Skill's verification commands in a fresh project with the versions you list, and paste their output in the PR description.
 - The PR touches only `skills/<name>/`; a PR that changes the library and adds a Skill is split. Community and Experimental Skills live in this repository, in the same `skills/` folder, so they ship with the package and `ts-dom skills` lists them with their tier.
-- Review checklist: frontmatter complete; every step reproducible; limitations listed; verification commands and their output present; no restating of `docs/`; nothing that would add a dependency to the core.
+
+## How a Skill pull request is accepted
+
+A Skill is written for agents, so the maintainers accept it by having an agent use it: a fresh agent that knows nothing about the Skill does real work with nothing but the Skill, and the result is checked. Reading the Skill or rerunning its verification commands is not enough, because neither shows what the Skill leaves out.
+
+1. **Check the format**: the frontmatter is complete, every required section is there, the facts link to `docs/` instead of restating them, and nothing would add a dependency to the library's core.
+2. **Build the package from the PR branch** (`npm run build:lib && npm pack`), so the trial uses the real delivery path.
+3. **Start a fresh project** in an empty folder outside the repository: for an integration Skill, the tool's own starter project at the versions the Skill lists (for example `create-vite` with the `react-ts` template), built once to confirm it works before Nativele is added. Install the packed library and the exact tool versions the Skill lists, and install the Skill the way users do: `npx ts-dom skills add <name>`.
+4. **Give a fresh agent a task** that the Skill says it covers, written from its "When to use" and "Example": a small but real piece of work that goes through every set-up step and touches every known limitation. The agent may use the Skill, `npx ts-dom` and the public guides in `docs/`, but not the Nativele source, this repository or the Skill's `example/`. It reports the files it wrote, the output of every Verify command, every point where it had to guess or look elsewhere, and every error it hit and how it fixed it.
+5. **Check the result independently**, without relying on the agent's report: run the Verify commands again and check the behavior in a real browser or with a test.
+
+The Skill is accepted when:
+
+- every Verify command gives the expected output, and the work does what the task asked;
+- the agent followed the Skill's steps as written, and no step was wrong for the stated versions;
+- every guess, outside search or unexplained error in the report is already covered by the Skill; a guess about the tool itself (how to configure the framework, the build tool or the test runner beyond what Nativele needs) is not a gap in the Skill.
+
+Otherwise the maintainers send the gaps back to the contributor as review comments (a missing step, a limitation to list, a Troubleshooting row to add), and the trial runs again, with a new agent, on the updated Skill. The record of the passing trial (agent and model, date, versions, Verify output) is added to the PR as a review comment.
 
 ## Skills
 

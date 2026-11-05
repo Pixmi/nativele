@@ -10,6 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.5.1
+
+- `ts-dom doctor` checks `strict`, `lib` and `moduleResolution` only in the tsconfig files that cover the component folders, when there are any. A project with several referenced configs, such as Vite's templates with `tsconfig.app.json` and `tsconfig.node.json`, no longer gets `tsconfig-no-dom-lib` and `tsconfig-not-strict` for the config that only covers `vite.config.ts`.
+- The generated `ts-dom-tags.ts` no longer ends with `export {}`: its `import type` lines already make it a module, and linters reported the empty export as useless.
+- `nativele-core` and `nativele-react` were tried by fresh agents and filled in where they had to guess: the core Skill gains a complete example (an item component with props, `derive`, events and a store), the no-bundler page set-up, plain-element lists and event data; the React Skill starts from an existing React app and adds the `strict` and oxlint steps a Vite React template needs, type-checks with `tsc -p` because a references-only root tsconfig checks nothing, and shows the slot template and how to check Light DOM slots.
+- Integration Skills start from a project that already uses the tool and cover only what Nativele adds; their agent trials start from the tool's own starter project.
+- Skill pull requests are accepted through an agent trial: a maintainer gives a fresh agent, in an empty project with only the packed package and the Skill, a task the Skill claims to cover, checks the result independently, and sends back every guess or error the agent hit that the Skill does not cover. A Skill becomes Community only after such a trial passes.
+
 ## 0.5.0
 
 Nativele is a light, composable UI layer that grows its integrations through Skills instead of through the library. This version ships the first Skills and the command that delivers them, types `changed` and list event handlers more precisely, and adds recipes for common screens.
