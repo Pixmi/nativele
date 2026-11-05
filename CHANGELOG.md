@@ -10,9 +10,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.3
 
-- Fixed: when several folders are scanned (`ts-dom gen a b`, `ts-dom check a b`, `ts-dom doctor a b`, the Vite plugin's `dirs`), each folder was generated on its own, so a template in one folder that used a component defined in another got no import of it and the build silently left the component out, while the types still passed. The folders now share their `define()` calls: the template imports the child by its relative path, `gen --check` and `doctor` agree with what `gen` writes, and the Vite plugin keeps the imports across folders when a template is saved or a `define()` is added or removed. A tag defined with different classes in two scanned folders is now reported as `duplicate-define` at the second `define()` call.
+How to lay out an app with several pages: a new architecture guide, an Official Skill that applies it, and a medium example app checked in CI. Building the example found a codegen bug with several scanned folders, fixed here.
+
+### Guide and Skill
+
+- New guide `docs/architecture.md`:
+  - feature folders with their components, stores and tests, and a shared folder whose components' interface is their props and events;
+  - pages as custom elements mounted by an external router: route params as props, leaving a page, lazy page modules;
+  - where state lives at each level, and the split between unit, real-browser and end-to-end tests;
+  - one scanned folder for the generated files, checks and tsconfig.
+- New `nativele-architecture` (Official): the procedure for starting a multi-page Nativele app or restructuring one into this layout. The recommended router uses the Navigation API and `URLPattern` with no dependency; universal-router is the alternative. It covers the abort check after a lazy `import()` and the test split.
+- Its example, a project tracker with lazy pages, shared components, feature and app-wide stores, unit, browser and end-to-end tests, runs in CI.
+
+### Fixes
+
+- When several folders are scanned (`ts-dom gen a b`, `ts-dom check a b`, `ts-dom doctor a b`, the Vite plugin's `dirs`), each folder was generated on its own, so a template in one folder that used a component defined in another got no import of it and the build silently left the component out, while the types still passed. The folders now share their `define()` calls: the template imports the child by its relative path, `gen --check` and `doctor` agree with what `gen` writes, and the Vite plugin keeps the imports across folders when a template is saved or a `define()` is added or removed. A tag defined with different classes in two scanned folders is now reported as `duplicate-define` at the second `define()` call.
 
 ## 0.5.2
 

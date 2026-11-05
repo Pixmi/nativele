@@ -37,7 +37,7 @@ metadata:
 | @playwright/test | 1.64.1 |
 | universal-router | 10.0.3 (checked by hand with the example's tests, see step 5; the example project does not run it) |
 
-Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (`skills/nativele-architecture/example`), which CI runs again when the example or the library changes and once a month. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package), which CI runs again when the example or the library changes and once a month. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 
@@ -54,7 +54,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
 
    Restructuring: move each page component and the components only it uses into its feature folder, each component used by two features into `src/shared/`, and the header or navigation into `src/app/`. Templates need no change (the import of a child component is generated); fix the relative `import` paths in the `.ts` files, and `ts-dom check src` (step 2) reports the ones you missed as `TS2307`. A feature never imports another feature: move what both need to `src/shared/`.
 
-2. **Scan one folder, `src`, everywhere.** In `vite.config.ts`, `tsDom({ dirs: ["src"] })`; in every script and command, `ts-dom check src` and `ts-dom doctor src`. One folder gives one `ts-dom-tags.ts` and one argument for every command (limitation 1). When the app used another folder before (`src/nv` from `nativele-vite`), delete the `ts-dom-tags.ts` left in it (Troubleshooting).
+2. **Scan one folder, `src`, everywhere.** In `vite.config.ts`, `tsDom({ dirs: ["src"] })`; in every script and command, `ts-dom check src` and `ts-dom doctor src`. One folder gives one `ts-dom-tags.ts` and one argument for every command (limitation 1). When the app used another folder before (`src/nv` from `nativele-vite`), delete the `ts-dom-tags.ts` left in it, and the folder itself once its components have moved (Troubleshooting).
 
 3. **Set `tsconfig.json`'s `include`** to `["src", "e2e"]`: `src` covers the app, the tests next to the code and `ts-dom-tags.ts`, and `e2e` the end-to-end specs, so `ts-dom check src` type-checks all of them. Keep `"strict": true` from `nativele-vite`.
 
@@ -521,7 +521,7 @@ The end-to-end tests cover: a deep link, links without a new document and a stor
 | Symptom | Cause | Fix |
 |---|---|---|
 | A shared component's tag stays empty on a page, with no error from `check`, `doctor`, `lint` or the build | the component is defined outside every scanned folder, so the generated module does not import it | scan the folder that holds it (`tsDom({ dirs: ["src"] })`, `ts-dom check src`), or import the component's module yourself |
-| `TS2307: Cannot find module './x.js'` in `src/nv/ts-dom-tags.ts` after moving components | a `ts-dom-tags.ts` left in the folder that was scanned before | delete it; only `src/ts-dom-tags.ts` is generated now |
+| `TS2307: Cannot find module './x.js'` in `src/nv/ts-dom-tags.ts` after moving components | a `ts-dom-tags.ts` left in the folder that was scanned before | delete it, and the old folder once it is empty; only `src/ts-dom-tags.ts` is generated now |
 | `[duplicate-define] the tag <x> is defined more than once` after merging folders into one scan | two features define the same tag | rename one; tags share one registry |
 | The page of an earlier link appears after a later one, and the address bar shows the later URL | the abort check after the import is missing | `if (signal?.aborted) return;` after `await` in `show()` |
 | `URLPattern is not defined` at start-up | the browser has no `URLPattern` | use a History API router (step 5) for those browsers |
