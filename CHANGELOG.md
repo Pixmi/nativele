@@ -10,6 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- `nativele-integration` is now Official, verified with Preact 11 and an example project in CI. Its worked example is Preact:
+  - the JSX declaration that types Nativele tags;
+  - `onitem-select` event props;
+  - a ref that sets the property for a component defined after render;
+  - keyed moves, which keep the element connected where the browser has `moveBefore`.
+
 ## 0.5.1
 
 Nativele components now have a Skill for each major framework, every Skill is accepted only after a fresh agent has done real work with it, and the checks that those trials found wrong in real framework projects are fixed.

@@ -63,7 +63,7 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-core` | building components: the `ts-dom check` loop, templates, state, lists, data flow |
 | `nativele-react` | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
 | `nativele-vue` | Nativele components in Vue 3: props, events, `v-model`, slots, `<KeepAlive>`, template types |
-| `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types (Experimental) |
+| `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types |
 | `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection (Experimental) |
 | `nativele-vite` | Nativele in a Vite app: the plugin and `root`, multi-page builds, hot updates |
 | `nativele-integration` | Nativele components in a framework without its own Skill (Preact, Solid, ...): properties, events, slots, lifecycle, template types (Experimental) |
