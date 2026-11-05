@@ -38,6 +38,8 @@ npx tsc               # type-check and compile to out/
 
 Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone.
 
+To scan several folders, list them: `npx ts-dom gen src packages/ui` (the same for `--check`, `--watch`, `check`, `doctor` and `lint`, and the Vite plugin's `dirs` option). The folders are generated together: a template in one folder that uses a component defined in another gets the import of that component, as the relative path from the template to the file with the `define()`, and a tag defined with different classes in two folders is a `duplicate-define` error.
+
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
 
 The generated files (`x.html.ts` next to each template, and `ts-dom-tags.ts` in each scanned folder) are derived from the templates, so most projects do not commit them: add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.

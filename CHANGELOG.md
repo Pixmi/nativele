@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+- Fixed: when several folders are scanned (`ts-dom gen a b`, `ts-dom check a b`, `ts-dom doctor a b`, the Vite plugin's `dirs`), each folder was generated on its own, so a template in one folder that used a component defined in another got no import of it and the build silently left the component out, while the types still passed. The folders now share their `define()` calls: the template imports the child by its relative path, `gen --check` and `doctor` agree with what `gen` writes, and the Vite plugin keeps the imports across folders when a template is saved or a `define()` is added or removed. A tag defined with different classes in two scanned folders is now reported as `duplicate-define` at the second `define()` call.
+
 ## 0.5.2
 
 Skills for the libraries a Nativele app most often sits next to: state stores, testing, data fetching, form validation and Tailwind CSS. Each was accepted through agent trials, and the trials found two bugs in the library, fixed here.

@@ -6,7 +6,7 @@ import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, generateAll, listHtml, listTs, watchAll } from "./lib/codegen.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, listHtml, listTs, scanDefines, watchAll } from "./lib/codegen.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
@@ -147,9 +147,10 @@ if (!dirs.length) dirs.push("src");
 
 try {
   if (cmd === "gen" && flags.has("--check")) {
-    const results = dirs.map((d) => checkGenerated(d, generate));
+    const defs = scanDefines(dirs);
+    const results = dirs.map((d) => checkGenerated(d, generate, defs));
     const stale = results.flatMap((r) => r.stale);
-    const errors = results.flatMap((r) => r.errors);
+    const errors = [...results.flatMap((r) => r.errors), ...crossDirDuplicates(dirs).map((d) => formatDiagnostics(d.file, [d]))];
     if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));
     else {
       for (const s of stale) console.error(`${relative(process.cwd(), s.file)}:1:1 error [stale-generated] The generated file is ${s.reason}. Fix: run ts-dom gen.`);
@@ -159,14 +160,12 @@ try {
     if (stale.length || errors.length) process.exitCode = 1;
   } else if (cmd === "gen") {
     let failed = false;
-    for (const d of dirs) {
-      try {
-        generateAll(d, generate);
-      } catch (e) {
-        if (!(e instanceof CodegenError) || !flags.has("--watch")) throw e;
-        console.error(e.message);
-        failed = true;
-      }
+    try {
+      generateDirs(dirs, generate);
+    } catch (e) {
+      if (!(e instanceof CodegenError) || !flags.has("--watch")) throw e;
+      console.error(e.message);
+      failed = true;
     }
     if (flags.has("--watch")) {
       console.log(`[ts-dom] watching ${dirs.join(", ")}${failed ? " (the first generation had errors)" : ""}`);

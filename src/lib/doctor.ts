@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
-import { listHtml, listTs, staleGenerated } from "./codegen.ts";
+import { listHtml, listTs, scanDefines, staleGenerated } from "./codegen.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
 import { projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
@@ -115,6 +115,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   if (!resolvable) add("runtime-not-installed", "error", `The generated files import "${runtime}", which cannot be resolved from this project. Fix: npm i ${runtime}.`);
 
+  const defs = scanDefines(dirs);
   for (const d of dirs) {
     for (const f of listTs(d)) {
       const lines = readFileSync(f, "utf8").split("\n");
@@ -123,7 +124,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
         if (m) add("template-import-without-js", "error", `${m[1]} is imported without .js, which works only through a bundler plugin that Nativele does not provide. Fix: import "${m[1]}.js" (TypeScript maps it to the generated ${m[1]}.ts).`, { file: rel(f), line: i + 1 });
       });
     }
-    for (const s of staleGenerated(d, generate)) {
+    for (const s of staleGenerated(d, generate, defs)) {
       add("stale-generated", "warning", `The generated file is ${s.reason}. Fix: run ts-dom gen (or ts-dom check, which regenerates).`, { file: rel(s.file) });
     }
   }

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateAll, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
+import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
 import type { DefineDef } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
 
@@ -45,17 +45,11 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
   // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
   const shown = new Map<string, string>();
-  // The define() calls of each directory, scanned once and again only when a .ts file with a define() changes, instead of on every template save.
-  const defsByDir = new Map<string, DefineDef[]>();
-  const defsOf = (dir: string) => {
-    let defs = defsByDir.get(dir);
-    if (!defs) defsByDir.set(dir, (defs = existsSync(dir) ? scanDefines(dir) : []));
-    return defs;
-  };
-  const isDefineFile = (file: string) => {
-    const dir = dirOf(file);
-    return dir !== undefined && defsOf(dir).some((d) => resolve(d.file) === file);
-  };
+  // The define() calls of all directories, scanned once and again only when a .ts file with a define() changes, instead of on every template save.
+  let defs: DefineDef[] | undefined;
+  const existing = () => dirs.filter((d) => existsSync(d));
+  const allDefs = () => (defs ??= scanDefines(existing()));
+  const isDefineFile = (file: string) => allDefs().some((d) => resolve(d.file) === file);
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
 
@@ -79,7 +73,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     const out = `${file}.ts`;
     const before = read(out);
     try {
-      generateFile(file, generate, defsOf(dir));
+      generateFile(file, generate, allDefs());
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
@@ -89,16 +83,16 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     return read(out) !== before;
   };
 
-  /** Regenerate a directory after a define() call may have changed: the tag map and the child imports of every template. */
-  const regenerateDir = (dir: string, logger: Logger) => {
-    const before = new Map(listHtml(dir).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
+  /** Regenerate after a define() call may have changed: the tag maps and the child imports of every template. */
+  const regenerateAll = (logger: Logger) => {
+    const before = new Map(existing().flatMap(listHtml).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
     try {
-      generateAll(dir, generate);
+      generateDirs(existing(), generate);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
     }
-    defsByDir.set(dir, scanDefines(dir));
+    defs = scanDefines(existing());
     for (const [out, content] of before) {
       const now = read(out);
       if (now !== null && now !== content) shown.set(out, now);
@@ -125,10 +119,11 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     enforce: "pre" as const,
     configResolved(config: { root: string }) {
       dirs = (opts.dirs ?? ["src"]).map((d) => resolve(config.root, d));
+      defs = undefined;
     },
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
       try {
-        for (const d of dirs) if (existsSync(d)) generateAll(d, generate);
+        generateDirs(existing(), generate);
       } catch (e) {
         if (e instanceof CodegenError) this.error(e.message);
         throw e;
@@ -140,15 +135,13 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       server.watcher.add(dirs);
       server.watcher.on("add", (f) => {
         const file = resolve(f);
-        const dir = dirOf(file);
         if (file.endsWith(".html")) regenerate(file, logger);
-        else if (dir && isSourceTs(file) && read(file)?.includes("define(")) regenerateDir(dir, logger);
+        else if (dirOf(file) && isSourceTs(file) && read(file)?.includes("define(")) regenerateAll(logger);
       });
       server.watcher.on("unlink", (f) => {
         const file = resolve(f);
-        const dir = dirOf(file);
         if (file.endsWith(".html")) removeGenerated(file);
-        else if (dir && isDefineFile(file)) regenerateDir(dir, logger);
+        else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
       });
     },
     // A template is not a page, so Vite's own reload for a changed .html is ignored by the browser: regenerate it and reload once. A generated module that something else rewrote (ts-dom gen --watch, a checkout) goes through Vite's normal update.
@@ -166,9 +159,8 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         if (regenerate(file, logger)) reload(ctx.server, `${file}.ts`);
         return [];
       }
-      const dir = dirOf(file);
-      if (!dir || !isSourceTs(file)) return;
-      if (read(file)?.includes("define(") || isDefineFile(file)) regenerateDir(dir, logger);
+      if (!dirOf(file) || !isSourceTs(file)) return;
+      if (read(file)?.includes("define(") || isDefineFile(file)) regenerateAll(logger);
       return;
     },
   };
