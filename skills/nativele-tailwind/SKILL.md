@@ -47,7 +47,7 @@ The starting point: `src/style.css` is `@import "tailwindcss";`, `src/main.ts` i
    ```
 
 2. Keep `import "./style.css"` in the entry module. For Light DOM components (the default) nothing else is needed: Tailwind's automatic source detection reads the `.html` templates and the component `.ts` files, so a class written only in a template, only on a tag in `index.html`, or only as a full string in TypeScript (`classList.toggle("tracking-[0.3em]", on)` in `render`) is generated, in `vite dev` and in `vite build`. No `@source` is needed while the components are inside the project folder.
-3. The generated `*.html.ts` files do not need to be scanned. Tailwind skips every file matched by `.gitignore` (also outside a git repository), and with the generated files not ignored the built CSS was byte for byte the same.
+3. The generated `*.html.ts` files do not need to be scanned. Tailwind skips every file matched by `.gitignore` (also outside a git repository), and with the generated files not ignored the built CSS was byte for byte the same. The Skills that `ts-dom skills add` copies into `.agents/` (or `.claude/`) are scanned, though, and their example classes end up in the build; exclude that folder under the import, relative to the CSS file: `@source not "../.agents";`.
 4. Only when templates live outside the project folder (for example a sibling package of a monorepo), add a `@source` line, with the path relative to the CSS file:
 
    ```css
@@ -55,6 +55,8 @@ The starting point: `src/style.css` is `@import "tailwindcss";`, `src/main.ts` i
    @import "tailwindcss";
    @source "../../shared-nv";
    ```
+
+   Nativele needs that folder too: list it in `tsDom({ dirs })`, in the arguments of `ts-dom check` and `ts-dom doctor`, and in the tsconfig `include`; keep each component's `.ts` next to its template there (a template whose importer is in another folder is reported as `no-importer`); and the folder must resolve `@nativele/ts-dom` itself, or `tsc` reports `TS2307` for its generated `.html.ts`.
 
 5. Only for `shadow: true` components: add one module that turns the same CSS into a constructable stylesheet, and adopt it in each Shadow component's constructor (limitation 3 explains why and what it costs):
 
@@ -161,7 +163,8 @@ import "./nv/badge-box.ts";
 
    Use `adoptedStyleSheets`. Keep `import "./style.css"` in the entry anyway: Tailwind declares its internal variables with `@property`, which the browser registers only from the document. With the sheet adopted only in a shadow root and none in the document, plain utilities (`bg-violet-300`) worked but `shadow-lg` and `translate-x-[5px]` computed to `none`. When components do not need Shadow DOM's isolation, prefer Light DOM: it needs none of this.
 4. **Template styles beat utilities, whatever the specificity.** Tailwind puts utilities in `@layer utilities`, and the `<style>` Nativele injects is not in a layer, so a rule in `<style scoped>` overrides a utility on the same element (`.scoped-red` beat `text-sky-600`). To let utilities override a template's defaults, wrap those rules in `@layer components { }` inside the `<style scoped>` (as in the example); for a single element, the important modifier (`text-sky-600!`) also wins.
-5. Not verified: Tailwind v3, `@tailwindcss/postcss` and the Tailwind CLI; Vite's `root` in a sub-folder; Nativele components shipped as a package in `node_modules`; a template `<style>` inside a `shadow: true` component together with Tailwind; the CSS nesting fallback of `<style scoped>` in browsers without `@scope`; Tailwind's `prefix()` option and the `dark:` variant inside a shadow root.
+5. **A `dark` class on `<html>` does not reach a shadow root.** With the class-based variant (`@custom-variant dark (&:where(.dark, .dark *));`), `dark:` utilities inside a `shadow: true` component match only an ancestor inside the same shadow root. Copy the class onto the component's inner wrapper: in `connected()`, a `MutationObserver` on `document.documentElement` (`attributeFilter: ["class"]`) that toggles `dark` on `this.refs.wrapper`, disconnected in `onCleanup`.
+6. Not verified: Tailwind v3, `@tailwindcss/postcss` and the Tailwind CLI; Vite's `root` in a sub-folder; `dark:` from the `prefers-color-scheme` default inside a shadow root; Nativele components shipped as a package in `node_modules`; a template `<style>` inside a `shadow: true` component together with Tailwind; the CSS nesting fallback of `<style scoped>` in browsers without `@scope`; Tailwind's `prefix()` option and the `dark:` variant inside a shadow root.
 
 ## Verify
 
@@ -170,7 +173,7 @@ Run in the project:
 ```sh
 npm run build                     # expect: ts-dom check: no issues, then ✓ built
 npx ts-dom doctor src/nv          # expect: ts-dom doctor: the set-up looks right
-grep -cF 'bg-lime-300' dist/assets/*.css   # a class used only in a template; expect: 1
+grep -cF '<a class used only in one of your templates>' dist/assets/*.css   # expect: 1
 ```
 
 For an arbitrary value, search for the escaped form (`grep -cF 'p-\[13px\]'`). Then, against both `npm run dev` and `npx vite preview`, read computed styles in the browser, for example:
@@ -191,6 +194,7 @@ getComputedStyle(document.querySelector("badge-box").shadowRoot.firstElementChil
 | A utility on an element does not override the template's `<style scoped>` rule | unlayered template styles beat `@layer utilities` | wrap the template rule in `@layer components { }`, or use the `!` modifier |
 | `@apply` in a template `<style>` has no effect | template styles are not processed by Tailwind | use theme variables (`var(--color-...)`) or utility classes in the markup |
 | Templates in another folder of a monorepo are not styled | they are outside the project folder Tailwind scans | `@source "<path relative to the CSS file>"` |
+| The built CSS has classes no component uses, from the Skill files | Tailwind scans `.agents/` (or `.claude/`), where `ts-dom skills add` puts the Skills, unless `.gitignore` matches it | add `@source not "../.agents";` (relative to the CSS file) under `@import "tailwindcss";` |
 | A check that a class is absent from the build fails, although no component uses it | Tailwind scans every file in the project that `.gitignore` does not match, including test scripts that name the class | keep such scripts outside the project, or build the class name from pieces in them |
 
 ## See also

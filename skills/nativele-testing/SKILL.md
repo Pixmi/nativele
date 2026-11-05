@@ -221,7 +221,7 @@ The steps every test follows:
 1. Import the component module for its side effect (`import "../src/nv/counter-card.ts"`): that runs `define()`. A type-only import registers nothing (limitation 2).
 2. Create the element with `document.createElement(tag)`; set object, array and other props as properties (`el.todos = [...]`), before or after appending. String, number and boolean props can also be attributes.
 3. Append it to `document.body`. A Light DOM component has no children until it is connected; a component renders when it is appended.
-4. Assert at once. Rendering is synchronous: after `append`, a prop assignment, `setAttribute`, `el.click()` or `store.set()`, the DOM is already updated, and `emit` listeners have already run. The only waits are for slot changes made after connection (one microtask, below).
+4. Assert at once. Rendering is synchronous: after `append`, a prop assignment, `setAttribute`, `el.click()` or `store.set()`, the DOM is already updated, and `emit` listeners have already run. For a form, set the input's `value`, then call `click()` on its submit button or `form.requestSubmit()`: both run the template's `data-on-submit` handler, in happy-dom too. The only waits are for slot changes made after connection (one microtask, below).
 5. Empty the document in `afterEach` (`document.body.replaceChildren()`): removing the elements runs `disconnected()` and ends their `bind`, `on` and `onCleanup` registrations.
 
 Other parts of the API, as in the example project's tests:
