@@ -10,18 +10,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
-
-- `ts-dom check` runs `vue-tsc` instead of `tsc` when the project has it: it takes the same arguments and prints the same errors, and it also reads the `.vue` files a Vue app imports, which plain `tsc` reports as `TS2307: Cannot find module './App.vue'`.
-- New Experimental Skill `nativele-integration`: using Nativele components in a framework that has no Skill of its own. It shows how to find out how the framework treats custom elements (property or attribute, event names, managed children), defines components before the app mounts, types the framework's templates from `ts-dom-tags.ts`, and lists the limits every framework shares. `ts-dom doctor` suggests it for Vue, Svelte, Angular, Preact and Solid projects. Verified with Vue.
-
 ## 0.5.1
 
-- `ts-dom doctor` checks `strict`, `lib` and `moduleResolution` only in the tsconfig files that cover the component folders, when there are any. A project with several referenced configs, such as Vite's templates with `tsconfig.app.json` and `tsconfig.node.json`, no longer gets `tsconfig-no-dom-lib` and `tsconfig-not-strict` for the config that only covers `vite.config.ts`.
-- The generated `ts-dom-tags.ts` no longer ends with `export {}`: its `import type` lines already make it a module, and linters reported the empty export as useless.
-- `nativele-core` and `nativele-react` were tried by fresh agents and filled in where they had to guess: the core Skill gains a complete example (an item component with props, `derive`, events and a store), the no-bundler page set-up, plain-element lists and event data; the React Skill starts from an existing React app and adds the `strict` and oxlint steps a Vite React template needs, type-checks with `tsc -p` because a references-only root tsconfig checks nothing, and shows the slot template and how to check Light DOM slots.
-- Integration Skills start from a project that already uses the tool and cover only what Nativele adds; their agent trials start from the tool's own starter project.
-- Skill pull requests are accepted through an agent trial: a maintainer gives a fresh agent, in an empty project with only the packed package and the Skill, a task the Skill claims to cover, checks the result independently, and sends back every guess or error the agent hit that the Skill does not cover. A Skill becomes Community only after such a trial passes.
+Nativele components now have a Skill for each major framework, every Skill is accepted only after a fresh agent has done real work with it, and the checks that those trials found wrong in real framework projects are fixed.
+
+### Skills
+
+- New `nativele-vue` (Official): Nativele components in an existing Vue 3 app. It covers an `isCustomElement` predicate that matches only the Nativele tags, so kebab-case Vue components such as `<router-link>` keep resolving; object props as properties, and `.prop` for an element that is not defined yet; prop plus event in place of `v-model`; exact event names; `<KeepAlive>` and `bind`; and a template type declaration built from `ts-dom-tags.ts`. Its example project runs in CI.
+- New `nativele-vite` (Official): Nativele in an existing Vite app without a framework. It covers `tsDom({ dirs })` relative to Vite's `root`, multi-page builds, and a build script that runs `ts-dom check` before `vite build` so a clean checkout builds. It also says which edits reload the page during `vite dev`, and covers Vite+. Its example project, a multi-page app with `root` in a sub-folder, runs in CI.
+- New `nativele-svelte` (Experimental): Nativele components in Svelte 5. It covers props as properties, `onitem-select` event attributes, `{#if}` and keyed `{#each}` children in slots, `bind:this`, and a `svelte/elements` type declaration.
+- New `nativele-angular` (Experimental): Nativele components in Angular. It covers `CUSTOM_ELEMENTS_SCHEMA`, `[prop]` and `(item-select)` bindings, and zoneless change detection. Because the Angular builder takes no Vite plugins, `ts-dom gen` runs in npm `pre*` scripts. It also covers content projection and unit tests.
+- New `nativele-integration` (Experimental): Nativele components in a framework without a Skill of its own, such as Preact or Solid. It covers the four questions to answer from the framework's documentation, defining components before mount, and the limits every framework shares.
+- `nativele-core` and `nativele-react` were filled in where trial agents had to guess:
+  - the core Skill gains a complete example, the no-bundler page set-up, plain-element lists and event data;
+  - the React Skill starts from an existing React app, adds the `strict` and oxlint steps Vite's template needs, and type-checks with `tsc -p`, because a references-only root tsconfig checks nothing.
+- The React, Vue and Svelte Skills start the template's type-check script with `ts-dom gen src/nv &&`. The generated files are not committed, so on a clean checkout that script otherwise fails with `TS2307`.
+- Skill pull requests are accepted through an agent trial. A fresh agent gets only the packed package and the Skill, and does a task the Skill claims to cover. The result is checked independently, and every guess or error the Skill does not cover is sent back. Integration Skills start from the tool's own starter project and cover only what Nativele adds.
+
+### Tooling
+
+- `ts-dom check` runs `vue-tsc` instead of `tsc` when the project's `package.json` lists it: `vue-tsc` takes the same arguments, prints the same errors and reads `.vue` files, which plain `tsc` reports as `TS2307: Cannot find module './App.vue'`. When the checker cannot run, the message names it.
+- `ts-dom doctor` checks `strict`, `lib` and `moduleResolution` only in the tsconfig files that cover the component folders, when there are any. Vite's templates no longer get `tsconfig-no-dom-lib` and `tsconfig-not-strict` for `tsconfig.node.json`, which covers only `vite.config.ts`, whether it lists it in `include` or in `files`.
+- The generated `ts-dom-tags.ts` no longer ends with `export {}`, which linters reported as a useless empty export.
 
 ## 0.5.0
 

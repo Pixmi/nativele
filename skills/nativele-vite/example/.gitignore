@@ -1,0 +1,5 @@
+node_modules
+dist
+*.html.ts
+ts-dom-tags.ts
+package-lock.json

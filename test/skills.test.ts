@@ -97,7 +97,7 @@ describe("ts-dom doctor and Skills", () => {
     ]);
     expect(issues[1]?.message).toContain("ts-dom skills add nativele-react");
     expect(skillIssues(project({ dependencies: { lodash: "4" } }))).toEqual([]);
-    expect(skillIssues(project({ dependencies: { vue: "3" } }))[0]?.message).toContain("ts-dom skills add nativele-integration");
+    expect(skillIssues(project({ dependencies: { vue: "3" } }))[0]?.message).toContain("ts-dom skills add nativele-vue");
   });
 
   it("stops recommending a copied Skill, and reports a copy that differs from the shipped one", () => {

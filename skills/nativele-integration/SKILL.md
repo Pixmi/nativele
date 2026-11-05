@@ -1,22 +1,22 @@
 ---
 name: nativele-integration
-description: "Use Nativele web components inside an app built with a UI framework that has no Nativele Skill of its own (Vue, Svelte, Angular, Preact, Solid, ...): defining before render, props as properties, listening to events, children and slots, lifecycle, and template types. Use when a project depends on @nativele/ts-dom and on such a framework."
+description: "Use Nativele web components inside an app built with a UI framework that has no Nativele Skill of its own (Preact, Solid, Lit, ...; React, Vue, Svelte and Angular have their own): defining before render, props as properties, listening to events, children and slots, lifecycle, and template types. Use when a project depends on @nativele/ts-dom and on such a framework."
 metadata:
   tier: experimental
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.5.1 <0.6.0"
   verified: "2026-11-05"
   tools: "vue@3.5.44 vite@8.3.6 @vitejs/plugin-vue@6.0.10 vue-tsc@3.3.14 typescript@6.0.3"
   author: "Nativele maintainers"
-  detects: "vue svelte @angular/core preact solid-js"
+  detects: "preact solid-js"
 ---
 
 # Nativele in a framework app
 
 ## When to use
 
-- The app is built with a UI framework and wants to use components written with Nativele (`@nativele/ts-dom`), and no Skill exists for that framework yet (`npx ts-dom skills` lists them; React has `nativele-react`).
+- The app is built with a UI framework and wants to use components written with Nativele (`@nativele/ts-dom`), and no Skill exists for that framework yet. React, Vue, Svelte and Angular have their own (`nativele-react`, `nativele-vue`, `nativele-svelte`, `nativele-angular`); `npx ts-dom skills` lists every Skill.
 - It is a procedure for finding out how the framework treats custom elements and connecting it correctly. It does not cover setting the framework itself up: start from the app as it is, with its own type checker and build.
-- A framework with its own file format type-checks it with its own tool (Vue: `vue-tsc`). `ts-dom check` runs `vue-tsc` instead of `tsc` when the project has it; for other formats see Troubleshooting.
+- A framework with its own file format type-checks it with its own tool (Vue: `vue-tsc`). `ts-dom check` runs `vue-tsc` instead of `tsc` when the project's `package.json` lists it; for other formats see Troubleshooting.
 - Not for writing the Nativele components themselves: use `nativele-core` (`npx ts-dom skills add nativele-core`).
 
 Nativele components are native custom elements. The framework renders their tags like any other tag; nothing wraps them. Every rule below follows from that.
@@ -25,7 +25,7 @@ Nativele components are native custom elements. The framework renders their tags
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 |
+| @nativele/ts-dom | 0.5.1 |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |
@@ -57,7 +57,7 @@ Verified on 2026-11-05 by an agent that followed this Skill in a fresh Vue app m
 
    Many frameworks decide between property and attribute by checking whether the element already has the property, which is only true after `define()` has run.
 
-5. Give the framework's template type checker the Nativele tags. `ts-dom gen` writes `ts-dom-tags.ts`, which adds every exported component to `HTMLElementTagNameMap`; a component's props are the keys of its `props` member, and its events are in the optional `"~emits"` member (event name to `detail` type). Build the framework's tag declaration from these, so new components need no edit; `nativele-react` has the TSX one, and the Vue one is in the example below. Check how the framework names an event listener in its types: Vue types `@user-select` as the prop `onUserSelect`. If the framework has no typed templates, skip this step.
+5. Give the framework's template type checker the Nativele tags. `ts-dom gen` writes `ts-dom-tags.ts`, which adds every exported component to `HTMLElementTagNameMap`; a component's props are the keys of its `props` member, and its events are in the optional `"~emits"` member (event name to `detail` type). Build the framework's tag declaration from these, so new components need no edit; `nativele-react` has the TSX one and `nativele-vue` the Vue one. Check how the framework names an event listener in its types: Vue types `@user-select` as the prop `onUserSelect`. If the framework has no typed templates, skip this step.
 
 ## Example
 
@@ -77,42 +77,7 @@ card.item = { id: 2, name: "Grace" };             // a new object re-renders; ch
 card.remove();                                    // disconnected() runs, bind() subscriptions end
 ```
 
-In Vue (verified), tell the template compiler that hyphenated tags are custom elements, bind as usual, and listen with the exact event name:
-
-```ts
-// vite.config.ts
-plugins: [
-  tsDom({ dirs: ["src/nv"] }),
-  vue({ template: { compilerOptions: { isCustomElement: (tag) => tag.includes("-") } } }),
-],
-```
-
-```vue
-<info-card :label="label" :item="item" @item-select="(e) => select(e.detail.id)" />
-```
-
-Vue sets `:item` as a property because the element is defined before the app mounts (step 4); `.item` would force it. The template types come from this declaration, built from `ts-dom-tags.ts`:
-
-```ts
-// src/nativele-vue.d.ts
-import type { HTMLAttributes } from "vue";
-
-type NativeleTag = Extract<keyof HTMLElementTagNameMap, `${string}-${string}`>;
-type Camelize<S extends string> = S extends `${infer A}-${infer B}` ? `${A}${Capitalize<Camelize<B>>}` : S;
-type NativeleProps<E> = E extends { readonly props: infer P } ? { [K in keyof P & keyof E]?: E[K] } : unknown;
-type NativeleEvents<E> = E extends { readonly "~emits"?: infer M }
-  ? { [K in keyof NonNullable<M> & string as `on${Capitalize<Camelize<K>>}`]?: (event: CustomEvent<NonNullable<M>[K]>) => void }
-  : unknown;
-type NativeleComponents = {
-  [K in NativeleTag]: new () => {
-    $props: HTMLAttributes & NativeleProps<HTMLElementTagNameMap[K]> & NativeleEvents<HTMLElementTagNameMap[K]>;
-  };
-};
-
-declare module "vue" {
-  interface GlobalComponents extends NativeleComponents {}
-}
-```
+In a framework, the same calls come from its template syntax. `nativele-vue` (`npx ts-dom skills nativele-vue`) is a complete worked example: its compiler option, property binding, event listener and template type declaration answer the four questions of step 3 for Vue.
 
 ## Known limitations
 
@@ -132,7 +97,7 @@ npx ts-dom check src/nv      # expect: ts-dom check: no issues
 npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
 ```
 
-Then run the app's own type check and build (for a Vue app made with `create-vite`, `npm run build`, which runs `vue-tsc -b`). Keep one wrong prop per component kind that has props in a file the app never imports, under the framework's expect-error comment (`<!-- @vue-expect-error -->` in a Vue template; `// @ts-expect-error` does not work there), so the declaration is proved to type props.
+Then run the app's own type check and build (for example `npm run build` when it runs the framework's type checker). Keep one wrong prop per component kind that has props in a file the app never imports, under the framework's expect-error comment (a template comment such as `<!-- @ts-expect-error -->` is often not honored; check that a wrong prop fails without it), so the declaration is proved to type props.
 
 In the browser, render a component with an object prop and an event listener, and check:
 
@@ -148,7 +113,7 @@ In the browser, render a component with an object prop and an event listener, an
 | The framework warns that it cannot resolve the component `info-card` | its compiler treats the tag as a framework component | mark hyphenated tags as custom elements in the framework's compiler options |
 | The event listener never runs | the name was changed (camelCase), or the listener is on an ancestor | listen with the exact name, on the element that emits |
 | Children vanish, appear outside the slot, or the framework throws during an update | framework-managed children inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
-| `ts-dom check` reports `TS2307: Cannot find module './App.vue'` (or `.svelte`, ...) | plain `tsc` cannot read the framework's files | Vue: keep `vue-tsc` installed (Vue's own type checker; `ts-dom check` uses it when present). Other formats: pass `--project=` a tsconfig whose `include` covers only the Nativele folder, and type-check the rest with the framework's tool |
+| `ts-dom check` reports `TS2307: Cannot find module` for a framework file (`./App.vue`, ...) | plain `tsc` cannot read the framework's files | Vue: keep `vue-tsc` in `package.json` (Vue's own type checker; `ts-dom check` uses it when listed). Other formats: pass `--project=` a tsconfig whose `include` covers only the Nativele folder, and type-check the rest with the framework's tool |
 | The framework's type checker does not know the tag | no declaration built from `ts-dom-tags.ts`, or the component class is not exported | add the declaration (step 5), export the class, run `ts-dom gen` |
 
 ## See also

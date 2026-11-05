@@ -137,7 +137,7 @@ define("todo-app", TodoApp);
 - A `data-each` list cannot be nested: the inner list belongs to its own item component.
 - A list of plain elements (no item component) has neither `data-key` nor `data-prop`; fill it with `this.lists.x.replace(items, key, fill)` in `render`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md
 - For a list of components, write `data-key` and `data-prop` on the `<template data-each>`, give the item component `role="listitem"` inside `<ul>` or `<ol>`, assign `this.lists.x.items = ...` in `render`, and type item handlers as `hit: EventHit<Item, "id">`. Each item component gets its item through that one prop; to pass more (selected, leading), map the items to objects that carry it before assigning.
-- Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both.
+- Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both.
 
 ## Known limitations
 

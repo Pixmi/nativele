@@ -79,7 +79,7 @@ define("my-counter", MyCounter);
 - `data-each` is never nested: a list inside an item is the item component's own `data-each`.
 
 ## Rules for agents
-- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, `nativele-react` for React 19, `nativele-integration` for other frameworks, ...), each with verified versions; `npx ts-dom skills <name>` prints one, `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`, and `npx ts-dom doctor` suggests the ones that match the project's dependencies.
+- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, `nativele-react`, `nativele-vue`, `nativele-svelte` and `nativele-angular` for those frameworks, `nativele-vite` for Vite, `nativele-integration` for other frameworks, ...), each with verified versions; `npx ts-dom skills <name>` prints one, `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`, and `npx ts-dom doctor` suggests the ones that match the project's dependencies.
 - `npx ts-dom rules --explain=<id>` (or `rules --json`) explains any rule id from a diagnostic: why it exists, a wrong example and the fix.
 - Markup well-formedness is a formatter's job: `oxfmt --check` reports misnested tags that the library's parser would silently repair. Generate with `--whitespace=collapse` when a formatter is used.
 - If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first: it reports tsconfig, import path, runtime, generated file and plugin problems with a `Fix:` each.
