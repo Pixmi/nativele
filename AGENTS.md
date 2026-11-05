@@ -36,8 +36,8 @@ Integration with frameworks and other tools is delivered as Skills, not as runti
 - A Skill is a task procedure for an agent: set-up steps, a complete example, known limitations and verification commands. Facts about the library's API live in `docs/`; a Skill links to them instead of restating them.
 - Every Skill states the versions it was verified with (Nativele and each third-party tool) and the date of that verification. Outdated guidance is more dangerous than none.
 - A Skill never adds a dependency to the library's core or changes its runtime.
-- Tiers: Official (verified and maintained by the maintainers, with an example project checked in CI), Community (contributed, with its author and last verified versions), Experimental (not fully verified yet). New contributions start as Experimental.
-- Skills live in `skills/<name>/SKILL.md` and follow `skills/README.md`. An Official Skill's `example/` is verified by `.github/workflows/skills.yml`; after changing the runtime or a Skill, run `npm run build:lib` and `npm run verify` in that example. A new minor version updates every Skill's `nativele` range and `verified` date once it has been verified again.
+- Tiers: Official (verified through an agent trial and maintained by the maintainers), Community (contributed, with its author and last verified versions), Experimental (not fully verified yet). New contributions start as Experimental.
+- Skills live in `skills/<name>/SKILL.md` and follow `skills/README.md`. A Skill's `example/` is an optional reference from its agent trial and is not run in CI. A new minor version updates every Skill's `nativele` range and `verified` date once it has been verified again.
 - Reviewing a PR that adds or changes a Skill: follow "How a Skill pull request is accepted" in `skills/README.md`. Run the trial with a fresh subagent that gets only the packed package, the Skill and a task the Skill claims to cover, then check the result yourself instead of trusting the subagent's report. Report every guess or error the subagent hit that the Skill does not cover; the Skill is not accepted until a trial passes with nothing to add.
 
 ## Language

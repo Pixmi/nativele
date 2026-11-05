@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.1 (the last agent trial) |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |
@@ -33,7 +33,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 | typescript | 6.0.3 |
 | @vue/tsconfig | 0.9.1 |
 
-Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `vue-ts` template, with the example project in the Nativele repository (`skills/nativele-vue/example`), which CI runs again when the example or the library changes and once a month. With a different major version of Vue, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `vue-ts` template, with the example project in the Nativele repository (`skills/nativele-vue/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of Vue, treat every step as unverified.
 
 ## Set-up
 

@@ -74,7 +74,7 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-zod` | form validation with Zod or Valibot (Experimental) |
 | `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM (Experimental) |
 
-Tiers: Official Skills are verified by the maintainers against an example project in CI; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
+Tiers: Official Skills are verified through agent trials and maintained by the maintainers; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
 
 Nativele stays a light UI layer and grows its integrations through Skills: a new Skill changes no runtime code and adds no dependency. The planned Skills and how to contribute one are in [the Skills guide](https://github.com/Pixmi/nativele/blob/main/skills/README.md).
 

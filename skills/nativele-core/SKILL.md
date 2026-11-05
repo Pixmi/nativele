@@ -23,10 +23,10 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 and every later release (the library's CI runs every example on every change) |
+| @nativele/ts-dom | 0.5.0 (the last agent trial) |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 by the library's own CI, which type-checks, lints and runs every example in the repository in real Chrome.
+Verified on 2026-11-05 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
 
 ## Set-up
 

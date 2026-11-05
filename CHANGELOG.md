@@ -12,8 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Unreleased
 
-- Each Skill's Versions table says how far its verification reaches: an Official Skill reads "<first version> and every later release", because CI runs its example on every change, and an Experimental Skill names the version of its last agent trial. `test/skills.test.ts` keeps the row consistent with the tier.
-- The Skill checks are required for `main`: "Verify Skill examples" and "SKILL.md format" (now one workflow, `skills.yml`) report on every pull request and skip their steps when nothing they check changed. The format check also covers the links in the READMEs, `llms.txt` and the guides.
+- A Skill is verified by its agent trials. An `example/` is an optional reference project from the trial and is no longer run in CI; Official means accepted through an agent trial and maintained by the maintainers. Each Skill's Versions table names the version of its last agent trial, and `test/skills.test.ts` keeps that row in line with the `nativele` range.
+- "SKILL.md format" (in `skills.yml`) is a required check for `main`: it reports on every pull request, skips its steps when nothing it checks changed, and also covers the links in the READMEs, `llms.txt` and the guides.
 - `skills/README.md` gives a fixed form for the agent trial record added to a Skill pull request.
 
 ## 0.5.4

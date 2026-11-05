@@ -24,14 +24,14 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.1 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
 | @vitejs/plugin-react | 6.2.1 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), which CI runs again when the example or the library changes and once a month. With a different major version of React, treat every step as unverified.
+Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of React, treat every step as unverified.
 
 ## Set-up
 

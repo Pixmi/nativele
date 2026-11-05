@@ -26,7 +26,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.3 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.3 (the last agent trial) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
@@ -37,7 +37,7 @@ metadata:
 | @playwright/test | 1.64.1 |
 | universal-router | 10.0.3 (checked by hand with the example's tests, see step 5; the example project does not run it) |
 
-Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package), which CI runs again when the example or the library changes and once a month. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example project in the Nativele repository (https://github.com/Pixmi/nativele/tree/main/skills/nativele-architecture/example; it is not in the npm package), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 

@@ -74,7 +74,7 @@ npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .
 | `nativele-zod` | 用 Zod 或 Valibot 驗證表單（Experimental） |
 | `nativele-tailwind` | 在範本與 Shadow DOM 中使用 Tailwind CSS（Experimental） |
 
-等級：Official 由維護者以 CI 中的範例專案驗證；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
+等級：Official 經 agent 實際驗收、由維護者維護；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
 
 Nativele 維持輕量的 UI 層，整合能力透過 Skill 擴展：新增 Skill 不改動執行期程式碼，也不增加依賴。規劃中的 Skill 與貢獻方式見 [Skills 指南](https://github.com/Pixmi/nativele/blob/main/skills/README.md)。
 

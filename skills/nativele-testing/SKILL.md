@@ -25,7 +25,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 and every later release (CI runs the example on every change to the library or the Skill) |
+| @nativele/ts-dom | 0.5.2 (the last agent trial) |
 | vitest | 5.1.0 |
 | happy-dom | 21.0.4 |
 | jsdom | 30.1.3 (the same component tests pass; not the recommended environment) |
@@ -35,7 +35,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create-vite` 9.3.4 with the `vanilla-ts` template, with the example project in the Nativele repository (`skills/nativele-testing/example`), which CI runs again when the example or the library changes and once a month. Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create-vite` 9.3.4 with the `vanilla-ts` template, with the example project in the Nativele repository (`skills/nativele-testing/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 
