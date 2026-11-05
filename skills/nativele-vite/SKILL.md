@@ -3,7 +3,7 @@ name: nativele-vite
 description: "Add Nativele to an existing Vite app without a UI framework, and set up the tsDom() Vite plugin correctly: dirs and Vite's root, multi-page apps, the build script, and what vite dev does when a template or component changes. Use when a project depends on vite (or vite-plus) and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.5.1 <0.6.0"
   verified: "2026-11-05"
   tools: "vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vite-plus@1.5.0"
   author: "Nativele maintainers"
@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 |
+| @nativele/ts-dom | 0.5.1 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |

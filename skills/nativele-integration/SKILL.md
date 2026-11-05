@@ -3,7 +3,7 @@ name: nativele-integration
 description: "Use Nativele web components inside an app built with a UI framework that has no Nativele Skill of its own (Preact, Solid, Lit, ...; React, Vue, Svelte and Angular have their own): defining before render, props as properties, listening to events, children and slots, lifecycle, and template types. Use when a project depends on @nativele/ts-dom and on such a framework."
 metadata:
   tier: experimental
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.5.1 <0.6.0"
   verified: "2026-11-05"
   tools: "vue@3.5.44 vite@8.3.6 @vitejs/plugin-vue@6.0.10 vue-tsc@3.3.14 typescript@6.0.3"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ Nativele components are native custom elements. The framework renders their tags
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 |
+| @nativele/ts-dom | 0.5.1 |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |

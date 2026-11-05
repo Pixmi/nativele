@@ -3,7 +3,7 @@ name: nativele-vue
 description: "Use Nativele web components inside a Vue 3 app: telling the template compiler which tags are custom elements, passing props, listening to events, replacing v-model, children and slots, lifecycle with v-for, v-if and KeepAlive, and SFC template types. Use when a project depends on vue and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.5.1 <0.6.0"
   verified: "2026-11-05"
   tools: "vue@3.5.44 vite@8.3.6 @vitejs/plugin-vue@6.0.10 vue-tsc@3.3.14 typescript@6.0.3 @vue/tsconfig@0.9.1"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 |
+| @nativele/ts-dom | 0.5.1 |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |

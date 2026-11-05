@@ -3,7 +3,7 @@ name: nativele-react
 description: "Use Nativele web components inside a React 19 app: passing props, receiving events, children and slots, lifecycle, and TSX types. Use when a project depends on react and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.5.1 <0.6.0"
   verified: "2026-11-05"
   tools: "react@19.3.1 react-dom@19.3.1 @types/react@19.3.0 @types/react-dom@19.3.0 vite@8.3.5 @vitejs/plugin-react@6.2.1 typescript@7.0.2"
   author: "Nativele maintainers"
@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 |
+| @nativele/ts-dom | 0.5.1 |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
@@ -188,7 +188,7 @@ Run in the project:
 npx ts-dom check src/nv      # expect: ts-dom check: no issues
 npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right
 npx tsc --noEmit -p tsconfig.app.json   # expect: no errors (keep one @ts-expect-error case per component kind)
-npx vite build               # expect: built
+npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and vite build)
 ```
 
 Pass `tsc` the tsconfig from step 3. A root `tsconfig.json` that only lists `references` (as in Vite's template) checks nothing itself, so `tsc --noEmit` without `-p` passes even with type errors.
