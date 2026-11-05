@@ -4,3 +4,4 @@ dist
 demo-dist
 *.tgz
 ts-dom-tags.ts
+.local/
