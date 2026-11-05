@@ -466,7 +466,7 @@ this.refs.list.items = ["a", "b"];`,
 
   // CHECK_RULES
   "stale-generated": {
-    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned, tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
+    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
     bad: `# card.html was edited, card.html.ts was not regenerated
 npx ts-dom check --no-write`,
     good: `npx ts-dom gen
@@ -536,9 +536,11 @@ const n: number = 1;`,
     good: `npx ts-dom check --project=tsconfig.json`,
   },
   "dir-not-found": {
-    why: "A folder given to ts-dom check or doctor that does not exist would otherwise be skipped silently, and a clean result would only mean that nothing was looked at.",
-    bad: `npx ts-dom check ap   # the templates live in app/`,
-    good: `npx ts-dom check app`,
+    why: "A folder given to ts-dom check or doctor, or to tsDom({ dirs }) in the Vite plugin, that does not exist would otherwise be skipped silently, and a clean result would only mean that nothing was looked at. The Vite plugin resolves dirs against Vite's root, not the working directory.",
+    bad: `npx ts-dom check ap   # the templates live in app/
+// vite.config.ts with root: "web": tsDom({ dirs: ["web/src"] }) looks for web/web/src`,
+    good: `npx ts-dom check app
+// vite.config.ts with root: "web": tsDom({ dirs: ["src"] })`,
   },
   "tsc-not-found": {
     why: "ts-dom check runs the TypeScript compiler of the project. Without it installed, nothing can be type-checked.",
@@ -592,13 +594,35 @@ npx ts-dom check`,
     bad: `import tpl from "./card.html";`,
     good: `import tpl from "./card.html.js";`,
   },
+  "framework-template": {
+    why: "Every .html in a scanned folder is read as a Nativele template. An Angular component's templateUrl file uses Angular syntax ({{ user.name }}, *ngIf, (click)), so gen reports errors whose hints ask to rewrite a file that belongs to another framework.",
+    bad: `// src/app/app.ts
+@Component({ selector: "app-root", templateUrl: "./app.html" })
+# package.json
+"build": "ts-dom gen src && ng build"`,
+    good: `# keep the Nativele components in their own folder and scan only it
+"build": "ts-dom gen src/nv && ng build"`,
+  },
+  "typecheck-before-gen": {
+    why: "The generated *.html.ts files are not committed. A script that runs tsc (or vue-tsc, svelte-check, ng build) before ts-dom gen works on a machine that has generated them once, and fails on a clean checkout or in CI with TS2307 for every ./x.html.js import.",
+    bad: `// package.json, with *.html.ts in .gitignore
+"build": "tsc && vite build"`,
+    good: `"build": "ts-dom gen src && tsc && vite build"
+// or, with plain tsc, let check generate and type-check in one step:
+"typecheck": "ts-dom check src"`,
+  },
   "vite-plugin-missing": {
-    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand.",
+    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout.",
     bad: `// vite.config.ts
-export default defineConfig({ plugins: [] });`,
+export default defineConfig({ plugins: [] });
+// vitest.config.ts next to a vite.config.ts that has tsDom()
+export default defineConfig({ test: { environment: "happy-dom" } });`,
     good: `// vite.config.ts
 import { tsDom } from "@nativele/ts-dom/vite";
-export default defineConfig({ plugins: [tsDom()] });`,
+export default defineConfig({ plugins: [tsDom()] });
+// vitest.config.ts
+import viteConfig from "./vite.config";
+export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happy-dom" } }));`,
   },
   "oxlint-plugin-missing": {
     why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI.",
@@ -611,11 +635,14 @@ export default defineConfig({ plugins: [tsDom()] });`,
 }`,
   },
   "formatter-whitespace": {
-    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page.",
+    why: "Text whitespace in a template is kept as written. A formatter that re-indents the HTML can then change the spaces rendered on the page. The same warning is given when the scripts or the Vite config ask for collapse but the generated files were written with preserve: a run without --whitespace keeps the mode a file was last written with, so one run without the flag leaves the project on preserve.",
     bad: `# formatter is configured, templates keep their whitespace
-npx ts-dom gen`,
+npx ts-dom gen
+# or: package.json has "gen": "ts-dom gen src --whitespace=collapse", but the files came from a plain run
+npx ts-dom check src`,
     good: `npx ts-dom gen --whitespace=collapse
-// or in vite.config.ts: tsDom({ whitespace: "collapse" })`,
+// or in vite.config.ts: tsDom({ whitespace: "collapse" })
+# and after a plain run: npm run gen (the script with the flag) once`,
   },
   "skill-available": {
     why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",

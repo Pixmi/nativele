@@ -191,7 +191,7 @@ export function lintUsage(dirs: string[], tsFiles: string[]): LintIssue[] {
           severity: "error",
           line: 1,
           col: 1,
-          message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file.`,
+          message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
         });
         continue;
       }

@@ -30,11 +30,14 @@ Commands
         --no-write        write nothing: report stale generated files instead (for a CI job that must not
                           change the working tree; gen --check only checks the generated files)
         --project=<path>  tsconfig for tsc (default: tsc's own lookup)
+        --include=<glob>, --exclude=<glob>, --whitespace=collapse|preserve   as for gen
         --a11y            also check ARIA / accessibility (warnings)
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text
   doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
                     and the Vite, oxlint and formatter configuration (default dir: src)
+        --include=<glob>, --exclude=<glob>, --whitespace=collapse|preserve   as for gen (they decide which
+                          generated files are stale)
         --json            print the issues as JSON instead of text
   skills            List the Nativele Skills shipped with this version: task procedures for coding agents
                     (set-up, a complete example, known limitations, verification), with the versions verified
@@ -148,7 +151,7 @@ if (!dirs.length) dirs.push("src");
 try {
   if (cmd === "gen" && flags.has("--check")) {
     const defs = scanDefines(dirs);
-    const results = dirs.map((d) => checkGenerated(d, generate, defs));
+    const results = dirs.map((d) => checkGenerated(d, generate, defs, dirs));
     const stale = results.flatMap((r) => r.stale);
     const errors = [...results.flatMap((r) => r.errors), ...crossDirDuplicates(dirs).map((d) => formatDiagnostics(d.file, [d]))];
     if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));

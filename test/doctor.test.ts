@@ -150,3 +150,96 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
     expect(runDoctor({ dirs: ["app"], cwd }).map((i) => i.rule)).toContain("dir-not-found");
   });
 });
+
+describe("ts-dom doctor: a Vitest config without the plugin", () => {
+  const base = {
+    "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`,
+    "src/x.html": "<p></p>",
+    "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom()] };`,
+  };
+  const missing = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "vite-plugin-missing");
+
+  it("is reported when it neither uses tsDom nor merges ./vite.config", () => {
+    const issues = missing(project({ ...base, "vitest.config.ts": `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { environment: "happy-dom" } });` }));
+    expect(issues).toMatchObject([{ severity: "warning", file: "vitest.config.ts" }]);
+    expect(issues[0]?.message).toMatch(/replaces the Vite config for Vitest.* Fix: add tsDom\(\) to its plugins, or merge the Vite config/);
+  });
+
+  it("is fine when it uses tsDom or merges ./vite.config", () => {
+    expect(missing(project({ ...base, "vitest.config.mts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom()], test: {} };` }))).toEqual([]);
+    expect(missing(project({ ...base, "vitest.config.ts": `import { defineConfig, mergeConfig } from "vitest/config";\nimport viteConfig from "./vite.config";\nexport default mergeConfig(viteConfig, defineConfig({ test: {} }));` }))).toEqual([]);
+    expect(missing(project(base))).toEqual([]);
+  });
+});
+
+describe("ts-dom doctor: whitespace asked for and whitespace on disk", () => {
+  const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/x.html": "<p>\n  hi\n</p>" };
+  const whitespace = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "formatter-whitespace");
+
+  it("a script asks for collapse while the generated files were written with preserve", async () => {
+    const { generateAll } = await import("../src/lib/codegen.ts");
+    const cwd = project({ ...base, "package.json": JSON.stringify({ scripts: { gen: "ts-dom gen src --whitespace=collapse" } }) });
+    generateAll(join(cwd, "src"));
+    const [issue, ...rest] = whitespace(cwd);
+    expect(rest).toEqual([]);
+    expect(issue).toMatchObject({ severity: "warning", file: "src/x.html.ts" });
+    expect(issue?.message).toMatch(/^The script "gen" asks for whitespace "collapse", but this generated file was written with "preserve".* Fix: regenerate with the flag once: npm run gen\.$/);
+    generateAll(join(cwd, "src"), { whitespace: "collapse" });
+    expect(whitespace(cwd)).toEqual([]);
+  });
+
+  it("the Vite config asks for collapse while the generated files were written with preserve", async () => {
+    const { generateAll } = await import("../src/lib/codegen.ts");
+    const cwd = project({ ...base, "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom({ whitespace: "collapse" })] };` });
+    generateAll(join(cwd, "src"));
+    expect(whitespace(cwd).map((i) => i.message)).toEqual([expect.stringMatching(/^The Vite config asks .* Fix: regenerate with the flag once: ts-dom gen src --whitespace=collapse\.$/)]);
+  });
+});
+
+describe("ts-dom doctor: another framework's templates in a scanned folder", () => {
+  it("an .html named as an Angular templateUrl is reported once, as an error at the template", () => {
+    const cwd = project({ "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/app.html": "<p>{{ user.name }}</p>", "src/card.html": "<p>{{ name }}</p>" });
+    writeFileSync(join(cwd, "src/app.ts"), `@Component({ selector: "app-root", templateUrl: './app.html' })\nexport class App {}\n`);
+    writeFileSync(join(cwd, "src/other.ts"), `@Component({ templateUrl: "./app.html" })\nexport class Other {}\n`);
+    const issues = runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "framework-template");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "error", file: "src/app.html" });
+    expect(issues[0]?.message).toMatch(/Angular template of src\/(app|other)\.ts.* Fix: scan only the folder with the Nativele templates/);
+  });
+
+  it("the invalid-hole and no-importer hints mention a folder that is not meant to be scanned", async () => {
+    const { analyze } = await import("../src/lib/codegen.ts");
+    const { lintUsage } = await import("../src/lib/lint.ts");
+    expect(analyze("<p>{{ user.name }}</p>").diagnostics[0]?.message).toContain("this folder is not meant to be scanned");
+    const cwd = project({ "src/lone.html": "<p></p>" });
+    const lone = lintUsage([join(cwd, "src")], []).find((i) => i.rule === "no-importer");
+    expect(lone?.message).toContain("this folder is not meant to be scanned");
+  });
+});
+
+describe("ts-dom doctor: a type check that runs before gen", () => {
+  const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } }, "include": ["src"] }`, "src/x.html": "<p></p>", ".gitignore": "node_modules\n*.html.ts\n" };
+  const scripts = (s: Record<string, string>, extra: Record<string, string> = {}) => project({ ...base, ...extra, "package.json": JSON.stringify({ scripts: s }, null, 2) });
+  const flagged = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "typecheck-before-gen");
+
+  it("reports tsc, vue-tsc, svelte-check and ng build in a script, or its pre script, before ts-dom gen", () => {
+    const cwd = scripts({ build: "tsc && vite build", dev: "vite", typecheck: "vue-tsc --noEmit", check: "svelte-check", "build:ng": "ng build", pretest: "tsc --noEmit", test: "vitest" });
+    const issues = flagged(cwd);
+    expect(issues.map((i) => i.message.match(/script "([^"]+)"/)?.[1]).sort()).toEqual(["build", "build:ng", "check", "test", "typecheck"]);
+    expect(issues.find((i) => i.message.includes('"build"'))).toMatchObject({ severity: "warning", file: "package.json", line: 3 });
+    expect(issues[0]?.message).toMatch(/TS2307.* Fix: put "ts-dom gen src && " in front of it, or use "ts-dom check src"/);
+  });
+
+  it("a gen first in the chain, through npm run or a pre script, or ts-dom check, is fine", () => {
+    const cwd = scripts({ gen: "ts-dom gen src", build: "npm run gen && tsc && vite build", pretypecheck: "npx ts-dom gen src", typecheck: "tsc --noEmit", check: "ts-dom check src" });
+    expect(flagged(cwd)).toEqual([]);
+  });
+
+  it("is quiet when *.html.ts is committed, or when tsc -p names a config that covers no scanned folder", () => {
+    expect(flagged(scripts({ build: "tsc" }, { ".gitignore": "node_modules\n" }))).toEqual([]);
+    const node = scripts({ build: "tsc -p tsconfig.node.json && ts-dom gen src && tsc" }, { "tsconfig.node.json": `{ "include": ["vite.config.ts"] }` });
+    expect(flagged(node)).toEqual([]);
+    const app = scripts({ build: "tsc -p tsconfig.app.json && vite build" }, { "tsconfig.app.json": `{ "include": ["src"] }` });
+    expect(flagged(app)).toHaveLength(1);
+  });
+});

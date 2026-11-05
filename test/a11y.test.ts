@@ -243,6 +243,15 @@ describe("Vite plugin", () => {
     plugin.buildStart.call(t.ctx);
     expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(true);
   });
+  it("a dirs entry that does not exist under Vite's root is reported when the build or dev server starts", async () => {
+    const { tsDom } = await import("../src/lib/vite-plugin.ts");
+    const t = await setup({ "x.html": `<p></p>` });
+    const plugin = tsDom({ dirs: ["src", "web/src"] });
+    plugin.configResolved({ root: t.dir });
+    plugin.buildStart.call(t.ctx);
+    expect(t.warns).toHaveLength(1);
+    expect(t.warns[0]).toMatch(/web\/src:1:1 warning \[dir-not-found\] .* Fix: dirs are resolved against Vite's root/);
+  });
   it("dev: a save that does not change the generated module does not reload the page", async () => {
     const { writeFileSync } = await import("node:fs");
     const t = await setup({ "x.html": `<p>{{ a }}</p>` });

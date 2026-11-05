@@ -84,6 +84,28 @@ describe("ts-dom check: more cases", () => {
     expect(issues.map((i) => i.rule).sort()).toEqual(["missing-binding", "reserved-prop"]);
   });
 
+  it("errors inside the body of a class with a contract error follow from it and are left out; errors after the class are kept", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    writeFileSync(
+      join(dir, "c.ts"),
+      `export class Card extends Component(tpl, { state: { count: 0 } }) {\n  label = "}";\n  connectedCallback() {\n    this.bind(store, (s) => {\n      console.log(s.n);\n    });\n  }\n}\nexport const n = o.lenght;\n`,
+    );
+    const issues = mapTscErrors(
+      [
+        { file: "c.ts", line: 1, col: 27, code: "TS2507", message: `Type '{ missingStateKeys: "nope"; }' is not a constructor function type.` },
+        { file: "c.ts", line: 4, col: 23, code: "TS7006", message: "Parameter 's' implicitly has an 'any' type." },
+        { file: "c.ts", line: 9, col: 20, code: "TS2339", message: "Property 'lenght' does not exist on type '{ a: number; }'." },
+      ],
+      dir,
+    );
+    expect(issues.map((i) => [i.rule, i.line])).toEqual([
+      ["missing-binding", 1],
+      ["tsc", 9],
+    ]);
+  });
+
   it("a folder that does not exist is reported, not skipped", () => {
     let out = "";
     try {
@@ -160,6 +182,20 @@ describe("ts-dom check: more cases", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it("a tsc error in a generated file says to regenerate or delete it, not to change the TypeScript there", () => {
+    const issues = mapTscErrors(
+      [
+        { file: "src/card.html.ts", line: 3, col: 1, code: "TS2307", message: "Cannot find module './card.js'." },
+        { file: "src/old/ts-dom-tags.ts", line: 2, col: 1, code: "TS2717", message: "Subsequent property declarations must have the same type." },
+      ],
+      process.cwd(),
+    );
+    for (const i of issues) {
+      expect(i.message).not.toContain("change the TypeScript");
+      expect(i.message).toMatch(/Fix: run ts-dom gen .*delete it\.$/);
+    }
+  });
 
   it("a plain tsc error carries a Fix hint", () => {
     const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], process.cwd());

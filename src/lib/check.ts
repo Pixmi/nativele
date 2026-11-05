@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, listHtml, listTs, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
@@ -98,14 +98,22 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     return undefined;
   };
   // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file: those follow-up errors repeat the first one.
+  // Inside the body of such a class `this` has no usable type either, so errors there (a bind callback's parameter without a type, say) follow from it as well.
   const brokenClasses = new Set<string>();
+  const brokenBodies: { file: string; from: number; to: number }[] = [];
   for (const e of errors) {
     if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames/.test(e.message)) continue;
-    const line = readFileSync(resolve(cwd, e.file), "utf8").split("\n")[e.line - 1] ?? "";
-    const name = /class\s+([A-Za-z_$][\w$]*)\s+extends\s+Component\s*\(/.exec(line)?.[1];
-    if (name) brokenClasses.add(name);
+    const text = readFileSync(resolve(cwd, e.file), "utf8");
+    const lines = text.split("\n");
+    const m = /class\s+([A-Za-z_$][\w$]*)\s+extends\s+Component\s*\(/.exec(lines[e.line - 1] ?? "");
+    if (!m?.[1]) continue;
+    brokenClasses.add(m[1]);
+    const start = lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + m.index + m[0].length - 1;
+    const end = classBodyEnd(text, start);
+    if (end !== -1) brokenBodies.push({ file: rel(resolve(cwd, e.file)), from: e.line, to: text.slice(0, end).split("\n").length });
   }
-  const followsBroken = (message: string) => [...brokenClasses].some((c) => message.includes(`'${c}'`) || message.includes(`'typeof ${c}'`));
+  const followsBroken = (i: LintIssue) =>
+    [...brokenClasses].some((c) => i.message.includes(`'${c}'`) || i.message.includes(`'typeof ${c}'`)) || brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to);
   for (const e of errors) {
     const file = resolve(cwd, e.file);
     const where = `${rel(file)}:${e.line}:${e.col}`;
@@ -135,9 +143,32 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
       named = true;
       issue(rule, `${e.message.split("\n")[0]} Fix: ${fix}.`);
     }
-    if (!named) issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
+    if (named) continue;
+    if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
+    else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
-  return out.filter((i) => i.rule !== "tsc" || !followsBroken(i.message));
+  return out.filter((i) => i.rule !== "tsc" || !followsBroken(i));
+}
+
+/** The offset of the `}` that closes a class body, given the offset of the `(` of its `extends Component(`; -1 when it cannot be found. Strings and comments are skipped. */
+function classBodyEnd(text: string, open: number): number {
+  let depth = 0;
+  let inBody = false;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i] as string;
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
+    } else if (c === "/" && text[i + 1] === "/") i = text.indexOf("\n", i) === -1 ? text.length : text.indexOf("\n", i);
+    else if (c === "/" && text[i + 1] === "*") i = text.indexOf("*/", i) === -1 ? text.length : text.indexOf("*/", i) + 1;
+    else if ("([{".includes(c)) {
+      if (c === "{" && depth === 0) inBody = true;
+      depth++;
+    } else if (")]}".includes(c)) {
+      depth--;
+      if (depth === 0 && inBody) return i;
+    }
+  }
+  return -1;
 }
 
 // vue-tsc takes tsc's arguments and prints tsc's output, and it also understands the .vue files a Vue project imports.
@@ -195,7 +226,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   if (options.write === false) {
     const defs = scanDefines(dirs);
     for (const dir of dirs) {
-      for (const s of staleGenerated(dir, generate, defs)) {
+      for (const s of staleGenerated(dir, generate, defs, dirs)) {
         issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
       }
     }

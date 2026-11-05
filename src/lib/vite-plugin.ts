@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
 import type { DefineDef } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
@@ -42,6 +42,7 @@ const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : 
 export function tsDom(opts: TsDomPluginOptions = {}) {
   const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
+  let root = process.cwd();
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
   // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
   const shown = new Map<string, string>();
@@ -118,10 +119,14 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     name: "ts-dom",
     enforce: "pre" as const,
     configResolved(config: { root: string }) {
+      root = config.root;
       dirs = (opts.dirs ?? ["src"]).map((d) => resolve(config.root, d));
       defs = undefined;
     },
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
+      for (const d of dirs) {
+        if (!existsSync(d)) this.warn(`${relative(process.cwd(), d) || "."}:1:1 warning [dir-not-found] The folder ${d} given in tsDom({ dirs }) does not exist, so no templates in it are generated. Fix: dirs are resolved against Vite's root (${root}), not the working directory; give the folder relative to that root, or an absolute path.`);
+      }
       try {
         generateDirs(existing(), generate);
       } catch (e) {
