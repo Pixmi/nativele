@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.6.0
 
 Five new Official Skills cover the technical areas every Nativele project shares, and the Skills now work together by clear ownership: each configuration area has one owning Skill, and the others state what they need and point to it.
 
@@ -59,6 +59,8 @@ Five new Official Skills cover the technical areas every Nativele project shares
 - `skills/README.md` has "How Skills work together": a Skill owns one task or technical area, states what it needs from another area instead of configuring it, keeps the user's existing configuration, acts on what the project has, and works without any other Skill installed. When two Skills disagree about one setting, the Skill that owns the setting decides.
 - The existing Skills no longer give their own instructions for the tsconfig, the linter, the formatter, CI or a workspace: each states its requirement in one sentence and points to the owning Skill, and keeps its own verified facts (framework behavior, the framework's type checker, the errors it hit). The Vite Skill now says that with a formatter the plugin and the scripts use the whitespace mode the formatting Skill decides, and the testing Skill notes that a formatter's whitespace can reach `textContent`.
 - The Skills state no verification process and name no file a reader cannot open; `nativele-zod` names the Zod and Valibot versions it was verified with, `nativele-monorepo` gives `tsc-not-found` as the error it is, `nativele-linting` leaves the build script to the build owner, and `nativele-angular` also generates before the template's `watch` script.
+- `nativele-core` gives the `fill` callback of a list of plain elements (`text`, `refs`, `show`, `el`, and `hit.key` in an item's event handler), points Vite set-up to `nativele-vite`, whose build script generates before `tsc`; `nativele-monorepo` says that the tag prefix is for new tags while a moved component keeps its tag.
+- The guides in `docs/` ship in the package, so an agent without network reads them under `node_modules/@nativele/ts-dom/docs/`.
 
 ### Guides
 

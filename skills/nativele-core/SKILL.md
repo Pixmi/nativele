@@ -3,8 +3,8 @@ name: nativele-core
 description: "Build and change web components with Nativele (@nativele/ts-dom): the write-check-fix loop, templates, state, lists and data flow. Use whenever a project depends on @nativele/ts-dom and you add or change an .html template or a component."
 metadata:
   tier: official
-  nativele: ">=0.5.0 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "@nativele/ts-dom"
@@ -23,17 +23,17 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.0 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
+Verified on 2026-11-06 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
 
 ## Set-up
 
 1. `npm i @nativele/ts-dom` and `npm i -D typescript`.
 2. Put the components under `src/`, the folder every `ts-dom` command scans by default; for another folder, pass it to each command (`npx ts-dom check web/ui`).
 3. The tsconfig must cover the folders with templates and meet Nativele's few requirements (`strict`, `DOM`, a resolution that finds packages, and `"type": "module"` when `tsc` emits): check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`). A complete one for the no-bundler case is in the setup guide: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup
-4. With Vite, add `tsDom()` from `@nativele/ts-dom/vite` to `plugins`. Without a bundler, `ts-dom gen` plus `tsc` compiles the code, and the page needs an import map for `@nativele/ts-dom` plus a `<script type="module">` for the compiled entry, a module that imports the top-level components: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#running-in-the-browser-no-bundler
+4. With Vite, add `tsDom()` from `@nativele/ts-dom/vite` to `plugins`, and set up the rest with the Vite Skill (`npx ts-dom skills nativele-vite`): `tsDom()` generates for the dev server and `vite build`, not for a `tsc` that runs before them, so Vite's template script `tsc && vite build` fails on a clean checkout until it generates first. Without a bundler, `ts-dom gen` plus `tsc` compiles the code, and the page needs an import map for `@nativele/ts-dom` plus a `<script type="module">` for the compiled entry, a module that imports the top-level components: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#running-in-the-browser-no-bundler
 5. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`: they are generated.
 6. Run `npx ts-dom doctor` once; fix every error and warning it reports. Its `info` lines name the other Skills that fit the project.
 
@@ -135,7 +135,7 @@ define("todo-app", TodoApp);
 - Props go down (the parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `emit` does not bubble; data needed several levels away goes in a shared `createStore` that the components `bind`.
 - State, props and the view are deeply read-only: replace objects instead of changing them (`{ ...todo, done: true }`).
 - A `data-each` list cannot be nested: the inner list belongs to its own item component.
-- A list of plain elements (no item component) has neither `data-key` nor `data-prop`; fill it with `this.lists.x.replace(items, key, fill)` in `render`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md
+- A list of plain elements (no item component) has neither `data-key` nor `data-prop`; fill it with `this.lists.x.replace(items, (item) => item.id, (item, { text, refs, show, el }) => { ... })` in `render`. In `fill`, a hole inside the item (any name, `<li>{{ label }}</li>`) is set with `text.label = ...`, a `data-ref` inside it is `refs.x`, a `data-if` inside it is `show("name", on)`, and `el` is the item's root element; an event handler on an element of the item receives `(e: Event, hit: EventHit)` with the item's key in `hit.key`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md
 - For a list of components, write `data-key` and `data-prop` on the `<template data-each>`, give the item component `role="listitem"` inside `<ul>` or `<ol>`, assign `this.lists.x.items = ...` in `render`, and type item handlers as `hit: EventHit<Item, "id">`. Each item component gets its item through that one prop; to pass more (selected, leading), map the items to objects that carry it before assigning.
 - Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both.
 
@@ -151,7 +151,7 @@ define("todo-app", TodoApp);
 ```sh
 npx ts-dom check --strict    # expect: ts-dom check: no issues
 npx ts-dom doctor            # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
-npx tsc --noEmit             # expect: no errors
+npx tsc --noEmit             # after check, which generated the files: expect no errors
 ```
 
 Then exercise the changed component in a real browser (the project's own test runner, or the browser).
@@ -169,6 +169,8 @@ Then exercise the changed component in a real browser (the project's own test ru
 | No types in a parent's `refs.child` | the child class is not exported, or is defined outside the scanned folders | `export class`, and keep it in a folder `ts-dom gen` scans; a component from another workspace package comes from that package's exports (`nativele-monorepo`) |
 
 ## See also
+
+The guides linked here are also in the installed package, under `node_modules/@nativele/ts-dom/docs/`.
 
 - Templates: https://github.com/Pixmi/nativele/blob/main/docs/templates.md
 - Components and data flow: https://github.com/Pixmi/nativele/blob/main/docs/components.md

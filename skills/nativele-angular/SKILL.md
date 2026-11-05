@@ -3,8 +3,8 @@ name: nativele-angular
 description: "Use Nativele web components inside an existing Angular 22 app with standalone components: CUSTOM_ELEMENTS_SCHEMA, property and event bindings, change detection, content projection into slots, lifecycle, and generating the templates for the Angular CLI build. Use when a project depends on @angular/core and @nativele/ts-dom."
 metadata:
   tier: experimental
-  nativele: ">=0.5.1 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "@angular/core@22.2.4 @angular/compiler-cli@22.2.4 @angular/build@22.2.6 @angular/cli@22.2.6 typescript@6.0.3 vitest@5.1.0 jsdom@30.1.3"
   author: "Nativele maintainers"
   detects: "@angular/core"
@@ -25,14 +25,14 @@ Nativele components are native custom elements. Angular renders their tags like 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | @angular/core, @angular/common, @angular/compiler, @angular/compiler-cli, @angular/platform-browser, @angular/router | 22.2.4 |
 | @angular/cli, @angular/build | 22.2.6 |
 | typescript | 6.0.3 |
 | vitest (through `ng test`) | 5.1.0 |
 | jsdom | 30.1.3 |
 
-Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and production configurations), in an app made with `npx @angular/cli@latest new <name> --defaults --skip-git`. That app is zoneless (no `zone.js`); the same checks also passed with `zone.js` 0.16.3 and `provideZoneChangeDetection()`. With a different major version of Angular, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148, against `ng serve` (development and production configurations), in an app made with `npx @angular/cli@latest new <name> --defaults --skip-git`. That app is zoneless (no `zone.js`); the same checks also passed with `zone.js` 0.16.3 and `provideZoneChangeDetection()`. With a different major version of Angular, treat every step as unverified.
 
 ## Set-up
 

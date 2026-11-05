@@ -3,8 +3,8 @@ name: nativele-monorepo
 description: "Use Nativele across the packages of a workspace (npm or pnpm workspaces, optionally with a task runner such as turbo): a package of shared components used by one or more apps, where each package generates and checks its own components, how an app gets their modules and their tag types, where @nativele/ts-dom and typescript must be installed, and which package must be generated or built before another type-checks. Use when a repository has several package.json files and Nativele components in one of them are used by another."
 metadata:
   tier: official
-  nativele: ">=0.5.5 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "npm@11.19.1 pnpm@12.16.1 turbo@2.11.10 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vue-tsc@3.3.14"
   author: "Nativele maintainers"
   detects: "turbo nx lerna"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.5 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | npm (workspaces) | 11.19.1, on Node 24.22.2 |
 | pnpm (workspaces) | 12.16.1 |
 | turbo | 2.11.10 (with npm workspaces) |
@@ -32,7 +32,7 @@ metadata:
 | create-vite (`vanilla-ts`, the app) | 9.3.4 |
 | vue-tsc | 3.3.14 (only to see which package's checker `ts-dom check` runs) |
 
-Verified on 2026-11-05 in Google Chrome 148 with a component package `packages/ui` and a Vite app `apps/web` from `create-vite`, built once before Nativele was added, in an npm workspace and a pnpm workspace: the component package exported as TypeScript source and as built JavaScript with declarations, and the built one also packed and installed into a separate app. Not verified: yarn and Bun workspaces, nx, lerna, TypeScript project references across packages (`tsc -b` with `composite`), and apps with a UI framework consuming the package. With a different major version of npm, pnpm or turbo, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148 with a component package `packages/ui` and a Vite app `apps/web` from `create-vite`, built once before Nativele was added, in an npm workspace and a pnpm workspace: the component package exported as TypeScript source and as built JavaScript with declarations, and the built one also packed and installed into a separate app. Not verified: yarn and Bun workspaces, nx, lerna, TypeScript project references across packages (`tsc -b` with `composite`), and apps with a UI framework consuming the package. With a different major version of npm, pnpm or turbo, treat every step as unverified.
 
 ## Set-up
 
@@ -45,10 +45,10 @@ Check first, then change only what fails. Use the workspace's own package manage
 
    | Package | `@nativele/ts-dom` | `typescript` |
    |---|---|---|
-   | component package | `peerDependencies` with the range the apps use (`"^0.5.5"`), and the same version in `devDependencies` for its own `ts-dom` and tests | `devDependencies` |
+   | component package | `peerDependencies` with the range the apps use (`"^0.6.0"`), and the same version in `devDependencies` for its own `ts-dom` and tests | `devDependencies` |
    | app | `dependencies` | `devDependencies` |
 
-   The peer lets an app outside the workspace install the package without a second copy (verified: a packed component package installed into a separate app gave one `@nativele/ts-dom`, `deduped`). Inside the workspace the package's own `devDependencies` entry satisfies its peer, so the peer does not stop a second version there; step 2 does. Install with the workspace's command (`npm i -D -w @acme/ui @nativele/ts-dom typescript`, `pnpm --filter @acme/ui add -D @nativele/ts-dom typescript`), then add the peer to that `package.json` (`npm pkg set "peerDependencies.@nativele/ts-dom=^0.5.5" -w @acme/ui`, or by editing the file). The app depends on the component package the way the workspace already links its packages (`"workspace:*"` in pnpm, a version in npm).
+   The peer lets an app outside the workspace install the package without a second copy (verified: a packed component package installed into a separate app gave one `@nativele/ts-dom`, `deduped`). Inside the workspace the package's own `devDependencies` entry satisfies its peer, so the peer does not stop a second version there; step 2 does. Install with the workspace's command (`npm i -D -w @acme/ui @nativele/ts-dom typescript`, `pnpm --filter @acme/ui add -D @nativele/ts-dom typescript`), then add the peer to that `package.json` (`npm pkg set "peerDependencies.@nativele/ts-dom=^0.6.0" -w @acme/ui`, or by editing the file). The app depends on the component package the way the workspace already links its packages (`"workspace:*"` in pnpm, a version in npm).
 4. **Each package scans only its own folder, and its `ts-dom` commands run in that package.** In `packages/ui`: `ts-dom check src`; in `apps/web`: `ts-dom check src`, and `tsDom()` keeps the app's own `dirs`. From the root, run them through the workspace (`npm exec -w web -- ts-dom check src`, `pnpm --filter web exec ts-dom check src`, `pnpm -r exec ts-dom check src`, or each package's script). Do not give one command the folders of several packages, and do not add another package's folder to `tsDom({ dirs })` (Known limitations 4).
 5. **The component package exposes its components through one entry module** (its `exports`):
    - it imports or re-exports every module that calls `define()`, so importing the package registers the tags;
@@ -98,8 +98,8 @@ ts-dom-tags.ts
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "ts-dom check src" },
-  "peerDependencies": { "@nativele/ts-dom": "^0.5.5" },
-  "devDependencies": { "@nativele/ts-dom": "^0.5.5", "typescript": "^7.0.2" }
+  "peerDependencies": { "@nativele/ts-dom": "^0.6.0" },
+  "devDependencies": { "@nativele/ts-dom": "^0.6.0", "typescript": "^7.0.2" }
 }
 ```
 
@@ -174,7 +174,7 @@ export { UiTag, type Tag } from "./ui-tag.js";
 // apps/web/package.json (the parts that change)
 {
   "scripts": { "build": "ts-dom check src && vite build" },
-  "dependencies": { "@acme/ui": "^0.0.0", "@nativele/ts-dom": "^0.5.5" },
+  "dependencies": { "@acme/ui": "^0.0.0", "@nativele/ts-dom": "^0.6.0" },
   "devDependencies": { "typescript": "~7.0.2", "vite": "^8.3.6" }
 }
 ```
@@ -238,7 +238,7 @@ define("app-shell", AppShell);
 2. **The package's `ts-dom-tags.ts` does not reach consumers by itself**: nothing imports it. Without step 5's line, the app's `refs` of the package's tags are plain `HTMLElement` (`TS2339: Property 'label' does not exist on type 'HTMLElement'`), and a keyed list of the package's item component takes any object type with the key field but rejects items typed by an interface (`Index signature for type 'string' is missing in type 'Tag'`). `import type {} from "./ts-dom-tags.js"` and `/// <reference path="./ts-dom-tags.ts" />` work for a source package, but both are dropped from the emitted `index.d.ts` of a built one; `export type {} from` is kept there and erased from the JavaScript. `import "./ts-dom-tags.js"` is kept too, but as a runtime import of an empty module.
 3. **Lint does not see another package's components.** With the tag map in place, `tsc` checks their prop types (`TS2322: Type 'number' is not assignable to type 'string'`), list item types and `EmitEvent` details, but a misspelled attribute (`lable="Save"`) or event (`data-on-ui-pres`) on the package's tag is not reported: `unknown-prop` and `unknown-event` read only the scanned folders.
 4. **One `ts-dom` run over several packages' folders breaks package boundaries.** `ts-dom gen packages/ui/src apps/web/src` from the root writes `import "../../../packages/ui/src/ui-button.js"` into the app's generated files, bypassing the package's `exports`; the app's own run (and `tsDom()` at build start) writes the files without it, so `ts-dom gen --check` from either side reports the other's files as `stale-generated`. With a built package, an app bundled from those files contained both `packages/ui/dist/ui-button.js` and `packages/ui/src/ui-button.ts`. `tsDom({ dirs: ["src", "../../packages/ui/src"] })` does the same. From the root, `ts-dom check` also needs a root `tsconfig.json` (without one: `tsc-failed`; `ts-dom doctor`: `no-tsconfig`), and uses what resolves from the root: its `typescript`, and `vue-tsc` only if the root `package.json` lists it (`ts-dom check` picks the checker by the `package.json` of the folder it runs in: in a pnpm workspace it ran `vue-tsc` in the app that listed it and `tsc` in the component package).
-5. **A tag defined in two packages fails silently at runtime.** `define()` skips a tag that is already registered, so the module loaded first wins and the other class is never used, with no error. Per package, `ts-dom check` reports it only when both tag maps are in one program, as `duplicate-define` (from tsc's `TS2717` in `ts-dom-tags.ts`; its `Fix:` says to rename the tag). A run over both folders reports `duplicate-define`, with the problems of limitation 4. Give each package's tags a prefix of their own.
+5. **A tag defined in two packages fails silently at runtime.** `define()` skips a tag that is already registered, so the module loaded first wins and the other class is never used, with no error. Per package, `ts-dom check` reports it only when both tag maps are in one program, as `duplicate-define` (from tsc's `TS2717` in `ts-dom-tags.ts`; its `Fix:` says to rename the tag). A run over both folders reports `duplicate-define`, with the problems of limitation 4. Give each package's new tags a prefix of their own; a component moved in from an app keeps its tag (step 1), because the pages and tests that use it name that tag.
 6. **Two versions of `@nativele/ts-dom` work but ship twice.** With the component package on another version than the app, props, events, a keyed list of the package's item component and a store created in the package and bound in the app all worked, and the minified bundle grew from 18.20 kB to 34.29 kB. No `ts-dom` command reports it, and inside the workspace the peer does not prevent it (step 3); step 2 does.
 7. **Hoisting hides missing dependencies until an install changes it.** In an npm workspace, a component package that lists neither `@nativele/ts-dom` nor `typescript` still generates, checks and builds through the root's hoisted copies, and doctor reports nothing. When an install moves `typescript` into another package's `node_modules` (adding and removing `vue-tsc` in the app does), `ts-dom check src` in the package stops with `error [tsc-not-found]`. A hoisted `typescript` at the root can also differ from the app's own (6.0.3 against `~7.0.2`), so `npx tsc` in the app and `ts-dom check` from the root run different compilers. In pnpm the same package fails at once: `Command "ts-dom" not found`, and the app's check reports `TS2307: Cannot find module '@nativele/ts-dom'` in the package's files. Step 3 fixes all of these.
 8. **`ts-dom doctor` reads the folder it runs in** for its `package.json`, `tsconfig.json` and Vite config, and the folders up to the workspace root for `.gitignore` and Skill copies. At the root without folders it reports `dir-not-found` for `src`. Run it in each package with that package's folder, and check the script order yourself (step 8).

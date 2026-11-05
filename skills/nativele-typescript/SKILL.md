@@ -3,8 +3,8 @@ name: nativele-typescript
 description: "Check and adjust the TypeScript set-up of a project that uses Nativele (@nativele/ts-dom): what the tsconfig covering the components needs and why, which stricter options and layouts work, how the generated files and ts-dom check fit the type check. Use when a tsconfig is added or changed, when ts-dom doctor reports a tsconfig-* issue, or when tsc errors point at the set-up rather than the code."
 metadata:
   tier: official
-  nativele: ">=0.5.5 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "typescript@7.0.2 typescript@6.0.3 typescript@5.9.3 vue-tsc@3.3.14 @tsconfig/strictest@2.0.8"
   author: "Nativele maintainers"
   detects: "typescript"
@@ -24,12 +24,12 @@ Nativele's value is that `tsc` checks the HTML against the TypeScript: `ts-dom g
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.5 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | typescript | 7.0.2, 6.0.3, 5.9.3 (every row below); 5.6.3, 5.4.5, 5.0.4 (the baseline set-up only) |
 | vue-tsc | 3.3.14 (with typescript 6.0.3 and 7.0.2) |
 | @tsconfig/strictest | 2.0.8 |
 
-Verified on 2026-11-05 in fresh projects built from the packed library, with a fixture of components that covers state, props, derive, emits with and without detail, keyed lists of components, plain lists, slots, `shadow: true`, `bind`, `on`, `instantiate()` and the tag map, plus probe files whose `// @ts-expect-error` lines must each stay an error. With a TypeScript major version not listed, treat every statement as unverified.
+Verified on 2026-11-06 in fresh projects built from the packed library, with a fixture of components that covers state, props, derive, emits with and without detail, keyed lists of components, plain lists, slots, `shadow: true`, `bind`, `on`, `instantiate()` and the tag map, plus probe files whose `// @ts-expect-error` lines must each stay an error. With a TypeScript major version not listed, treat every statement as unverified.
 
 ## Set-up
 

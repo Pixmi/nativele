@@ -57,7 +57,7 @@ Required sections, in this order:
 5. **Known limitations**: what does not work or needs care, each with what to do instead. An agent must never have to guess these.
 6. **Verify**: the commands that prove the integration works in the user's project (for example `npx ts-dom check`, `npx tsc --noEmit`, the project's build, a test), with the output to expect.
 7. **Troubleshooting**: symptoms seen while verifying, their cause and fix.
-8. **See also**: links to the guides in `docs/` for the facts used.
+8. **See also**: links to the guides in `docs/` for the facts used, as full GitHub URLs (the same files ship in the package under `node_modules/@nativele/ts-dom/docs/`).
 
 Rules for the content:
 

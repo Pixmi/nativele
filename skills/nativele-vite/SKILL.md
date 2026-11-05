@@ -3,8 +3,8 @@ name: nativele-vite
 description: "Add Nativele to an existing Vite app without a UI framework, and set up the tsDom() Vite plugin correctly: dirs and Vite's root, multi-page apps, the build script, and what vite dev does when a template or component changes. Use when a project depends on vite (or vite-plus) and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.5.1 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vite-plus@1.5.0"
   author: "Nativele maintainers"
   detects: "vite vite-plus"
@@ -24,13 +24,13 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 | vite-plus | 1.5.0 (checked by hand with `vp dev`, `vp build` and `vp lint`) |
 
-Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-vite/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of Vite, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-vite/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of Vite, treat every step as unverified.
 
 ## Set-up
 

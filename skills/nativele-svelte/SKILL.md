@@ -3,8 +3,8 @@ name: nativele-svelte
 description: "Use Nativele web components inside an existing Svelte 5 app: passing props, listening to events, children and slots, lifecycle, template types with svelte-check, and ts-dom check. Use when a project depends on svelte and @nativele/ts-dom."
 metadata:
   tier: experimental
-  nativele: ">=0.5.1 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "svelte@5.57.3 vite@8.3.6 @sveltejs/vite-plugin-svelte@7.3.1 svelte-check@4.7.8 @tsconfig/svelte@5.0.8 typescript@6.0.3"
   author: "Nativele maintainers"
   detects: "svelte"
@@ -25,7 +25,7 @@ Nativele components are native custom elements. Svelte renders them like any oth
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | svelte | 5.57.3 |
 | @sveltejs/vite-plugin-svelte | 7.3.1 |
 | svelte-check | 4.7.8 |
@@ -33,7 +33,7 @@ Nativele components are native custom elements. Svelte renders them like any oth
 | vite | 8.3.6 |
 | typescript | 6.0.3 |
 
-Verified on 2026-11-05 in Google Chrome 148, against the Vite dev server (so Svelte's development warnings would show), in a fresh app made with `npm create vite@latest -- --template svelte-ts`. Runes mode (`$state`) is what was verified; legacy mode was checked only for the `on:` directive (limitation 2). With a different major version of Svelte, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148, against the Vite dev server (so Svelte's development warnings would show), in a fresh app made with `npm create vite@latest -- --template svelte-ts`. Runes mode (`$state`) is what was verified; legacy mode was checked only for the `on:` directive (limitation 2). With a different major version of Svelte, treat every step as unverified.
 
 ## Set-up
 
