@@ -10,11 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.5
+
+Skills are verified by agent trials and stand on their own: each Skill can be followed and is accurate without its example project, which stays in the repository only as a reference.
 
 - A Skill is verified by its agent trials. An `example/` is an optional reference project from the trial and is no longer run in CI; Official means accepted through an agent trial and maintained by the maintainers. Each Skill's Versions table names the version of its last agent trial, and `test/skills.test.ts` keeps that row in line with the `nativele` range.
 - "SKILL.md format" (in `skills.yml`) is a required check for `main`: it reports on every pull request, skips its steps when nothing it checks changed, and also covers the links in the READMEs, `llms.txt` and the guides.
 - `skills/README.md` gives a fixed form for the agent trial record added to a Skill pull request.
+- Every Skill is self-contained. The architecture Skill names the interfaces of the small components its example code uses. Across the Skills, an example project is mentioned only as a reference implementation, never as the source of a step or a fact.
 
 ## 0.5.4
 
