@@ -92,7 +92,7 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 
 - `skills/<name>/example/package.json` pins every tool version the Skill names, depends on the library through `file:../../..` (the library in the same repository), and has `npm run verify`, which runs `ts-dom check`, `ts-dom doctor`, `tsc`, the build, and a short real-browser test of what the Skill promises.
 - `nativele-core` has no example of its own: the library's CI, which checks every example in the repository, verifies it.
-- The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when an `example/` changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. A pull request that changes only Markdown skips the full CI; when it touches `skills/`, `.github/workflows/skills-format.yml` checks every `SKILL.md` against this specification instead. Neither is a required check for `main`.
+- The workflow `.github/workflows/skills.yml` runs `npm run verify` for each Official Skill when an `example/` changes, when the library's runtime changes, and once a month, so a third-party release that breaks a Skill is found. A change to `SKILL.md` runs only `.github/workflows/skills-format.yml`, which checks every `SKILL.md` against this specification. Neither is a required check for `main`.
 - The monthly run opens nothing by itself; a failure is reported in the workflow run, and the Skill is fixed or moved to Experimental.
 
 ## Contributing a Skill
