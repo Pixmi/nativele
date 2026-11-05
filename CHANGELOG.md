@@ -20,10 +20,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   - Only HTML whitespace (space, tab, line feed, form feed, carriage return) is collapsed: a non-breaking space (`&nbsp;`) is kept; it used to become a plain space.
   - `&#32;` between two inline elements is no longer needed to keep a space a formatter turns into a line break (it still works).
   - `<pre>`, `<textarea>`, `<style>`, `<script>` and `preserve` are unchanged.
+- `tsc-not-found` is an error instead of a warning, so `ts-dom check` exits with 1 when TypeScript is not installed (for example in a CI job that omits the dev dependencies) instead of passing without a type check.
+
+### New checks
+
+- `ts-dom doctor` reports `tsconfig-misses-tag-map` (error): the tsconfig `include` does not match a scanned folder's `ts-dom-tags.ts` (for example `"include": ["src/**/*.tsx"]`), or an `exclude` pattern removes it. Nothing imports the tag map, so it is in the program only through `include`; left out, tags are typed as plain `HTMLElement` and lists of item components fail with `item-not-in-tag-map`. Excluding the generated `x.html.ts` files is not reported: their components import them.
+- `tsconfig-classic-resolution` also reports TypeScript 5's implicit classic resolution: `module` ES2015 to ESNext (or `amd`, `umd`, `system`, `none`), or `target` ES2015 or later without `module`, and no `moduleResolution`.
+- `ts-dom doctor` accepts `--project=<path>`, like `check`, and `--strict`, which exits with 1 on warnings (info never changes the exit code).
 
 ### Fixes
 
 - The generated `x.html.ts` files write an empty `refs` or `lists` as `Record<never, never>` instead of `{}`, so typescript-eslint's `recommended` config (`@typescript-eslint/no-empty-object-type`) reports nothing on them. The types mean the same to `tsc`.
+- `tsconfig-not-strict` follows the project's TypeScript (resolved from the project, with `strict` read through `extends`): TypeScript 6 and 7 turn `strict` on when it is left out, so only `"strict": false`, or TypeScript 5 without `strict`, is reported. The message says what is lost (possibly null values, implicit `any`); the names in templates are checked either way.
+- `tsconfig-classic-resolution` says what fails: classic cannot resolve the runtime package that every generated file imports (TS2792) on TypeScript 5; TypeScript 6 deprecates it (TS5107) and 7 removes it (TS5108), and both stop before checking anything.
+- `duplicate-define` says what happens at runtime: `define()` skips a tag that is already registered, so the class whose `define()` runs first wins and the other is dropped without an error.
+- `ts-dom check` reports TS2717 in a generated `ts-dom-tags.ts` (one tag declared with different classes by two tag maps in one program, for example a folder scanned separately or a package) as `duplicate-define` with a rename fix, instead of asking to run `ts-dom gen`.
+- The `item-not-in-tag-map` fix also names a tsconfig `include` or `exclude` that leaves `ts-dom-tags.ts` out of the program.
+- `ts-dom check` keeps the `tsc` errors in other files that follow from a component's contract error (for example appending the broken component: `'HelloCard' is not assignable to ... 'string | Node'`), and each says which error it follows from and where. In the component's own file they are still left out.
+- `ts-dom doctor` detects `.oxlintrc.jsonc` and `oxlint.config.ts` for `oxlint-plugin-missing`, and every Prettier config file (`.prettierrc.yaml`, `.yml`, `.json5`, `.toml`, `.prettierrc.*js`/`*ts`, `prettier.config.*`), the `prettier` key in package.json and `oxfmt.config.*` for `formatter-whitespace`.
+- In a package of a workspace, `ts-dom doctor` reads the `.gitignore` files and the installed Skill copies of the folders up to the workspace root (the nearest folder with a package.json `workspaces` field or a `pnpm-workspace.yaml`, else the git root), so `typecheck-before-gen` sees a root `.gitignore` and `skill-available` is not repeated for Skills installed at the root.
+- `ts-dom rules` no longer says that `no-importer` can be enabled as `ts-dom/no-importer`: the oxlint plugin sees one file at a time and cannot tell that no file imports a template, so only `ts-dom lint` reports it.
 
 ## 0.5.5
 
