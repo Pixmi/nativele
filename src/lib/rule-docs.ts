@@ -594,6 +594,14 @@ npx ts-dom check`,
     bad: `import tpl from "./card.html";`,
     good: `import tpl from "./card.html.js";`,
   },
+  "typecheck-before-gen": {
+    why: "The generated *.html.ts files are not committed. A script that runs tsc (or vue-tsc, svelte-check, ng build) before ts-dom gen works on a machine that has generated them once, and fails on a clean checkout or in CI with TS2307 for every ./x.html.js import.",
+    bad: `// package.json, with *.html.ts in .gitignore
+"build": "tsc && vite build"`,
+    good: `"build": "ts-dom gen src && tsc && vite build"
+// or, with plain tsc, let check generate and type-check in one step:
+"typecheck": "ts-dom check src"`,
+  },
   "vite-plugin-missing": {
     why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand.",
     bad: `// vite.config.ts

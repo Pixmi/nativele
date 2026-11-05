@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { listHtml, listTs, scanDefines, staleGenerated } from "./codegen.ts";
@@ -16,6 +16,7 @@ export const DOCTOR_RULES = {
   "runtime-not-installed": "the runtime package the generated files import cannot be resolved",
   "template-import-without-js": "a template is imported as ./x.html instead of ./x.html.js",
   "stale-generated": "a generated file is missing, outdated or orphaned",
+  "typecheck-before-gen": "a package.json script type-checks before ts-dom gen while *.html.ts is git-ignored, so it fails on a clean checkout",
   "vite-plugin-missing": "the Vite config does not use the ts-dom plugin, so templates are not regenerated while the dev server runs",
   "oxlint-plugin-missing": "the lint config does not load the ts-dom oxlint plugin, so the template rules do not run in the editor",
   "formatter-whitespace": "a formatter is set up while templates keep their whitespace, so reformatting can change the rendered spacing",
@@ -54,7 +55,23 @@ function covers(pattern: string, dir: string): boolean {
   return d === prefix;
 }
 
-const templateFolders = (dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
+const TYPECHECK = /(?:^|\s)(?:npx\s+)?(tsc|vue-tsc|svelte-check|ng\s+(?:build|serve|test))(?=\s|$)/;
+const TSC_PROJECT = /(?:^|\s)(?:npx\s+)?(?:vue-)?tsc(?:\s.*?)?\s(?:-p|--project)[\s=]+(\S+)/;
+const GENERATES = /(?:^|\s)ts-dom\s+(?:gen|check)(?=\s|$)/;
+const RUN_SCRIPT = /^(?:npm\s+run(?:-script)?|pnpm(?:\s+run)?|yarn(?:\s+run)?|bun\s+run)\s+([\w:.-]+)/;
+
+/** The commands a script runs in order, with its pre and post scripts and the scripts it runs through npm run (or pnpm, yarn, bun) spelled out. */
+function scriptSteps(scripts: Record<string, string>, name: string, depth = 0): string[] {
+  const command = scripts[name];
+  if (depth > 5 || command === undefined) return [];
+  const own = command.split(/&&|;/).flatMap((step) => {
+    const ref = RUN_SCRIPT.exec(step.trim())?.[1];
+    return ref && scripts[ref] !== undefined ? scriptSteps(scripts, ref, depth + 1) : [step.trim()];
+  });
+  return [...scriptSteps(scripts, `pre${name}`, depth + 1), ...own, ...scriptSteps(scripts, `post${name}`, depth + 1)];
+}
+
+const templateFolders =(dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
 const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
 
 /** Check the project set-up an agent or a developer could get wrong; every issue names its rule and ends with a Fix hint. */
@@ -145,6 +162,30 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   const pkg = pkgText ? (JSON.parse(pkgText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> }) : {};
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const scripts = Object.values(pkg.scripts ?? {});
+
+  const ignoresGenerated = (readText(join(cwd, ".gitignore")) ?? "").split("\n").some((l) => !l.trim().startsWith("!") && /\*\.html\.ts\s*$/.test(l));
+  if (ignoresGenerated && dirs.some(hasTemplates)) {
+    const all = pkg.scripts ?? {};
+    const checksTemplates = (step: string) => {
+      const project = TSC_PROJECT.exec(step)?.[1];
+      if (!project && !/(?:^|\s)(?:npx\s+)?(?:vue-)?tsc(?=\s|$)/.test(step)) return true;
+      const config = resolve(cwd, project ?? "tsconfig.json");
+      const configs = projectConfigs(cwd, existsSync(config) && statSync(config).isDirectory() ? join(config, "tsconfig.json") : config);
+      return !configs.length || configs.some((c) => {
+        const include = readTsConfig(c).include;
+        return !include || targets.some((t) => include.some((p) => covers(p, t)));
+      });
+    };
+    const dirArgs = options.dirs.join(" ");
+    for (const name of Object.keys(all)) {
+      if (/^(pre|post)./.test(name) && all[name.replace(/^(pre|post)/, "")] !== undefined) continue;
+      const step = scriptSteps(all, name).find((s) => GENERATES.test(s) || (TYPECHECK.test(s) && checksTemplates(s)));
+      if (step === undefined || GENERATES.test(step)) continue;
+      const tool = (TYPECHECK.exec(step) as RegExpExecArray)[1]?.replace(/\s+/g, " ");
+      const line = (pkgText as string).split("\n").findIndex((l) => l.includes(`${JSON.stringify(name)}:`)) + 1;
+      add("typecheck-before-gen", "warning", `The script "${name}" runs ${tool} before any ts-dom gen, and .gitignore leaves out *.html.ts, so on a clean checkout ${tool} fails with TS2307 (cannot find module './x.html.js'). Fix: put "ts-dom gen ${dirArgs} && " in front of it, or use "ts-dom check ${dirArgs}" as the type check when the project uses plain tsc.`, { file: "package.json", ...(line ? { line } : {}) });
+    }
+  }
   const ignoredHtml = /(^|\n)\s*(\*\*\/)?\*\.html\s*($|\n)/.test(readText(join(cwd, ".prettierignore")) ?? "");
   const formatter =
     [".oxfmtrc.json", ".oxfmtrc.jsonc"].some((n) => existsSync(join(cwd, n))) ||

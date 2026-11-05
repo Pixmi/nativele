@@ -150,3 +150,30 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
     expect(runDoctor({ dirs: ["app"], cwd }).map((i) => i.rule)).toContain("dir-not-found");
   });
 });
+
+describe("ts-dom doctor: a type check that runs before gen", () => {
+  const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } }, "include": ["src"] }`, "src/x.html": "<p></p>", ".gitignore": "node_modules\n*.html.ts\n" };
+  const scripts = (s: Record<string, string>, extra: Record<string, string> = {}) => project({ ...base, ...extra, "package.json": JSON.stringify({ scripts: s }, null, 2) });
+  const flagged = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule === "typecheck-before-gen");
+
+  it("reports tsc, vue-tsc, svelte-check and ng build in a script, or its pre script, before ts-dom gen", () => {
+    const cwd = scripts({ build: "tsc && vite build", dev: "vite", typecheck: "vue-tsc --noEmit", check: "svelte-check", "build:ng": "ng build", pretest: "tsc --noEmit", test: "vitest" });
+    const issues = flagged(cwd);
+    expect(issues.map((i) => i.message.match(/script "([^"]+)"/)?.[1]).sort()).toEqual(["build", "build:ng", "check", "test", "typecheck"]);
+    expect(issues.find((i) => i.message.includes('"build"'))).toMatchObject({ severity: "warning", file: "package.json", line: 3 });
+    expect(issues[0]?.message).toMatch(/TS2307.* Fix: put "ts-dom gen src && " in front of it, or use "ts-dom check src"/);
+  });
+
+  it("a gen first in the chain, through npm run or a pre script, or ts-dom check, is fine", () => {
+    const cwd = scripts({ gen: "ts-dom gen src", build: "npm run gen && tsc && vite build", pretypecheck: "npx ts-dom gen src", typecheck: "tsc --noEmit", check: "ts-dom check src" });
+    expect(flagged(cwd)).toEqual([]);
+  });
+
+  it("is quiet when *.html.ts is committed, or when tsc -p names a config that covers no scanned folder", () => {
+    expect(flagged(scripts({ build: "tsc" }, { ".gitignore": "node_modules\n" }))).toEqual([]);
+    const node = scripts({ build: "tsc -p tsconfig.node.json && ts-dom gen src && tsc" }, { "tsconfig.node.json": `{ "include": ["vite.config.ts"] }` });
+    expect(flagged(node)).toEqual([]);
+    const app = scripts({ build: "tsc -p tsconfig.app.json && vite build" }, { "tsconfig.app.json": `{ "include": ["src"] }` });
+    expect(flagged(app)).toHaveLength(1);
+  });
+});
