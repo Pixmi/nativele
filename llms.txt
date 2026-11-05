@@ -106,5 +106,5 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 
 ## Docs
 - [README](README.md): introduction, the short version, rules for agents, quick start. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.
-- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [recipes](docs/recipes.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md).
+- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [recipes](docs/recipes.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md). The same guides are in the installed package under `node_modules/@nativele/ts-dom/docs/`.
 - `npx ts-dom rules`: every rule id with a description.

@@ -3,8 +3,8 @@ name: nativele-zod
 description: "Validate a form inside a Nativele component with Zod 4 (or Valibot 1): read the values on submit and on blur, safeParse, map issue paths (also nested and array fields) to per-field messages in state shown with data-if, set aria-invalid and aria-describedby, focus the first invalid field, and emit the parsed data typed with z.infer. Use when a project depends on zod or valibot and @nativele/ts-dom."
 metadata:
   tier: experimental
-  nativele: ">=0.5.2 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "zod@4.6.7 valibot@1.5.0 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "zod valibot"
@@ -23,14 +23,14 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.2 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | zod | 4.6.7 (the procedure was also run with 3.25.76, with the schema changes in limitation 10) |
 | valibot | 1.5.0 (limitation 11) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-05 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build, in a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`). These steps use Zod 4.6.7; Zod 3.25.76 and Valibot 1.5.0 need only the schema changes in Known limitations 10 and 11. With any other major version of Zod or Valibot, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build, in a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`). These steps use Zod 4.6.7; Zod 3.25.76 and Valibot 1.5.0 need only the schema changes in Known limitations 10 and 11. With any other major version of Zod or Valibot, treat every step as unverified.
 
 ## Set-up
 

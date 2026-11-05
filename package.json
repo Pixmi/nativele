@@ -1,6 +1,6 @@
 {
   "name": "@nativele/ts-dom",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML. A lightweight library for building web components: typed templates, native custom elements, no virtual DOM, no template expressions, no bundler required.",
   "keywords": [
     "html",
@@ -49,6 +49,7 @@
     "README.md",
     "README.zh-TW.md",
     "llms.txt",
+    "docs/*.md",
     "skills/README.md",
     "skills/*/SKILL.md",
     "LICENSE",

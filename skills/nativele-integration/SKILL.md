@@ -3,8 +3,8 @@ name: nativele-integration
 description: "Use Nativele web components inside an app built with a UI framework that has no Nativele Skill of its own (Preact, Solid, Lit, ...; React, Vue, Svelte and Angular have their own): defining before render, props as properties, listening to events, children and slots, lifecycle, and template types. Use when a project depends on @nativele/ts-dom and on such a framework."
 metadata:
   tier: official
-  nativele: ">=0.5.1 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "preact@11.1.1 vite@8.3.6 @preact/preset-vite@2.10.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "preact solid-js"
@@ -25,13 +25,13 @@ Nativele components are native custom elements. The framework renders their tags
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.1 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | preact | 11.1.1 |
 | vite | 8.3.6 |
 | @preact/preset-vite | 2.10.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template, with the example project in the Nativele repository (`skills/nativele-integration/example`). The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
+Verified on 2026-11-06 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template, with the example project in the Nativele repository (`skills/nativele-integration/example`). The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
 
 ## Set-up
 

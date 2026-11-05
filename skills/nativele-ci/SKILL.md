@@ -3,8 +3,8 @@ name: nativele-ci
 description: "Make a project's existing CI check the Nativele parts reliably (@nativele/ts-dom): generate before any type check, which ts-dom commands and flags give a trustworthy pass or fail, machine-readable output, committed or git-ignored generated files, keeping a check-only job from writing, caching, and what real-browser tests need. Use when CI is added or changed in a project that depends on @nativele/ts-dom, or when CI fails with TS2307 on ./x.html.js or passes although the templates are wrong."
 metadata:
   tier: official
-  nativele: ">=0.5.5 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "typescript@7.0.2 npm@11.19.1 pnpm@12.16.1"
   author: "Nativele maintainers"
   detects: "typescript"
@@ -24,14 +24,14 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.5 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | typescript | 7.0.2 |
 | Node.js | 24.22.2 |
 | npm | 11.19.1 (`npm ci`) |
 | pnpm | 12.16.1 (`pnpm install`, `pnpm exec ts-dom`) |
 | Google Chrome | 148.0.7778.178 (headless; only the `moveBefore` check) |
 
-Verified on 2026-11-05 on Linux with fresh `git clone`s of a project built from the packed library (generated files git-ignored, and a variant with them committed), running every command below with `CI=true`, no terminal (`setsid -w`, stdin from `/dev/null`), and with deliberate errors. No CI provider was run: the steps are shell commands, which every provider runs as they are. With another major version of `@nativele/ts-dom`, treat every exit code below as unverified.
+Verified on 2026-11-06 on Linux with fresh `git clone`s of a project built from the packed library (generated files git-ignored, and a variant with them committed), running every command below with `CI=true`, no terminal (`setsid -w`, stdin from `/dev/null`), and with deliberate errors. No CI provider was run: the steps are shell commands, which every provider runs as they are. With another major version of `@nativele/ts-dom`, treat every exit code below as unverified.
 
 ## Set-up
 

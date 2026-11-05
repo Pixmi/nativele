@@ -3,8 +3,8 @@ name: nativele-linting
 description: "Bring the Nativele (@nativele/ts-dom) template lint rules into a project's existing linter (oxlint, Vite+ vp lint, or ESLint flat config) without replacing it: which rules exist and where they run (ts-dom lint, ts-dom check, the ts-dom JS plugin), choosing groups, single rule ids, severities and ignore lists, and keeping generated files and test folders out. Use when a project with @nativele/ts-dom has oxlint or eslint, when ts-dom doctor reports oxlint-plugin-missing, or when a ts-dom lint finding needs a decision."
 metadata:
   tier: official
-  nativele: ">=0.5.5 <0.6.0"
-  verified: "2026-11-05"
+  nativele: ">=0.6.0 <0.7.0"
+  verified: "2026-11-06"
   tools: "oxlint@1.91.0 vite-plus@1.5.0 eslint@10.14.0 eslint@9.39.4 typescript-eslint@8.72.1 typescript@7.0.2 typescript@6.0.3"
   author: "Nativele maintainers"
   detects: "oxlint eslint"
@@ -23,14 +23,14 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.5.5 (the last agent trial) |
+| @nativele/ts-dom | 0.6.0 (the last agent trial) |
 | oxlint | 1.91.0 (`.oxlintrc.json`) |
 | vite-plus | 1.5.0 (`vp lint`, which runs oxlint 1.91.0, with the `lint` block in `vite.config.ts`) |
 | eslint | 10.14.0 and 9.39.4 (flat config `eslint.config.js`) |
 | typescript-eslint | 8.72.1 (the parser for `.ts` files in ESLint; it requires `typescript` below 6.1, so the ESLint projects used 6.0.3) |
 | typescript | 7.0.2 (oxlint and Vite+ projects), 6.0.3 (ESLint projects) |
 
-Verified on 2026-11-05 in fresh projects built from the packed library, with a fixture that has an unused `data-ref`, a template no file imports, an `<img>` without `alt`, a misspelled child prop, a missing handler and a test-only component. With a different major version of oxlint or ESLint, or a legacy `.eslintrc*` config, treat every step as unverified.
+Verified on 2026-11-06 in fresh projects built from the packed library, with a fixture that has an unused `data-ref`, a template no file imports, an `<img>` without `alt`, a misspelled child prop, a missing handler and a test-only component. With a different major version of oxlint or ESLint, or a legacy `.eslintrc*` config, treat every step as unverified.
 
 ## Set-up
 
