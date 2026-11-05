@@ -66,6 +66,18 @@ Rules for the content:
 - No promises beyond the verified versions.
 - English, plain and concrete; no restating of `docs/`.
 
+## How Skills work together
+
+Skills are cut by task intent or technical area (building components, Vue, testing, TypeScript, linting), never by a workflow that strings tools together. Each one owns its area, and several of them meet in one project with no Skill in charge of the others. These rules make that work:
+
+1. **Single responsibility.** A Skill covers its own area and does not take over another tool's configuration. When its task needs a change in another area, it states the requirement (for example "the tsconfig that covers the components needs `strict`") and leaves the how to the Skill or the documentation that owns that area.
+2. **Non-destructive configuration.** Before changing a configuration file, read what is there and keep the user's choices. Add or adjust only what the task needs; do not replace a tool, reformat a file or rewrite a configuration unless the task asks for it.
+3. **Context-aware.** Look at what the project already has (installed tools, configuration files, scripts, the runtime and package manager) and act on that. A Skill never assumes a starter project's defaults, and its steps say what to check before what to change.
+4. **Explicit ownership.** Every configuration file, or block in a shared file, has one owning area: `tsconfig*.json` belongs to TypeScript, lint configuration to linting, formatter configuration to formatting, `vite.config.*` to the build. A Skill that must touch a block it does not own follows the rules of the owning Skill or of `docs/` instead of defining its own.
+5. **Composable.** A Skill may point to another Skill or to a guide, but does not copy its knowledge, and never requires a fixed set of Skills to be installed. Each Skill works alone; another Skill only adds to it.
+
+When two Skills disagree about one setting, the Skill that owns the setting decides, and the other is fixed to point to it.
+
 ## Tiers
 
 | Tier | Who maintains it | Requirements | Shown by `ts-dom skills` |
@@ -156,4 +168,9 @@ trial:
 | `nativele-zod` | Experimental | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
 | `nativele-tailwind` | Experimental | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
 | `nativele-architecture` | Official | available | app layout: feature folders, shared components and stores, pages as custom elements mounted by a router (Navigation API or universal-router), lazy pages, one scanned folder, unit/browser/end-to-end split |
+| `nativele-typescript` | Official | available | the tsconfig covering the components: what Nativele needs and why, stricter options and layouts, the generated files in the type check, framework type checkers |
+| `nativele-linting` | Official | available | the Nativele lint rules in an existing oxlint, Vite+ or ESLint set-up: groups, single rule ids, severities, ignore lists, generated files and test folders |
+| `nativele-formatting` | Official | available | oxfmt, Prettier or `vp fmt` with templates: the whitespace mode, spaces lost to a reformat, keeping the formatter off the generated files |
+| `nativele-ci` | Official | available | the Nativele steps in an existing CI: generating before the type check, committed or git-ignored generated files, exit codes and JSON output, the browser for real-browser tests |
+| `nativele-monorepo` | Official | available | Nativele across the packages of a workspace: a component package and its tag map, where each package generates and checks, dependencies, build order |
 | Other libraries | Experimental or Community | open for contributions | |

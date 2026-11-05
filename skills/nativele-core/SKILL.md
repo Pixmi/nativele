@@ -30,9 +30,9 @@ Verified on 2026-11-05 by agent trials: fresh agents built real components with 
 
 ## Set-up
 
-1. `npm i @nativele/ts-dom` and `npm i -D typescript`, and set `"type": "module"` in `package.json` (with or without a bundler).
+1. `npm i @nativele/ts-dom` and `npm i -D typescript`.
 2. Put the components under `src/`, the folder every `ts-dom` command scans by default; for another folder, pass it to each command (`npx ts-dom check web/ui`).
-3. `tsconfig.json` with `"strict": true`, `"lib"` including `"DOM"`, and `"moduleResolution"` `"NodeNext"` or `"bundler"`; its `include` must cover the folders with templates. A complete one for the no-bundler case is in the setup guide: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup
+3. The tsconfig must cover the folders with templates and meet Nativele's few requirements (`strict`, `DOM`, a resolution that finds packages, and `"type": "module"` when `tsc` emits): check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`). A complete one for the no-bundler case is in the setup guide: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup
 4. With Vite, add `tsDom()` from `@nativele/ts-dom/vite` to `plugins`. Without a bundler, `ts-dom gen` plus `tsc` compiles the code, and the page needs an import map for `@nativele/ts-dom` plus a `<script type="module">` for the compiled entry, a module that imports the top-level components: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#running-in-the-browser-no-bundler
 5. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`: they are generated.
 6. Run `npx ts-dom doctor` once; fix every error and warning it reports. Its `info` lines name the other Skills that fit the project.
@@ -120,7 +120,7 @@ define("todo-app", TodoApp);
 ## The loop
 
 1. Write the `.html` and the `.ts` of a component together. Import the template as `./x.html.js`.
-2. Run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files, runs `tsc`, points template contract errors at the template line and column, and runs the lint rules. Use `--no-write` where the working tree must not change.
+2. Run `npx ts-dom check` (add `--json` to read the result as data). It regenerates the generated files, runs `tsc`, points template contract errors at the template line and column, and runs the lint rules. Use `--no-write` only where the generated files are committed; CI steps are covered by `npx ts-dom skills nativele-ci`.
 3. Fix every issue by its `Fix:` hint. Never cast a type error away, and never edit `x.html.ts` or `ts-dom-tags.ts`: they are generated.
 4. `npx ts-dom rules --explain=<id>` explains any rule id from a diagnostic, with a wrong and a right example.
 5. Repeat until `ts-dom check` prints `no issues`.
@@ -128,7 +128,7 @@ define("todo-app", TodoApp);
 ## Rules
 
 - No expressions in HTML: `{{ name }}` is a single identifier. Compute in `derive` (or in TypeScript) and fill a named hole.
-- Change state only with `this.set()`. Rendering is synchronous; `this.batch()` combines updates.
+- Read state and props in methods as `this.state.x` and `this.props.x` (in `render`, from its `view`); change state only with `this.set()`. Rendering is synchronous; `this.batch()` combines updates.
 - Once a component has `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a `<template data-each>` must name one of them (holes inside a plain-element list are filled by `replace`). Show store data by copying it into state in the `bind` callback.
 - `store.set` replaces the whole value; a component's `this.set` merges. Spread the rest yourself: `store.set((s) => ({ ...s, status: "loading" }))`.
 - Lists, attributes and focus go in `render(view, changed)`. `changed` holds the state, prop and derived names that changed; annotate it with the names you check (`changed: ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`.
@@ -160,13 +160,13 @@ Then exercise the changed component in a real browser (the project's own test ru
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ReferenceError: exports is not defined` in the browser | `package.json` has no `"type": "module"`, so `tsc` emitted CommonJS | set `"type": "module"`, delete the output folder, run `tsc` again |
+| `ReferenceError: exports is not defined` in the browser | `package.json` has no `"type": "module"`, so `tsc` emitted CommonJS | set `"type": "module"` (`nativele-typescript`), delete the output folder, run `tsc` again |
 | `Failed to resolve module specifier "@nativele/ts-dom"` | no bundler and no import map | add the import map from the setup guide before the module script |
 | `Cannot find module './x.html.js'` | the generated file is missing | run `npx ts-dom check` (or `ts-dom gen`) |
 | `missing-binding` at a template line | a hole or `data-if` name that state, props and derive do not have | add the field, or rename the hole |
 | A list stays empty | `render` never assigns it, or guards it with a name that is not in `changed` | assign `this.lists.x.items` in `render`, guarded by the name of what it shows |
 | A child component does not update | an object prop was changed in place | pass a new object |
-| No types in a parent's `refs.child` | the child class is not exported, or is defined outside the scanned folders | `export class`, and keep it in a folder `ts-dom gen` scans |
+| No types in a parent's `refs.child` | the child class is not exported, or is defined outside the scanned folders | `export class`, and keep it in a folder `ts-dom gen` scans; a component from another workspace package comes from that package's exports (`nativele-monorepo`) |
 
 ## See also
 
@@ -175,3 +175,4 @@ Then exercise the changed component in a real browser (the project's own test ru
 - Lists: https://github.com/Pixmi/nativele/blob/main/docs/lists.md
 - Recipes (loading states, dialogs, forms, store data): https://github.com/Pixmi/nativele/blob/main/docs/recipes.md
 - Setup, checks and lint: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig, lint, formatter, CI and workspace set-up: `npx ts-dom skills nativele-typescript`, `nativele-linting`, `nativele-formatting`, `nativele-ci`, `nativele-monorepo`

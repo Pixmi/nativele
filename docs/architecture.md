@@ -34,7 +34,7 @@ e2e/
 - **`app/`** is the only code that knows every feature: the router's route table, the shell (`app-nav`), and stores that belong to the app itself, such as the current path.
 - **Imports go one way**: `app` → `features` → `shared`. A feature does not import another feature; when two features need the same component or store, move it to `shared/`. Kept this way, a feature's page modules pull in only that feature and `shared/`: in the example, opening the settings page loads the main chunk and the settings page's chunk, nothing of the projects feature.
 - **A template uses another component by its tag**, in any of these folders. `ts-dom gen` adds the import of the module that defines the tag to the generated `x.html.ts` (`import "../../shared/text-entry.js"` in `project-page.html.ts`), so a page module brings its components with it. This works across folders only inside one scanned folder (see [Generated files, checks and tsconfig](#generated-files-checks-and-tsconfig)).
-- **One registry**: every tag in the app shares one custom element registry. `ts-dom check` reports a tag defined twice in the scanned folders as `duplicate-define`. Names that say their feature (`project-card`, `task-row`) keep tags apart as the app grows.
+- **One registry**: every tag in the app shares one custom element registry. `ts-dom check` reports a tag defined twice in the scanned folders as `duplicate-define`: the first `define()` to run wins and the other is skipped without an error. Names that say their feature (`project-card`, `task-row`) keep tags apart as the app grows.
 
 ## Pages and routing
 

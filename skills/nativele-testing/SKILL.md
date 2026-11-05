@@ -62,16 +62,16 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create
    });
    ```
 
-3. Keep the tests in `test/` and add it to `include` in `tsconfig.json` (`"include": ["src", "test"]`). Vitest does not type-check; `ts-dom check src/nv` runs the project's `tsc`, which then checks the tests too, and `ts-dom-tags.ts` types `document.createElement("counter-card")` as the component class, with its props.
+3. Keep the tests in `test/`, and make the tsconfig cover that folder too (`"include": ["src", "test"]` in the trial; the TypeScript Skill, `npx ts-dom skills nativele-typescript`, checks and adjusts it). Vitest does not type-check; `ts-dom check src/nv` runs the project's `tsc`, which then checks the tests too, and `ts-dom-tags.ts` types `document.createElement("counter-card")` as the component class, with its props.
 4. Add the scripts:
 
    ```sh
    npm pkg set scripts.test="vitest run --project unit"
    ```
 
-   `ts-dom check src/nv` is what reports type errors in the tests and the templates. In a project whose type check is plain `tsc`, the build script `ts-dom check src/nv && vite build` (as `nativele-vite` sets it up) runs it; in a framework project, whose build puts `ts-dom gen src/nv &&` in front of its own type check (`tsc -b`, `vue-tsc -b`, `svelte-check`), run `ts-dom check src/nv` before or after the tests.
+   `ts-dom check src/nv` is what reports type errors in the tests and the templates. In a project whose type check is plain `tsc`, the build script `ts-dom check src/nv && vite build` (as `nativele-vite` sets it up) runs it; in a framework project, whose build puts `ts-dom gen src/nv &&` in front of its own type check (`tsc -b`, `vue-tsc -b`, `svelte-check`), run `ts-dom check src/nv` before or after the tests. Where these steps go in CI is covered by `npx ts-dom skills nativele-ci`.
 
-5. For the real-browser tests, install the Vitest provider and Playwright, and add a second project. It drives the Chrome already installed on the machine (`CHROME_BIN`, or `/usr/bin/google-chrome`, which GitHub's `ubuntu-latest` runners have), so nothing is downloaded and `npx playwright install` is not needed:
+5. For the real-browser tests, install the Vitest provider and Playwright, and add a second project. It drives a Chromium-based browser already installed on the machine (`CHROME_BIN`, or `/usr/bin/google-chrome`), so nothing is downloaded and `npx playwright install` is not needed; a CI runner needs such a browser too (`nativele-ci`):
 
    ```sh
    npm i -D @vitest/browser-playwright@5.1.0 playwright@1.64.1
@@ -100,7 +100,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create
    },
    ```
 
-   `headless: true` keeps the run the same locally and in CI. The launch arguments suit containers, WSL and CI runners. Name only the tests that need a real browser `*.browser.test.ts` (limitation 1); everything else stays in happy-dom, which starts in a fraction of the time.
+   `headless: true` keeps the run the same locally and in CI. The launch arguments suit containers, WSL and CI runners; the CI job itself is covered by `nativele-ci`. Name only the tests that need a real browser `*.browser.test.ts` (limitation 1); everything else stays in happy-dom, which starts in a fraction of the time.
 
 6. Alternative, for tests of whole pages (the built app, every component on it, navigation): Playwright Test against `vite preview`, with the same Chrome:
 
@@ -125,7 +125,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create
    });
    ```
 
-   Add `e2e` to `include` in `tsconfig.json` so `ts-dom check` type-checks the specs, and `test-results` and `playwright-report` to `.gitignore`.
+   The tsconfig must cover `e2e` too, so `ts-dom check` type-checks the specs (`nativele-typescript`). Add `test-results` and `playwright-report` to `.gitignore`.
 
 ## Example
 
@@ -224,6 +224,8 @@ The steps every test follows:
 4. Assert at once. Rendering is synchronous: after `append`, a prop assignment, `setAttribute`, `el.click()` or `store.set()`, the DOM is already updated, and `emit` listeners have already run. For a form, set the input's `value`, then call `click()` on its submit button or `form.requestSubmit()`: both run the template's `data-on-submit` handler, in happy-dom too. The only waits are for slot changes made after connection (one microtask, below).
 5. Empty the document in `afterEach` (`document.body.replaceChildren()`): removing the elements runs `disconnected()` and ends their `bind`, `on` and `onCleanup` registrations.
 
+These tests compare `textContent` exactly. When the project formats its templates, the formatter's line breaks and indentation can become part of `textContent`, depending on the whitespace mode: the formatting Skill (`npx ts-dom skills nativele-formatting`) decides the mode and says how to assert on such text.
+
 Other parts of the API:
 
 ```ts
@@ -318,7 +320,7 @@ Playwright locators reach into open shadow roots, so `page.locator("shadow-panel
 2. **Import the module, not only the type.** `import type { CounterCard }` (or `import { type CounterCard }`) is erased, so `define()` never runs: `document.createElement("counter-card")` returns a plain element that never renders, and `tsc` still types it as `CounterCard` through `ts-dom-tags.ts`. The symptom is `expected undefined to be ...` or `Cannot read properties of null (reading 'click')`. Add `import "../src/nv/counter-card.ts"`. Child components used in a template are imported by its generated module, so importing the parent is enough.
 3. **One registry per test file.** Vitest runs each test file in a new environment by default (`isolate: true`), in happy-dom and in browser mode: each file starts with an empty document and an empty `customElements`. Inside a file, the document and the registry are shared by all its tests, so empty the document in `afterEach`. With `isolate: false` and the files run one after another in the same worker (`--no-isolate --no-file-parallelism`), they share both: the document keeps the previous file's elements, and a direct `customElements.define()` of a name already defined throws.
 4. **A tag cannot be redefined.** `define()` with a name that is already defined does nothing and keeps the first class; `customElements.define()` throws an error whose message says the name is already used or registered (in happy-dom, jsdom and Chrome). `vi.resetModules()` followed by a new `import()` creates a new class and new module-level stores, but the tag keeps running the first class, bound to the first store. Reset shared stores with `store.set(...)` in `beforeEach` instead, and give a component defined only for one test file a name no other module uses.
-5. **Do not add a `data-ref` only for a test.** `ts-dom check` reports a ref that the component class never reads as `unused-ref`, and access from a test does not count. Query the rendered DOM in the test (`el.querySelector("button")`, `el.shadowRoot.querySelector(...)`, `el.assignedNodes(name)`). The same applies to the oxlint rule: turn `ts-dom/unused-markup` off for test folders, as the setup guide says.
+5. **Do not add a `data-ref` only for a test.** `ts-dom check` reports a ref that the component class never reads as `unused-ref`, and access from a test does not count. Query the rendered DOM in the test (`el.querySelector("button")`, `el.shadowRoot.querySelector(...)`, `el.assignedNodes(name)`). The linter's `ts-dom/unused-markup` rule does the same; turning it off for test folders silences only templates that test files import themselves (`npx ts-dom skills nativele-linting`).
 6. **Text of a slotted heading in a Shadow DOM component.** `textContent` (and Playwright's `toHaveText` on the element inside the shadow root) reads the slot's fallback content, not the slotted nodes: in the example, `shadow-panel h2` has the text `Untitled` while it shows `Shadow`. Read the slot with `el.assignedNodes(name)`, or in Playwright use `getByRole("heading", { name: "Shadow" })`, which follows what is shown. A Light DOM component has the slotted nodes in place, so its text is what is shown.
 7. **Slot changes after connection are asynchronous.** Children added to a Light DOM component after it is connected are placed by a `MutationObserver`, and `slotchange(name)` runs then; for a Shadow DOM component, the native `slotchange` event fires at the same point. `await Promise.resolve()` once before asserting is enough in happy-dom, jsdom and Chrome. Children present when the element is appended are placed synchronously.
 8. **Typing custom events.** `addEventListener` types an unknown event name as `Event`, so `e.detail` is a `tsc` error (`TS2339`); cast with `EmitEvent<CounterCard, "count-change">`.
@@ -348,7 +350,7 @@ The same unit tests also pass under jsdom, as a third Vitest project with `"envi
 | `TS2339: Property 'label' does not exist on type 'HTMLElement'` on `document.createElement("counter-card")` | `tsc` ran without `ts-dom-tags.ts` (nothing generated it), or the component class is not exported | run `ts-dom check src/nv` instead of plain `tsc`; export the class |
 | `src/nv/x.html:1:1 error [unused-ref] data-ref="..." is never used by the component class` | a ref added for a test | query the DOM in the test and remove the ref (limitation 5) |
 | A test passes alone and fails with others in the same file, or sees elements from another test | the document is shared within a file | `afterEach(() => document.body.replaceChildren())`; reset module-level stores in `beforeEach` |
-| `Error: browserType.launch: Failed to launch chromium because executable doesn't exist at /usr/bin/google-chrome` | no Chrome at that path | set `CHROME_BIN` to the Chrome or Chromium binary |
+| `Error: browserType.launch: Failed to launch chromium because executable doesn't exist at /usr/bin/google-chrome` | no Chrome at that path | set `CHROME_BIN` to a Chrome or Chromium binary; on a CI runner, install one first (`nativele-ci`) |
 | `Error: browserType.launch: Executable doesn't exist at ~/.cache/ms-playwright/...` and `Looks like Playwright was just installed or updated` | `executablePath` is missing from `launchOptions`, so Playwright looks for its own downloaded browser | set `executablePath` as in step 5 |
 | DEPRECATED: `test.browser.api` was deprecated in Vitest 5. Use `test.api` instead. | the port is set where Vitest 4 had it | move `api` from `test.browser` to `test` of the browser project |
 | A test that moves list items passes in happy-dom and fails in Chrome (or the reverse) | happy-dom has no `moveBefore` | assert moves in a `*.browser.test.ts` (limitation 1) |
@@ -360,5 +362,9 @@ The same unit tests also pass under jsdom, as a third Vitest project with `"envi
 - Light DOM and Shadow DOM slots, `assignedNodes`, `slotchange`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#light-default-and-shadow
 - Stores and `bind`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
 - Lists, and what moving an item does with and without `moveBefore`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
-- The Vite plugin, `ts-dom check`, and lint in test folders: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The Vite plugin and `ts-dom check`: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- The ts-dom rules and test folders in the project's linter: https://github.com/Pixmi/nativele/blob/main/skills/nativele-linting/SKILL.md
+- Whitespace in `textContent` with a formatter: https://github.com/Pixmi/nativele/blob/main/skills/nativele-formatting/SKILL.md
+- CI and the browser on the runner: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
 - Setting up the Vite app first: `npx ts-dom skills nativele-vite`

@@ -322,7 +322,7 @@ A common problem in Vue is re-emitting layer by layer and passing props down lay
 | `invalid-prop-value` | The attribute cannot set that prop: the prop is not string / number / boolean (it can only be passed through JS properties) |
 | `unknown-event` | `data-on-xxx` is written on a child component's tag, but the child does not declare (`emits`) this event and it is not a native event either |
 
-The last three are **HTML-level props / emit checks**: `tsc` checks `refs.child.prop` and `emit()` in TypeScript, while these three rules check the child component attributes and events written in the **parent's HTML**. They read the child components from `define("tag", Class)` in the directories and extract the declarations from `Component(tpl, { props, emits })`; when no child component definition is found (for example a third-party component), nothing is checked.
+The last three are **HTML-level props / emit checks**: `tsc` checks `refs.child.prop` and `emit()` in TypeScript, while these three rules check the child component attributes and events written in the **parent's HTML**. They read the child components from `define("tag", Class)` in the directories and extract the declarations from `Component(tpl, { props, emits })`; when no child component definition is found (for example a third-party component), nothing is checked. When several folders define the same tag (separate apps or packages), the definition in the same package as the template (the nearest folder with a `package.json`) is used; when that still leaves none or more than one, the tag is not checked.
 
 
 Recommended practices:

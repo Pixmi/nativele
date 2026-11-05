@@ -35,7 +35,7 @@ Verified on 2026-11-05 in Google Chrome 148 against the Vite dev server, in an a
 
 ## Set-up
 
-Starting from a Vite app with Nativele already set up (`npx ts-dom skills nativele-vite`: `strict`, the `tsDom({ dirs: ["src/nv"] })` plugin, `"build": "ts-dom check src/nv && vite build"`):
+Starting from a Vite app with Nativele already set up (`npx ts-dom skills nativele-vite`: the `tsDom({ dirs: ["src/nv"] })` plugin, `"build": "ts-dom check src/nv && vite build"`, and a tsconfig that meets `nativele-typescript`):
 
 1. `npm i @tanstack/query-core`.
 2. Create one `QueryClient` for the whole app in its own module, call `mount()` once, and add the adapter next to it:

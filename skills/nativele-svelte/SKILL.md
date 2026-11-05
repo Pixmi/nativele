@@ -39,7 +39,7 @@ Verified on 2026-11-05 in Google Chrome 148, against the Vite dev server (so Sve
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`. Write them with the core Skill: `npx ts-dom skills add nativele-core`.
 2. Install: `npm i @nativele/ts-dom`.
-3. Leave the tsconfig as it is: Vite's Svelte template has `tsconfig.app.json` extend `@tsconfig/svelte`, which sets `"strict": true`, and its `include` already covers `src/nv`. If the project turned `strict` off, set it back in that file.
+3. The tsconfig that covers that folder must meet Nativele's requirements: in Vite's Svelte template, `tsconfig.app.json` extends `@tsconfig/svelte`, which sets `"strict": true`, and its `include` already covers `src/nv`, so nothing changes. In any other case, check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`).
 4. Add the Nativele Vite plugin before the Svelte plugin, pointing at that folder:
 
    ```ts
@@ -109,7 +109,7 @@ Verified on 2026-11-05 in Google Chrome 148, against the Vite dev server (so Sve
    export const badEvent: SvelteHTMLElements["info-card"] = { "onitem-select": (e) => e.detail.name };
    ```
 
-The generated files are not committed, so on a clean checkout the type check in `npm run check` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'`. Generate them first: `"check": "ts-dom gen src/nv && svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"` (the template's script with `ts-dom gen src/nv &&` in front). `npm run build` needs no change: the Vite plugin generates the files.
+The generated files are not committed, so on a clean checkout the type check in `npm run check` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Generate them first: `"check": "ts-dom gen src/nv && svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"` (the template's script with `ts-dom gen src/nv &&` in front). `npm run build` needs no change: the Vite plugin generates the files. CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
 
 ## Example
 
@@ -222,7 +222,7 @@ npm run check                # svelte-check plus tsc for vite.config.ts; expect:
 npm run build                # expect: built
 ```
 
-When `npm run check` is not run in a terminal (an agent, CI), `svelte-check` prints `COMPLETED ... 0 ERRORS 0 WARNINGS ...` instead. Delete `src/nativele-svelte.d.ts` once to see the check work: `svelte-check` must then report `Unused '@ts-expect-error' directive` in `src/types-check.ts`.
+When `npm run check` is not run in a terminal (an agent, CI; the CI steps are in `nativele-ci`), `svelte-check` prints `COMPLETED ... 0 ERRORS 0 WARNINGS ...` instead. Delete `src/nativele-svelte.d.ts` once to see the check work: `svelte-check` must then report `Unused '@ts-expect-error' directive` in `src/types-check.ts`.
 
 In the browser, against the dev server (production builds drop Svelte's warnings), render a component with an object prop and an event attribute, and check:
 
@@ -234,7 +234,7 @@ In the browser, against the dev server (production builds drop Svelte's warnings
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `svelte-check` reports `Cannot find module './x.html.js'` on a clean checkout | it runs before the generated files exist | start the `check` script with `ts-dom gen src/nv &&` |
+| `svelte-check` reports `Cannot find module './x.html.js'` on a clean checkout | it runs before the generated files exist | start the `check` script with `ts-dom gen src/nv &&`; for CI, `nativele-ci` |
 | The event handler never runs | the attribute is camelCased (`onItemSelect`), or it is on an ancestor | use `on` plus the exact event name (`onitem-select`) on the element that emits |
 | `svelte-check`: `'"on:item-select"' does not exist in type 'NativeleElementProps<...>'` | the legacy `on:` directive, which the declaration does not type | use the event attribute `onitem-select` |
 | `Mixing old (on:item-select) and new syntaxes for event handling is not allowed` | `on:` and event attributes in the same component | use only event attributes |
@@ -252,4 +252,6 @@ In the browser, against the dev server (production builds drop Svelte's warnings
 - Slots, Light DOM and Shadow DOM: https://github.com/Pixmi/nativele/blob/main/docs/components.md#light-default-and-shadow
 - Stores and `bind`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
 - Setup and checks: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig and `svelte-check`'s TypeScript version: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
 - The framework-neutral rules: `npx ts-dom skills nativele-integration`

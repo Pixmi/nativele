@@ -56,7 +56,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
 
 2. **Scan one folder, `src`, everywhere.** In `vite.config.ts`, `tsDom({ dirs: ["src"] })`; in every script and command, `ts-dom check src` and `ts-dom doctor src`. One folder gives one `ts-dom-tags.ts` and one argument for every command (limitation 1). When the app used another folder before (`src/nv` from `nativele-vite`), delete the `ts-dom-tags.ts` left in it, and the folder itself once its components have moved (Troubleshooting).
 
-3. **Set `tsconfig.json`'s `include`** to `["src", "e2e"]`: `src` covers the app, the tests next to the code and `ts-dom-tags.ts`, and `e2e` the end-to-end specs, so `ts-dom check src` type-checks all of them. Keep `"strict": true` from `nativele-vite`.
+3. **The tsconfig must cover `src` and `e2e`**: `src` holds the app, the tests next to the code and `ts-dom-tags.ts`, and `e2e` the end-to-end specs, so `ts-dom check src` type-checks all of them (`"include": ["src", "e2e"]` in the trial). Check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`).
 
 4. **Put the shell and the outlet in `index.html`**, and start the router from `src/main.ts`:
 
@@ -167,7 +167,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, with the example proj
     npm pkg set scripts.verify="npm run build && ts-dom doctor src && npm test && npm run test:browser && npm run test:e2e"
     ```
 
-    The build script is for a project whose type check is plain `tsc`: `ts-dom check` generates the files and type-checks. In a framework project, keep the framework's type check (`tsc -b`, `vue-tsc -b`, `svelte-check`) and put `ts-dom gen src &&` in front of it instead (the framework's Skill shows the script). Add `test-results` and `playwright-report` to `.gitignore`, next to `*.html.ts` and `ts-dom-tags.ts`.
+    The build script is for a project whose type check is plain `tsc`: `ts-dom check` generates the files and type-checks. In a framework project, keep the framework's type check (`tsc -b`, `vue-tsc -b`, `svelte-check`) and put `ts-dom gen src &&` in front of it instead (the framework's Skill shows the script). Add `test-results` and `playwright-report` to `.gitignore`, next to `*.html.ts` and `ts-dom-tags.ts`. CI runs these scripts from a clean checkout; what its job needs beyond them (dev dependencies, a Chromium-based browser for the browser and end-to-end tests) is in `npx ts-dom skills nativele-ci`.
 
 ## Example
 
@@ -373,7 +373,7 @@ define("project-page", ProjectPage);
 
 `preferences` is the app-wide store (`createStore<Preferences>({ userName: "", showDone: true })` in `src/shared/stores/preferences.ts`), written by the settings page and read by the shell and this page. `text-entry` and `progress-meter` come from `src/shared/`; `task-row` is this feature's own item component. The page's template uses their tags, and the generated `project-page.html.ts` imports all three.
 
-The configuration (the browser project and the Playwright config follow `nativele-testing`, with this project's ports):
+The configuration (the browser project and the Playwright config follow `nativele-testing`, with this project's ports; `CHROME_BIN` points them at a Chromium-based browser installed elsewhere, which a CI runner needs too, see `nativele-ci`):
 
 ```ts
 // vite.config.ts
@@ -484,14 +484,14 @@ test("each page module is loaded only when its route is first shown", async ({ p
 
 ## Known limitations
 
-1. **Scan one folder.** Several folders work too (`dirs: ["src/shared", "src/features"]`): a template imports a child defined in any scanned folder, and a tag defined in two of them is `duplicate-define`. But every folder then needs to be named in `tsDom({ dirs })`, `ts-dom check`, `ts-dom doctor` and the tsconfig `include` alike, and a folder left out of one of them is silently not generated or not checked there. One folder, `src`, avoids that. A component outside every scanned folder is not imported automatically: import its module where it is used.
+1. **Scan one folder.** Several folders work too (`dirs: ["src/shared", "src/features"]`): a template imports a child defined in any scanned folder, and a tag defined in two of them is `duplicate-define`. But every folder then needs to be named in `tsDom({ dirs })`, `ts-dom check`, `ts-dom doctor` and the tsconfig `include` (`nativele-typescript`) alike, and a folder left out of one of them is silently not generated or not checked there. One folder, `src`, avoids that. A component outside every scanned folder is not imported automatically: import its module where it is used. A component from another package of a workspace is imported from that package, which exports its tag map; it is not scanned (`npx ts-dom skills nativele-monorepo`).
 2. **Browser support.** The router needs `URLPattern`: without it the app stops at start-up with `URLPattern is not defined`. Without the Navigation API, `startRouter` attaches nothing, every link loads a new document, and the router renders the route at start-up (verified in Chrome with `navigation` removed). Only Chrome 148 was verified; check your target browsers, or use a History API router (step 5).
 3. **Keep the abort check.** Without `if (signal?.aborted) return;` after the import, a page module that loads slowly mounts over the page of a later navigation, and the address bar and the page disagree. To prove the check in a test, delay one page's chunk and navigate twice: the second page must stay.
 4. **Every app path must return `index.html`.** Deep links and reloads (and every link, without the Navigation API) ask the server for the page's path. `vite dev` and `vite preview` answer with `index.html`; a production server must be set up the same way (not verified here).
 5. **A page is a new element on every navigation.** Its `state` starts over, also on back and forward, and also between `/projects/p1` and `/projects/p2`. Keep what must survive in a store.
 6. **Feature stores live as long as the document.** A store created in a lazily loaded module is created on the first visit to the feature and kept until a reload; reset it in tests with `store.set(seed())` in `beforeEach`.
 7. **happy-dom has no Navigation API and no `moveBefore`.** A test that uses `navigation` fails there with `ReferenceError: navigation is not defined`, and a reordered list item runs `disconnected()` and loses focus where Chrome keeps both. Put them in `*.browser.test.ts`; the route table can still be tested in happy-dom through `show()`.
-8. Not verified: routers other than the two in step 5, nested routes and layouts, route guards, query strings and hashes as props (the `URLPattern` here matches the path only), scroll restoration and focus after a navigation, server-side rendering, browsers other than Chrome, production servers, and oxlint with tests next to the components (the `ts-dom/unused-markup` rule counts only the component's own class, see `nativele-testing`).
+8. Not verified: routers other than the two in step 5, nested routes and layouts, route guards, query strings and hashes as props (the `URLPattern` here matches the path only), scroll restoration and focus after a navigation, server-side rendering, browsers other than Chrome, production servers, and a linter with tests next to the components (the `ts-dom/unused-markup` rule counts only the component's own class; how test files are configured in the linter is in `nativele-linting`).
 
 ## Verify
 
@@ -505,7 +505,7 @@ npm run test:browser       # expect: every src/**/*.browser.test.ts passes in he
 npm run test:e2e           # expect: every e2e spec passes against vite preview on the built app
 ```
 
-From a clean checkout with nothing generated, the output of these commands for the project tracker (the `info` lines left out):
+From a clean checkout with nothing generated, as CI runs them (the job itself is covered by `nativele-ci`), the output of these commands for the project tracker (the `info` lines left out):
 
 ```
 ts-dom check: no issues
@@ -530,7 +530,7 @@ The end-to-end tests cover: a deep link, links without a new document and a stor
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A shared component's tag stays empty on a page, with no error from `check`, `doctor`, `lint` or the build | the component is defined outside every scanned folder, so the generated module does not import it | scan the folder that holds it (`tsDom({ dirs: ["src"] })`, `ts-dom check src`), or import the component's module yourself |
+| A shared component's tag stays empty on a page, with no error from `check`, `doctor`, `lint` or the build | the component is defined outside every scanned folder, so the generated module does not import it | scan the folder that holds it (`tsDom({ dirs: ["src"] })`, `ts-dom check src`), or import the component's module yourself; from another workspace package, import that package (`nativele-monorepo`) |
 | `TS2307: Cannot find module './x.js'` in `src/nv/ts-dom-tags.ts` after moving components | a `ts-dom-tags.ts` left in the folder that was scanned before | delete it, and the old folder once it is empty; only `src/ts-dom-tags.ts` is generated now |
 | `[duplicate-define] the tag <x> is defined more than once` after merging folders into one scan | two features define the same tag | rename one; tags share one registry |
 | The page of an earlier link appears after a later one, and the address bar shows the later URL | the abort check after the import is missing | `if (signal?.aborted) return;` after `await` in `show()` |
@@ -549,3 +549,6 @@ The end-to-end tests cover: a deep link, links without a new document and a stor
 - Setting up Vite: `npx ts-dom skills nativele-vite`
 - State libraries through `bind`: `npx ts-dom skills nativele-state-management`
 - Writing the tests: `npx ts-dom skills nativele-testing`
+- The tsconfig: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
+- Components shared between packages of a workspace: https://github.com/Pixmi/nativele/blob/main/skills/nativele-monorepo/SKILL.md
