@@ -10,7 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.5.4
+
+The guides, the Skills and the tools agree with each other: wrong statements in the guides are fixed, facts the Skills repeated now live in the guides, and the tools report the traps the Skill trials hit instead of staying silent.
 
 ### New checks
 
@@ -29,6 +31,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Documentation
 
+- `docs/components.md` gains:
+  - Light DOM slots and children managed by a framework;
+  - when a Light or Shadow component builds its content;
+  - the `props` and `"~emits"` members that framework declarations use;
+  - `EmitEvent` with an undeclared name;
+  - `ReadableStore`.
+- Five framework Skills link to the slot section instead of repeating it.
+- Corrected:
+  - the import map in `docs/design.md`;
+  - the generated files being "already in `.gitignore`" (a project adds them itself);
+  - duplicate and misplaced reordering notes;
+  - `llms.txt` lists every guide.
+- The Skills agree on one build-script rule: a project whose type check is plain `tsc` runs `ts-dom check` before the bundler, and a framework type checker gets `ts-dom gen` in front. The README Skill tables show the right tiers.
+- `test/skills.test.ts` checks the README Skill tables against each Skill's tier, and every link and anchor in the READMEs, `llms.txt`, the guides and the Skills.
 - `docs/tooling.md`: the new checks; the bare specifier to map is `@nativele/ts-dom`; the Vite plugin generates when the build, the dev server or Vitest starts, never type-checks, prints rejected templates only in the terminal, and sends a full reload to every client; a run without `--whitespace` keeps each file's recorded mode; `check` runs `tsc` once per referenced project of a solution-style tsconfig.
 
 ## 0.5.3
