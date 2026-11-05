@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Unreleased
 
+Five new Official Skills cover the technical areas every Nativele project shares, and the Skills now work together by clear ownership: each configuration area has one owning Skill, and the others state what they need and point to it.
+
 ### Changed
 
 - Whitespace `collapse` keeps the whitespace the browser renders, so a formatter's line breaks and indentation no longer change the text on the page. It follows the default display of each element, as Prettier and oxfmt assume it. The generated data of existing `collapse` projects changes:
@@ -41,6 +43,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - In a package of a workspace, `ts-dom doctor` reads the `.gitignore` files and the installed Skill copies of the folders up to the workspace root (the nearest folder with a package.json `workspaces` field or a `pnpm-workspace.yaml`, else the git root), so `typecheck-before-gen` sees a root `.gitignore` and `skill-available` is not repeated for Skills installed at the root.
 - `unknown-prop`, `invalid-prop-value` and `unknown-event` check a child tag against the definition that applies to the template: when several folders define the same tag (separate apps or packages in one working directory, or several folders given to `ts-dom lint`), the oxlint plugin and `ts-dom lint` use the one in the template's own package (nearest package.json), and check nothing for that tag when that is not exactly one, instead of using whichever definition was scanned last.
 - `ts-dom rules` no longer says that `no-importer` can be enabled as `ts-dom/no-importer`: the oxlint plugin sees one file at a time and cannot tell that no file imports a template, so only `ts-dom lint` reports it.
+
+### New Skills
+
+- `nativele-typescript`: checks and adjusts the tsconfig that covers the components: what Nativele needs and why (`DOM`, a module resolution that finds packages, an `include` that brings in `ts-dom-tags.ts`, `strict`), the stricter options that work and the one that does not (`isolatedDeclarations`), how `ts-dom check` and `ts-dom doctor` choose configs, and what framework type checkers need; verified with TypeScript 7, 6 and 5.
+- `nativele-linting`: brings the Nativele lint rules into the project's existing oxlint, Vite+ (`vp lint`) or ESLint flat config: groups, single rule ids, severities and ignore lists, what runs in the linter and what only in `ts-dom lint` and `ts-dom check`, generated files and test folders.
+- `nativele-formatting`: keeps oxfmt, Prettier or `vp fmt` and the templates consistent: what reformatting does to the rendered spacing in each whitespace mode, why `collapse` is the mode with a formatter, how to find a space a reformat removed, and keeping the formatter off the generated files.
+- `nativele-ci`: the Nativele steps in an existing CI: generating before any type check, `ts-dom check` when the generated files are git-ignored and `gen --check` plus `check --no-write` when they are committed, which exit codes fail the job, JSON output, and the browser real-browser tests need.
+- `nativele-monorepo`: Nativele across the packages of a workspace (npm or pnpm, optionally turbo): a component package that generates its own files and exports its tag map, an app that imports it, where `@nativele/ts-dom` and `typescript` are declared, and the order in which packages generate or build.
+
+### Skills
+
+- `skills/README.md` has "How Skills work together": a Skill owns one task or technical area, states what it needs from another area instead of configuring it, keeps the user's existing configuration, acts on what the project has, and works without any other Skill installed. When two Skills disagree about one setting, the Skill that owns the setting decides.
+- The existing Skills no longer give their own instructions for the tsconfig, the linter, the formatter, CI or a workspace: each states its requirement in one sentence and points to the owning Skill, and keeps its own verified facts (framework behavior, the framework's type checker, the errors it hit). The Vite Skill now says that with a formatter the plugin and the scripts use the whitespace mode the formatting Skill decides, and the testing Skill notes that a formatter's whitespace can reach `textContent`.
+
+### Guides
+
+- `ts-dom check --no-write` in CI only works when the generated files are committed; with git-ignored files, run `ts-dom check` and then check that the working tree is unchanged.
+- The lint `ignorePatterns` example also lists `**/ts-dom-tags.ts`, and the lint guide says that the oxlint plugin also loads in ESLint flat config (ESLint 9 and 10, with typescript-eslint's parser), and that ESLint needs the generated files in its ignores because it does not read `.gitignore`.
+- Turning `unused-markup` off for test directories only silences templates a test file imports itself; a ref that only a test reads is still reported in the component.
+- Scanning several folders uses two folders of one package as its example: scanning another package's folder writes relative imports into its files.
+- A list of item components defined outside the scanned directories rejects items typed by an interface (`Index signature for type 'string' is missing`); the lists guide said it accepted any item with the key field.
 
 ## 0.5.5
 

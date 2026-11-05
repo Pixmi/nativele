@@ -37,7 +37,7 @@ Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nati
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`. Write them with the core Skill: `npx ts-dom skills add nativele-core`.
 2. Install: `npm i @nativele/ts-dom`.
-3. Set `"strict": true` in the tsconfig whose `include` covers that folder (`tsconfig.app.json` in Vite's React template, which leaves it off); Nativele's type checks depend on it. Other configs, such as the one for `vite.config.ts`, stay as they are.
+3. The tsconfig whose `include` covers that folder (`tsconfig.app.json` in Vite's React template, which does not set `strict`) must meet Nativele's requirements: check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`).
 4. Add the Nativele Vite plugin next to the React plugin, pointing at that folder:
 
    ```ts
@@ -51,7 +51,7 @@ Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nati
 
    Pass the same folder to every `ts-dom` command (`npx ts-dom check src/nv`), so there is one `ts-dom-tags.ts`, in `src/nv`.
 
-5. If the project lints with oxlint (`.oxlintrc.json`, as in Vite's React template), load the ts-dom rules there: add `{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }` to `jsPlugins` and `"ts-dom/unused-markup": "error"` to `rules`.
+5. If the project lints (Vite's React template has oxlint), the ts-dom rules go into its linter: follow the linting Skill (`npx ts-dom skills nativele-linting`).
 
 6. Import every Nativele component module in the entry file, before React renders anything:
 
@@ -89,7 +89,7 @@ Verified on 2026-11-05 in Google Chrome 148 with the example project in the Nati
 
    The component class must be exported and passed to `define()` in a folder that `ts-dom gen` scans, so it appears in `ts-dom-tags.ts`.
 
-The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'`. Generate them first: `"build": "ts-dom gen src/nv && tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front).
+The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Generate them first: `"build": "ts-dom gen src/nv && tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front). CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
 
 ## Example
 
@@ -187,7 +187,7 @@ npx tsc --noEmit -p tsconfig.app.json   # expect: no errors (keep one @ts-expect
 npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and vite build)
 ```
 
-Pass `tsc` the tsconfig from step 3. A root `tsconfig.json` that only lists `references` (as in Vite's template) checks nothing itself, so `tsc --noEmit` without `-p` passes even with type errors.
+Pass `tsc` the tsconfig from step 3: the template's root `tsconfig.json` only lists `references`, so `tsc --noEmit` without `-p` checks nothing (`nativele-typescript`).
 
 In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) of the trial's example project, which does them with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
 
@@ -195,7 +195,7 @@ In the browser, render a component with an object prop and an event handler, and
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&` |
+| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&`; for CI, `nativele-ci` |
 | An object prop shows `[object Object]` or is missing | the component was rendered before `define()` ran | import the component module in the entry file before rendering |
 | The event handler never runs | the prop name is camelCased (`onItemSelect`) | use `on` plus the exact event name (`onitem-select`) |
 | `insertBefore`/`removeChild` errors, the React root disappears | React children changed inside a Light DOM component with slots | use `shadow: true`, or stable wrapper elements per slot |
@@ -207,3 +207,6 @@ In the browser, render a component with an object prop and an event handler, and
 - Components, props and events: https://github.com/Pixmi/nativele/blob/main/docs/components.md
 - Slots, Light DOM and Shadow DOM: https://github.com/Pixmi/nativele/blob/main/docs/components.md#light-default-and-shadow
 - Setup and checks: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- The ts-dom rules in the project's linter: https://github.com/Pixmi/nativele/blob/main/skills/nativele-linting/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md

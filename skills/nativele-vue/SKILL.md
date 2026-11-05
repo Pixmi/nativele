@@ -39,7 +39,7 @@ Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 w
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`, written with the core Skill (`npx ts-dom skills add nativele-core`). Give every Nativele tag one prefix that no Vue component uses, for example `nv-` (`define("nv-info-card", InfoCard)`); step 4 depends on it.
 2. Install: `npm i @nativele/ts-dom`.
-3. Keep `"strict": true` for that folder. In the `vue-ts` template, `tsconfig.app.json` extends `@vue/tsconfig/tsconfig.dom.json`, which already sets it; if the project turned it off, turn it on there. Nativele's type checks depend on it.
+3. The tsconfig that covers that folder must meet Nativele's requirements, `strict` among them (in the `vue-ts` template, `tsconfig.app.json` extends `@vue/tsconfig/tsconfig.dom.json`, which sets it). Check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`), which also says which TypeScript version `vue-tsc` needs.
 4. Add the Nativele Vite plugin, and tell Vue's template compiler that the tags with the prefix are custom elements:
 
    ```ts
@@ -95,7 +95,7 @@ Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 w
 
    The component class must be exported and passed to `define()` in a folder that `ts-dom gen` scans, so it appears in `ts-dom-tags.ts`. A template ref is typed from the same map: `useTemplateRef<HTMLElementTagNameMap["nv-info-card"]>("card")`.
 
-The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'`. Generate them first: `"build": "ts-dom gen src/nv && vue-tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front).
+The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Generate them first: `"build": "ts-dom gen src/nv && vue-tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front). CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
 
 ## Example
 
@@ -258,7 +258,7 @@ In the browser, against the dev server (production builds drop Vue warnings), ch
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `vue-tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&` |
+| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `vue-tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&`; for CI, `nativele-ci` |
 | `[Vue warn]: Failed to resolve component: nv-info-card` | `isCustomElement` is missing, or does not match the tag | set it as in step 4, with the prefix your tags use |
 | A kebab-case Vue component (`<hello-box>`, `<router-view>`) renders as an empty element, with no warning | `isCustomElement` matches every hyphenated tag | match only the Nativele prefix (`tag.startsWith("nv-")`) |
 | An object prop shows `[object Object]`, or the element has an attribute holding it | the element was not defined when Vue rendered it, or the prop is written in kebab-case | import the module before `mount()`; write `:selectedItem`, not `:selected-item`; for a module loaded later, use `.item` |
@@ -277,3 +277,5 @@ In the browser, against the dev server (production builds drop Vue warnings), ch
 - Slots, Light DOM and Shadow DOM: https://github.com/Pixmi/nativele/blob/main/docs/components.md#light-default-and-shadow
 - Moved elements, connecting and subscriptions: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
 - Setup, the Vite plugin and checks: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig and `vue-tsc`'s TypeScript version: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md

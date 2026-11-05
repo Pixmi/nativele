@@ -73,6 +73,11 @@ npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .
 | `nativele-tanstack-query` | 用 `@tanstack/query-core` 取資料（Experimental） |
 | `nativele-zod` | 用 Zod 或 Valibot 驗證表單（Experimental） |
 | `nativele-tailwind` | 在範本與 Shadow DOM 中使用 Tailwind CSS（Experimental） |
+| `nativele-typescript` | tsconfig：Nativele 需要什麼、更嚴格的選項、型別檢查如何納入產生的檔案 |
+| `nativele-linting` | 在 oxlint、Vite+ 或 ESLint 中使用 Nativele 的 lint 規則：規則、嚴重度、忽略清單 |
+| `nativele-formatting` | 以 oxfmt、Prettier 或 `vp fmt` 格式化範本：空白模式、讓格式化工具避開產生的檔案 |
+| `nativele-ci` | CI 中的 Nativele 步驟：先產生檔案、產生的檔案提交或忽略、結束碼 |
+| `nativele-monorepo` | 在 workspace 的多個套件間使用 Nativele：共用的元件套件、建置順序 |
 
 等級：Official 經 agent 實際驗收、由維護者維護；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
 

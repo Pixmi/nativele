@@ -73,6 +73,11 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-tanstack-query` | data fetching with `@tanstack/query-core` (Experimental) |
 | `nativele-zod` | form validation with Zod or Valibot (Experimental) |
 | `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM (Experimental) |
+| `nativele-typescript` | the tsconfig: what Nativele needs, stricter options, the generated files in the type check |
+| `nativele-linting` | the Nativele lint rules in oxlint, Vite+ or ESLint: rules, severities, ignore lists |
+| `nativele-formatting` | oxfmt, Prettier or `vp fmt` with templates: the whitespace mode, keeping the formatter off the generated files |
+| `nativele-ci` | the Nativele steps in CI: generating first, committed or ignored generated files, exit codes |
+| `nativele-monorepo` | Nativele across the packages of a workspace: a shared component package, build order |
 
 Tiers: Official Skills are verified through agent trials and maintained by the maintainers; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
 

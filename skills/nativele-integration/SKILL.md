@@ -36,7 +36,7 @@ Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 w
 ## Set-up
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`, written with the core Skill.
-2. Connect the build: with Vite, add `tsDom({ dirs: ["src/nv"] })` from `@nativele/ts-dom/vite` to `plugins`, and pass the same folder to every `ts-dom` command (`npx ts-dom check src/nv`). In the tsconfig whose `include` covers that folder, set `"strict": true` (in Vite's templates that is `tsconfig.app.json`; some starters, such as `preact-ts`, leave it off). If the project lints with oxlint, add `{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }` to `jsPlugins` and `"ts-dom/unused-markup": "error"` to `rules`. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`. Run `npx ts-dom doctor src/nv` and fix what it reports.
+2. Connect the build: with Vite, add `tsDom({ dirs: ["src/nv"] })` from `@nativele/ts-dom/vite` to `plugins`, and pass the same folder to every `ts-dom` command (`npx ts-dom check src/nv`). The tsconfig whose `include` covers that folder (in Vite's templates `tsconfig.app.json`; some starters, such as `preact-ts`, do not set `strict`) must meet Nativele's requirements: check and adjust it with `npx ts-dom skills nativele-typescript`. If the project lints, the ts-dom rules go into its linter: `npx ts-dom skills nativele-linting`. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`. Run `npx ts-dom doctor src/nv` and fix what it reports.
 3. Find out, from the framework's documentation on custom elements (often called "web components"), these four things before writing any template:
 
    | Question | Why it matters |
@@ -57,7 +57,7 @@ Verified on 2026-11-05 in Google Chrome 148, starting from `create-vite` 9.3.4 w
    Many frameworks decide between property and attribute by checking whether the element already has the property, which is only true after `define()` has run.
 
 5. Give the framework's template type checker the Nativele tags. `ts-dom gen` writes `ts-dom-tags.ts`, which adds every exported component to `HTMLElementTagNameMap`; the element type members a declaration reads (`props` and `"~emits"`) are in https://github.com/Pixmi/nativele/blob/main/docs/components.md#element-types-for-framework-declarations. Build the framework's tag declaration from these, so new components need no edit; "In Preact (verified)" below has the one for Preact's JSX, `nativele-react` the one for React and `nativele-vue` the Vue one. Check how the framework names an event listener in its types: Preact and React type `item-select` as the prop `onitem-select`, Vue types `@item-select` as `onItemSelect`. If the framework has no typed templates, skip this step.
-6. The generated files are not committed, so on a clean checkout a build script that runs the type checker before the bundler (the `preact-ts` template's `"build": "tsc -b && vite build"`) fails with `TS2307: Cannot find module './x.html.js'`. Put `ts-dom gen src/nv &&` in front: `"build": "ts-dom gen src/nv && tsc -b && vite build"`. Do the same in front of whatever type check the framework's template runs (`vue-tsc -b`, `svelte-check`). Only a project whose type check is plain `tsc` replaces it with `ts-dom check`, which generates and type-checks: `"build": "ts-dom check src/nv && vite build"`, as `nativele-vite` sets it up. The dev server needs no change: the Vite plugin generates the files when it starts.
+6. The generated files are not committed, so on a clean checkout a build script that runs the type checker before the bundler (the `preact-ts` template's `"build": "tsc -b && vite build"`) fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Put `ts-dom gen src/nv &&` in front: `"build": "ts-dom gen src/nv && tsc -b && vite build"`. Do the same in front of whatever type check the framework's template runs (`vue-tsc -b`, `svelte-check`). Only a project whose type check is plain `tsc` replaces it with `ts-dom check`, which generates and type-checks: `"build": "ts-dom check src/nv && vite build"`, as `nativele-vite` sets it up. The dev server needs no change: the Vite plugin generates the files when it starts. CI starts from a clean checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
 
 ## Example
 
@@ -174,13 +174,13 @@ A reference implementation of these checks is the [`verify.mjs`](https://github.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `TS2307: Cannot find module './x.html.js'` from the build on a clean checkout | the type check runs before the generated files exist | start the build script with `ts-dom gen src/nv &&` (step 6) |
+| `TS2307: Cannot find module './x.html.js'` from the build on a clean checkout | the type check runs before the generated files exist | start the build script with `ts-dom gen src/nv &&` (step 6); for CI, `nativele-ci` |
 | An object prop shows `[object Object]`, or the element has an attribute holding it | the framework set an attribute: the element was not defined yet, or the binding syntax sets attributes | import the module before mounting; use the framework's property binding, or a ref (limitation 1) |
 | The framework warns that it cannot resolve the component `info-card` | its compiler treats the tag as a framework component | mark hyphenated tags as custom elements in the framework's compiler options |
 | The event listener never runs | the name was changed (camelCase; Preact's `onItemSelect` listens to `itemselect`), or the listener is on an ancestor | listen with the exact name (`onitem-select`), on the element that emits |
 | Children vanish, appear outside the slot, or the framework throws during an update (Preact: `NotFoundError: Failed to execute 'moveBefore'`) | framework-managed children inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
 | `connected()` does not run when a keyed list reorders | the framework moved the element with `moveBefore`, so it stayed connected | nothing to fix: its subscriptions continue (limitation 5) |
-| `ts-dom check` reports `TS2307: Cannot find module` for a framework file (`./App.vue`, ...) | plain `tsc` cannot read the framework's files | Vue: keep `vue-tsc` in `package.json` (Vue's own type checker; `ts-dom check` uses it when listed). Other formats: pass `--project=` a tsconfig whose `include` covers only the Nativele folder, and type-check the rest with the framework's tool |
+| `ts-dom check` reports `TS2307: Cannot find module` for a framework file (`./App.vue`, ...) | plain `tsc` cannot read the framework's files | Vue: keep `vue-tsc` in `package.json` (Vue's own type checker; `ts-dom check` uses it when listed). Other formats: pass `--project=` a tsconfig whose `include` covers only the Nativele folder (`nativele-typescript`), and type-check the rest with the framework's tool |
 | `Property 'nv-info-card' does not exist on type 'JSX.IntrinsicElements'`, or the framework's type checker does not know the tag | no declaration built from `ts-dom-tags.ts`, or the component class is not exported | add the declaration (step 5), export the class, run `ts-dom gen` |
 
 ## See also
@@ -190,4 +190,7 @@ A reference implementation of these checks is the [`verify.mjs`](https://github.
 - Lifecycle: https://github.com/Pixmi/nativele/blob/main/docs/components.md#components
 - Moved elements, connecting and subscriptions: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
 - Setup and checks: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig and the framework's type checker: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- The ts-dom rules in the project's linter: https://github.com/Pixmi/nativele/blob/main/skills/nativele-linting/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
 - Complete framework integrations: `npx ts-dom skills nativele-react`, `npx ts-dom skills nativele-vue`

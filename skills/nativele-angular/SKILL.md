@@ -38,7 +38,7 @@ Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and
 
 1. Keep the Nativele components in their own folder, for example `src/nv/`, each as `x.html` plus `x.ts`. Write them with the core Skill: `npx ts-dom skills add nativele-core`.
 2. Install: `npm i @nativele/ts-dom`.
-3. Set `"strict": true` in `compilerOptions` of the root `tsconfig.json` (the Angular 22 CLI template leaves it out; `tsconfig.app.json` and `tsconfig.spec.json` extend the root, so both get it). Nativele's type checks depend on it. If turning it on for the whole app is not possible yet, set it in `tsconfig.app.json` only; `ts-dom doctor` then still warns about `tsconfig.spec.json`.
+3. The tsconfig that covers `src/nv` must meet Nativele's requirements, `strict` among them, which the Angular 22 CLI template leaves out (`tsconfig.app.json` and `tsconfig.spec.json` extend the root `tsconfig.json`). Check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`), which also covers turning `strict` on for the Nativele folder only.
 4. Generate the template modules before every Angular command. The Angular CLI build (`@angular/build:application`) takes no Vite plugins from the project, so `tsDom()` cannot be added; run `ts-dom gen` from npm's `pre` scripts instead:
 
    ```sh
@@ -47,7 +47,7 @@ Verified on 2026-11-05 in Google Chrome 148, against `ng serve` (development and
                scripts.pretest="ts-dom gen src/nv --whitespace=collapse"
    ```
 
-   `npm start`, `npm run build` and `npm test` then generate first (`npx ng ...` called directly does not). `--whitespace=collapse` is there because the CLI template sets up Prettier, and `ts-dom doctor` asks for it; doctor finds the flag in the `package.json` scripts. Collapsing also drops the whitespace between tags, so `textContent` reads `x1A1:new`, not `x1 A1:new`; write test expectations that way.
+   `npm start`, `npm run build` and `npm test` then generate first (`npx ng ...` called directly does not, so a CI job runs these scripts or `ts-dom gen` first; see `npx ts-dom skills nativele-ci`). The CLI template sets up Prettier, and with a formatter the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`), which asks for `collapse`; every script that generates passes the same flag. Collapsing also drops the whitespace between tags, so `textContent` reads `x1A1:new`, not `x1 A1:new`; write test expectations that way.
 
    While `npm start` runs, keep a second terminal with `npx ts-dom gen src/nv --watch --whitespace=collapse`: editing a template or adding a component regenerates its module, and `ng serve` rebuilds and reloads the page.
 
@@ -296,7 +296,7 @@ npm test -- --watch=false    # expect: the specs pass
 ```
 
 - `ts-dom check` runs `tsc` on the app's TypeScript through the references of the root `tsconfig.json`, so it reports a type error in `src/app/app.ts` too. It does not read Angular templates. `ngc` (or the build) is what type-checks the Angular templates, including the `EmitEvent` casts.
-- Run `ts-dom check` with `--whitespace=collapse` or after `gen`: when the generated files are missing, `check` writes them with whitespace kept as written; once they exist, it keeps the mode they were written with.
+- Run `ts-dom check` with `--whitespace=collapse` or after `gen`: on a clean checkout it would write the files with the other mode (`nativele-formatting`; for CI, `nativele-ci`).
 
 In the browser, against `npm start` (the development server shows Angular's warnings in the console), check:
 
@@ -322,9 +322,9 @@ With Playwright, wait for each expected change instead of reading the DOM right 
 | The element stays empty | its module is not imported | import it in `src/main.ts` (step 7) |
 | A slotted child shows in the wrong slot or the slot fallback stays visible | `@if`/`@for` directly inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
 | `ts-dom check` reports `invalid-hole` or `no-importer` in `src/app/app.html` | the command ran without a folder and read Angular templates | pass the Nativele folder: `ts-dom check src/nv` |
-| `ts-dom doctor` warns `tsconfig-not-strict` | the Angular 22 CLI template does not set `strict` | step 3 |
-| `ts-dom doctor` warns `formatter-whitespace` | Prettier is set up and no script generates with `--whitespace=collapse` | step 4 |
-| `Property 'info-card' does not exist on type 'HTMLElementTagNameMap'` in a spec | `tsconfig.spec.json` does not include `ts-dom-tags.ts` | import the component class type instead |
+| `ts-dom doctor` warns `tsconfig-not-strict` | the Angular 22 CLI template does not set `strict` | step 3 (`nativele-typescript`) |
+| `ts-dom doctor` warns `formatter-whitespace` | Prettier is set up and no script generates with `--whitespace=collapse` | step 4 (`nativele-formatting`) |
+| `Property 'info-card' does not exist on type 'HTMLElementTagNameMap'` in a spec | `tsconfig.spec.json` does not include `ts-dom-tags.ts` | import the component class type instead; whether the spec tsconfig should cover the Nativele folder is for `nativele-typescript` |
 | The Angular view does not update after a store change or a timer | zoneless change detection does not run for plain fields changed outside template listeners | keep that value in a signal |
 
 ## See also
@@ -334,4 +334,7 @@ With Playwright, wait for each expected change instead of reading the DOM right 
 - Lifecycle and `bind`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#components
 - Stores: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
 - Setup, `gen --watch`, whitespace and checks: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md
+- The tsconfig and `ngc`'s TypeScript version: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
+- The whitespace mode with Prettier: https://github.com/Pixmi/nativele/blob/main/skills/nativele-formatting/SKILL.md
+- CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
 - A framework integration with typed templates: `npx ts-dom skills nativele-react`

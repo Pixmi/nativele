@@ -38,7 +38,7 @@ npx tsc               # type-check and compile to out/
 
 Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone. Each generated file records its mode, and a run without `--whitespace` keeps the mode a file was last written with (a new file gets `preserve`), so pass `--whitespace=preserve` to switch back. `check` and `doctor` accept `--whitespace=`, `--include=` and `--exclude=` as `gen` does, and use them to decide which generated files are stale.
 
-To scan several folders, list them: `npx ts-dom gen src packages/ui` (the same for `--check`, `--watch`, `check`, `doctor` and `lint`, and the Vite plugin's `dirs` option). The folders are generated together: a template in one folder that uses a component defined in another gets the import of that component, as the relative path from the template to the file with the `define()`, and a tag defined with different classes in two folders is a `duplicate-define` error.
+To scan several folders of one package, list them: `npx ts-dom gen src/app src/shared` (the same for `--check`, `--watch`, `check`, `doctor` and `lint`, and the Vite plugin's `dirs` option). The folders are generated together: a template in one folder that uses a component defined in another gets the import of that component, as the relative path from the template to the file with the `define()`, and a tag defined with different classes in two folders is a `duplicate-define` error. Do not scan another package's folder: the relative imports are written into that package's generated files. A package of shared components generates its own files, and the app imports the package.
 
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
 
@@ -92,7 +92,7 @@ When installing, we recommend installing `vite-plus` first and then `ts-dom` (wh
 ```ts
 // lint settings in vite.config.ts (vp lint / oxlint)
 lint: {
-  ignorePatterns: ["node_modules", "dist", "**/*.html.ts"],
+  ignorePatterns: ["node_modules", "dist", "**/*.html.ts", "**/ts-dom-tags.ts"],
   jsPlugins: [{ name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" }],
   rules: {
     "ts-dom/unused-markup": "error",
@@ -101,6 +101,8 @@ lint: {
   },
 },
 ```
+
+The same module is an ESLint plugin for flat config (verified with ESLint 9 and 10, with typescript-eslint's parser for `.ts` files): `import tsDom from "@nativele/ts-dom/oxlint"` and a config object `{ plugins: { "ts-dom": tsDom }, rules: { "ts-dom/unused-markup": "error" } }`. ESLint does not read `.gitignore`, so add the generated files to its ignores: `globalIgnores(["**/*.html.ts", "**/ts-dom-tags.ts"])` from `eslint/config`.
 
 Each rule id is also a rule of its own, so a project can enable rules one by one and give each its own severity, for example `"ts-dom/unused-ref": "warn"` or `"ts-dom/missing-handler": "error"` instead of the whole `ts-dom/unused-markup` group. `ts-dom rules` lists the ids.
 
@@ -157,7 +159,7 @@ Which command writes files:
 | `ts-dom check` | the generated files (they are derived and not committed, so this is what a developer or an agent wants after a change) | codegen, `tsc`, lint |
 | `ts-dom check --no-write` | nothing: stale generated files are reported instead of refreshed, and `tsc` runs on the files as they are | codegen, `tsc`, lint |
 
-In a CI job that must leave the working tree untouched, run `ts-dom check --no-write` (or `ts-dom gen --check` when you only want to know whether the generated files are current); a job that regenerates first, as most do, can run `ts-dom check`.
+In a CI job, `ts-dom check --no-write` (or `ts-dom gen --check` when you only want to know whether the generated files are current) only works when the generated files are committed: on a clean checkout without them it fails, because every generated file is missing. When they are git-ignored, run `ts-dom check`, then check that the working tree is unchanged (`git status --porcelain` prints nothing).
 
 1. **codegen diagnostics** (`ts-dom gen` and the Vite plugin, with line and column numbers; on errors they abort and write no files): duplicate `data-ref`, `data-each` without a single root element, `data-each` not on a `<template>`, nested `data-each`, an incomplete or invalid `data-key` / `data-prop`, a `data-key` list whose item is not one custom element, `data-if` on an item root element, `<slot>` inside an item, `<style>` not at the first level, invalid holes, holes inside attributes, invalid `data-on-*` (including names that collide with DOM or ts-dom members), `<html>`, `<head>` and `<body>` inside a template, and markup that runs code or Trusted Types blocks: `<script>`, `on*` attributes, `srcdoc`, and `javascript:` URLs.
 2. **tsc**: an error when TypeScript uses a name the HTML does not declare (`this.refs.nope`, `this.show("nope", true)`); all constraints between `state`, `props`, `derive`, `emits` and the HTML (see [Data Flow](components.md#data-flow-props-down-events-up)); child component prop names and types; `define()` checks that the methods for `data-on-*` exist.
@@ -185,7 +187,7 @@ class List extends Component(listTpl) { connected() { this.refs.title.hidden = t
 class Card extends Component(cardTpl) {}   // → reports that title in card.html is unused
 ```
 
-Note: refs, text, and so on should be used by the component's own class. Access through an instance outside the class (for example in tests) is not counted, so turn this rule off for test directories. When no corresponding class can be found (for example when `Component` is wrapped by a helper), it falls back to comparing the whole file.
+Note: refs, text, and so on should be used by the component's own class. Access through an instance outside the class (for example in tests) is not counted. Turning this rule off for test directories silences only templates that a test file imports itself: a ref that only a test reads is still reported in the component, so remove it and query the DOM in the test. When no corresponding class can be found (for example when `Component` is wrapped by a helper), it falls back to comparing the whole file.
 
 ## Skills
 
