@@ -69,7 +69,7 @@ Verified on 2026-11-05 with Node 24 and Google Chrome 148, starting from `create
    npm pkg set scripts.test="vitest run --project unit"
    ```
 
-   Keep `ts-dom check src/nv` in the build script (as `nativele-vite` sets it up) or run it before or after the tests: it is what reports type errors in the tests and the templates.
+   `ts-dom check src/nv` is what reports type errors in the tests and the templates. In a project whose type check is plain `tsc`, the build script `ts-dom check src/nv && vite build` (as `nativele-vite` sets it up) runs it; in a framework project, whose build puts `ts-dom gen src/nv &&` in front of its own type check (`tsc -b`, `vue-tsc -b`, `svelte-check`), run `ts-dom check src/nv` before or after the tests.
 
 5. For the real-browser tests, install the Vitest provider and Playwright, and add a second project. It drives the Chrome already installed on the machine (`CHROME_BIN`, or `/usr/bin/google-chrome`, which GitHub's `ubuntu-latest` runners have), so nothing is downloaded and `npx playwright install` is not needed:
 

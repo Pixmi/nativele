@@ -101,8 +101,10 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 - `data-if` content is hidden until the name is truthy (it stays in memory, so its `refs` still work); `{{ hole }}` stays empty until filled.
 - With Vite, `package.json` needs `"type": "module"`.
 - `slotchange()` is Light-DOM only; with `shadow: true` use the native `slotchange` event.
+- A Light DOM component builds its content when connected (a `shadow: true` one in the constructor), so a new Light element has no children, `refs` or `text` until it is appended.
+- Inside a framework (React, Vue, Svelte, ...), children the framework later inserts, removes or reorders in a Light DOM host with slots break or land in the wrong slot: use `shadow: true`, or one stable element per slot.
 
 ## Docs
 - [README](README.md): introduction, the short version, rules for agents, quick start. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.
-- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md).
+- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [recipes](docs/recipes.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md).
 - `npx ts-dom rules`: every rule id with a description.

@@ -6,3 +6,4 @@ demo-dist
 ts-dom-tags.ts
 .local/
 *.local.md
+.claude/worktrees/

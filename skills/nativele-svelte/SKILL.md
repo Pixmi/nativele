@@ -196,18 +196,14 @@ Used from Svelte:
 
 1. **Define before mount.** Import the component modules before `mount` (step 6). Svelte 5 decides per value: when the element is defined, it sets a property the element has; when it is not defined yet (for example a module loaded later with `import()`), it sets objects and arrays as properties and writes every other value as an attribute string. Nativele reads both when the element is upgraded, which was verified for string, number and boolean props with one-word names (`count={0}` becomes `count="0"`, `false` becomes `open="false"`, both arrive with the right type). Other cases were not verified, so define first.
 2. **Event attribute names.** Only `on` plus the exact event name works (`onitem-select`). `onItemSelect` listens to an event named `ItemSelect` and never fires; with the declaration it is also a `svelte-check` error. The legacy directive `on:item-select` fires too, but only use the event attributes: in a runes component `on:` is deprecated (compiler warning `event_directive_deprecated`), a component cannot mix it with event attributes (compile error `mixed_event_handler_syntaxes`), and the declaration in step 7 does not type it. Nativele events do not bubble, so put the handler on the element that emits.
-3. **Light DOM slots and Svelte-managed children do not mix.** In the default Light DOM mode (`Component(tpl)` with no `shadow`), Nativele moves the host's children into its slot positions, together with the comment nodes Svelte uses as anchors. Svelte does not throw, but it goes wrong silently: an `{#if}` that adds `<span slot="title">` back inserts it next to its anchor, which now sits in the default slot, so the title slot shows its fallback; and `assignedNodes()` stops matching what is on the page. Keyed `{#each}` reordering happened to look right, but do not rely on it. Use one of:
-   - `shadow: true` on the component (children can then change freely), or
-   - one stable element per slot, and let Svelte change only what is inside it:
+3. **Light DOM slots and Svelte-managed children do not mix** (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework). Nativele moves the comment nodes Svelte uses as anchors into the slot positions together with the children. Svelte does not throw, but it goes wrong silently: an `{#if}` that adds `<span slot="title">` back inserts it next to its anchor, which now sits in the default slot, so the title slot shows its fallback; and `assignedNodes()` stops matching what is on the page. Keyed `{#each}` reordering happened to look right, but do not rely on it. Use `shadow: true`, or one stable element per slot and let Svelte change only what is inside it:
 
-     ```svelte
-     <light-card>
-       <div slot="title">{#if showTitle}<span>Title</span>{/if}</div>
-       <div>{#each rows as r (r)}<p>{r}</p>{/each}</div>
-     </light-card>
-     ```
-
-     A stable but empty wrapper still fills its slot, so the slot's fallback content does not show; when the fallback matters, use `shadow: true`.
+   ```svelte
+   <light-card>
+     <div slot="title">{#if showTitle}<span>Title</span>{/if}</div>
+     <div>{#each rows as r (r)}<p>{r}</p>{/each}</div>
+   </light-card>
+   ```
 4. **New objects for changed props.** A Nativele component compares props by reference. Changing a `$state` object in place (`item.name = "kiwi"`) does not re-render it; assign a new object (`item = { ...item, name: "kiwi" }`).
 5. **Write closing tags.** `<info-card ... />` works, but the Svelte compiler warns `element_invalid_self_closing_tag` (shown in the dev server's terminal); write `<info-card ...></info-card>`.
 6. **Template types need the declaration** in step 7. Without it, Svelte accepts any attribute on a hyphenated tag, and an inline handler's parameter is `any` (`Parameter 'e' implicitly has an 'any' type` under `strict`). With it, `svelte-check` reports a wrong prop type, an unknown prop name, a wrong `e.detail` field and a camelCase handler name. `<!-- @ts-expect-error -->` in markup does not silence an error, so keep the expected-error cases in a `.ts` file (step 8). To type an element reference, use the tag map: `let card: HTMLElementTagNameMap["info-card"] | undefined = $state()` with `bind:this={card}`.

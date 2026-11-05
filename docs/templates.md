@@ -26,7 +26,7 @@ A hidden `data-if` block is kept in memory, not destroyed: `refs` and holes insi
 
 ## How Types Are Generated
 
-Next to each `x.html`, an `x.html.ts` is generated (already added to `.gitignore`; a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
+Next to each `x.html`, an `x.html.ts` is generated (a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)); add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`, since both are rebuilt by `ts-dom gen`. It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
 
 ```ts
 // user-card.html.ts (auto-generated)
@@ -71,5 +71,3 @@ There is no host element, so `data-on-*` attributes do nothing here (listen on `
 ```html
 <app-icon name="send" class="size-4"></app-icon>
 ```
-
-- Reordering: a keyed list (`data-each`) moves its items with `moveBefore` where the browser has it, and every component accepts the move without being disconnected, so a moved item keeps its focus, scroll position and subscriptions.
