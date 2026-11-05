@@ -78,19 +78,25 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   }
   const includes: string[] = [];
   let everyConfigIncludes = true;
-  for (const configPath of configs) {
-    const config = readTsConfig(configPath);
+  const targets = dirs.flatMap((d) => {
+    const folders = templateFolders(d);
+    return folders.length ? folders : [d];
+  });
+  const read = configs.map((path) => ({ path, config: readTsConfig(path) }));
+  const covering = read.filter(({ config: { include } }) => !include || targets.some((t) => include.some((p) => covers(p, t))));
+  for (const { path: configPath, config } of read) {
     const o = config.compilerOptions;
     const file = rel(configPath);
     paths = { ...paths, ...(o.paths as Record<string, unknown> | undefined) };
+    if (config.include) includes.push(...config.include);
+    else everyConfigIncludes = false;
+    if (covering.length && !covering.some((r) => r.path === configPath)) continue;
     if (o.strict !== true) add("tsconfig-not-strict", "warning", 'compilerOptions.strict is not true, so tsc lets wrong names and null values through. Fix: set "strict": true.', { file });
     const lib = o.lib as string[] | undefined;
     if (lib && !lib.some((l) => l.toLowerCase() === "dom")) add("tsconfig-no-dom-lib", "error", 'compilerOptions.lib leaves out DOM, so element types such as HTMLButtonElement are missing. Fix: add "DOM" to lib.', { file });
     if (String(o.moduleResolution ?? "").toLowerCase() === "classic") {
       add("tsconfig-classic-resolution", "error", 'moduleResolution "classic" cannot resolve ./x.html.js to the generated x.html.ts. Fix: use "bundler" or "NodeNext".', { file });
     }
-    if (config.include) includes.push(...config.include);
-    else everyConfigIncludes = false;
   }
   if (configs.length && everyConfigIncludes) {
     const missed = new Set<string>();

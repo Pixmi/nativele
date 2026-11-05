@@ -118,6 +118,19 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
     expect(issues.map((i) => i.rule)).not.toContain("tsconfig-misses-templates");
   });
 
+  it("a referenced config that covers no component folder is not checked", () => {
+    const cwd = project({
+      "tsconfig.json": `{ "files": [], "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }] }`,
+      "tsconfig.app.json": `{ "compilerOptions": { ${strictPaths}, "lib": ["ES2023", "DOM"] }, "include": ["src"] }`,
+      "tsconfig.node.json": `{ "compilerOptions": { "lib": ["ES2023"] }, "include": ["vite.config.ts"] }`,
+      "vite.config.ts": "",
+      "src/x.html": "<p></p>",
+    });
+    const rules = runDoctor({ dirs: ["src"], cwd }).map((i) => i.rule);
+    expect(rules).not.toContain("tsconfig-no-dom-lib");
+    expect(rules).not.toContain("tsconfig-not-strict");
+  });
+
   it("a folder that does not exist is reported", () => {
     const cwd = project({ "tsconfig.json": `{ "compilerOptions": { ${strictPaths} } }` });
     expect(runDoctor({ dirs: ["app"], cwd }).map((i) => i.rule)).toContain("dir-not-found");
