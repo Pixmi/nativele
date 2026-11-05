@@ -359,6 +359,15 @@ describe("CLI", () => {
     // without --a11y the same template is clean, even with --strict
     expect(run(["lint", ".", "--strict"], dir).status).toBe(0);
   });
+  it("--help lists --include, --exclude and --whitespace under check and doctor, which accept them", () => {
+    const sections = run(["--help"]).stdout.split(/\n(?= {2}[a-z])/);
+    for (const cmd of ["check", "doctor"]) {
+      const section = sections.find((s) => s.startsWith(`  ${cmd} `));
+      expect(section, cmd).toMatch(/--include=<glob>/);
+      expect(section, cmd).toMatch(/--exclude=<glob>/);
+      expect(section, cmd).toMatch(/--whitespace=collapse/);
+    }
+  });
   it("an unknown command prints help and exits 1", () => {
     const r = run(["nope"]);
     expect(r.status).toBe(1);
