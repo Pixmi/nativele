@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { analyze, CODEGEN_RULES, formatDiagnostics, generateModule, isFullPage, isSelected } from "../src/lib/codegen.ts";
+import { parseFragment } from "parse5";
+import { analyze, CODEGEN_RULES, formatDiagnostics, generateModule, isFullPage, isSelected, toNodes } from "../src/lib/codegen.ts";
 import { A11Y_RULES } from "../src/lib/a11y.ts";
 
 const errs = (html: string) => analyze(html).diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
@@ -88,9 +89,15 @@ describe("codegen diagnostics", () => {
   it("the generated module contains text and list types and is valid TS", () => {
     const m = generateModule(`<p>{{ a }}</p><template data-each="l"><i>{{ b }}</i></template>`);
     expect(m).toContain(`text: "a"`);
-    expect(m).toContain(`"l": { refs: {  }; text: "b"; ifs: never }`);
+    expect(m).toContain(`"l": { refs: Record<never, never>; text: "b"; ifs: never }`);
     expect(m).toContain(`export default template<`);
     expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
+  });
+  it("the generated types have no empty object type literal, which typescript-eslint's no-empty-object-type reports", () => {
+    const type = (html: string) => generateModule(html).split("export default template<")[1]?.split(">([")[0] ?? "";
+    expect(type(`<p>x</p>`)).toMatch(/refs: Record<never, never>;\n  lists: Record<never, never>;/);
+    expect(type(`<p>x</p>`)).not.toMatch(/\{\s*\}/);
+    expect(type(`<template data-each="l"><i>{{ b }}</i></template>`)).not.toMatch(/\{\s*\}/);
   });
   it("does not import El when there is no ref (avoids noUnusedLocals errors)", () => {
     expect(generateModule(`<p>{{ a }}</p><p></p>`)).not.toContain("import type { El }");
@@ -426,12 +433,25 @@ describe("whitespace option", () => {
   it("preserves whitespace by default", () => {
     expect(generateModule(html)).toContain(`"\\n  "`);
   });
-  it("collapse drops line-break-only text, collapses runs and leaves pre alone", () => {
+  it("collapse drops whitespace next to blocks, collapses runs and leaves pre alone", () => {
     const m = generateModule(html, { whitespace: "collapse" });
-    expect(m).toContain(`["li",{},["a b"]]`);
+    expect(m).toContain(`["ul",{},[["li",{},["a b"]],["li",{},["c"]]]],["b",{},["x"]]," ",["i",{},["y"]]`);
     expect(m).not.toContain(`"\\n  "`);
-    expect(m).toContain(`" "`);
     expect(m).toContain(`"  keep\\n"`);
+  });
+  const collapsed = (h: string) => JSON.stringify(toNodes(parseFragment(h), true));
+  it("collapse keeps one space for a line break between two inline siblings", () => {
+    expect(collapsed(`<p>\n  <a>ann</a>\n  <time>now</time>\n</p>\n`)).toBe(`[["p",{},[["a",{},["ann"]]," ",["time",{},["now"]]]]]`);
+    expect(collapsed(`<user-badge>a</user-badge>\n<x-y>b</x-y>\n`)).toBe(`[["user-badge",{},["a"]]," ",["x-y",{},["b"]]]`);
+    expect(collapsed(`<p>\n  <a>one</a>\n  <!-- c -->\n  <b>two</b>\n</p>`)).toBe(`[["p",{},[["a",{},["one"]]," ",["#comment"," c "]," ",["b",{},["two"]]]]]`);
+  });
+  it("collapse trims text at the edges of blocks and inline-blocks, and next to blocks", () => {
+    expect(collapsed(`<div>\n  Intro\n  <div>one</div>\n  end\n</div>`)).toBe(`[["div",{},["Intro",["div",{},["one"]],"end"]]]`);
+    expect(collapsed(`<button>\n  Save\n</button>`)).toBe(`[["button",{},["Save"]]]`);
+    expect(collapsed(`<span>\n  <b>x</b>\n</span>`)).toBe(`[["span",{},[" ",["b",{},["x"]]," "]]]`);
+  });
+  it("collapse leaves non-breaking spaces alone", () => {
+    expect(collapsed(`<p>a  b</p>`)).toBe(`[["p",{},["a  b"]]]`);
   });
 });
 

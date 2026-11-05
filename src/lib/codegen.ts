@@ -299,7 +299,9 @@ const union = (xs: Iterable<string>) => {
   const arr = [...new Set(xs)];
   return arr.length ? arr.map(q).join(" | ") : "never";
 };
-const obj = (m: Map<string, string>) => `{ ${[...m].map(([n, t]) => `${q(n)}: ${t}`).join("; ")} }`;
+const EMPTY_OBJECT = "Record<never, never>";
+const members = (entries: readonly string[]) => (entries.length ? `{ ${entries.join("; ")} }` : EMPTY_OBJECT);
+const obj = (m: Map<string, string>) => members([...m].map(([n, t]) => `${q(n)}: ${t}`));
 
 /** The type of the template's only top-level element (a `<style>` does not count); `never` when there is not exactly one, or other text sits beside it. */
 function rootElementType(html: string): string {
@@ -326,7 +328,7 @@ export interface GenerateOptions {
   runtime?: string;
   /**
    * How text nodes keep their whitespace. "preserve" keeps it as written; without the option, the mode an existing generated module was written with is kept ("preserve" for a new one).
-   * "collapse" turns every run of whitespace into one space and drops whitespace-only text that contains a line break (layout between tags); `<pre>`, `<textarea>`, `<style>` and `<script>` are left alone.
+   * "collapse" keeps only the whitespace the browser renders: every run of whitespace becomes one space, and it is dropped next to a block-level element (`<div>`, `<p>`, `<li>`, table parts, ...) and at the start and end of a block or inline-block element's content, so a formatter's line breaks and indentation change nothing; `<pre>`, `<textarea>`, `<style>` and `<script>` are left alone.
    */
   whitespace?: "preserve" | "collapse";
   /** Glob patterns, relative to the scanned directory, of the `.html` files to generate. Default: every template. */
@@ -358,22 +360,37 @@ export function isSelected(dir: string, file: string, options: GenerateOptions =
 }
 
 const KEEPS_WHITESPACE = new Set(["pre", "textarea", "style", "script"]);
+const SVG_NS = "http://www.w3.org/2000/svg";
+// The browser's default display of each element, as formatters (Prettier, oxfmt) assume it: whitespace next to a block-level element, or at the start or end of a block or inline-block element's content, is not rendered, so a formatter adds and removes it there freely.
+const BLOCK_LEVEL = new Set(["address", "article", "aside", "blockquote", "body", "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "html", "legend", "li", "listing", "main", "menu", "nav", "ol", "optgroup", "option", "p", "param", "plaintext", "pre", "script", "search", "section", "source", "style", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "track", "ul", "xmp"]);
+const INLINE_BLOCK = new Set(["audio", "button", "input", "marquee", "meter", "object", "progress", "select", "video"]);
+const HTML_WHITESPACE = /[ \t\n\f\r]+/g;
 
-function toNodes(parent: Parent, collapse = false): unknown[] {
-  const children = "content" in parent && parent.nodeName === "template" ? parent.content.childNodes : parent.childNodes;
+const isBlockLevel = (n: Node | undefined): boolean => !!n && isEl(n) && (n.namespaceURI === SVG_NS ? n.tagName !== "svg" : n.namespaceURI === HTML_NS && BLOCK_LEVEL.has(n.tagName));
+const trimsEdges = (n: Element): boolean => isBlockLevel(n) || (n.namespaceURI === SVG_NS ? n.tagName === "svg" : n.namespaceURI === HTML_NS && INLINE_BLOCK.has(n.tagName));
+
+/** In `collapse`, `edges` says whether whitespace at the start and end of `parent`'s content is not rendered. */
+export function toNodes(parent: Parent, collapse = false, edges = true): unknown[] {
+  const children = ("content" in parent && parent.nodeName === "template" ? parent.content.childNodes : parent.childNodes).filter((n) => n.nodeName === "#text" || n.nodeName === "#comment" || isEl(n));
   const out: unknown[] = [];
-  for (const n of children) {
+  children.forEach((n, i) => {
     if (n.nodeName === "#text") {
-      const value = (n as { value: string }).value;
-      if (!collapse) out.push(value);
-      else if (!(/^\s*$/.test(value) && value.includes("\n"))) out.push(value.replace(/\s+/g, " "));
+      let value = (n as { value: string }).value;
+      if (collapse) {
+        const prev = children.slice(0, i).reverse().find((c) => c.nodeName !== "#comment");
+        const next = children.slice(i + 1).find((c) => c.nodeName !== "#comment");
+        value = value.replace(HTML_WHITESPACE, " ");
+        if (prev ? isBlockLevel(prev) : edges) value = value.replace(/^ /, "");
+        if (next ? isBlockLevel(next) : edges) value = value.replace(/ $/, "");
+      }
+      if (value) out.push(value);
     } else if (n.nodeName === "#comment") out.push(["#comment", (n as { data: string }).data]);
     else if (isEl(n)) {
       const attrs = Object.fromEntries(n.attrs.map((a) => [a.name, a.value]));
-      const inner = toNodes(n, collapse && !KEEPS_WHITESPACE.has(n.tagName));
+      const inner = toNodes(n, collapse && !KEEPS_WHITESPACE.has(n.tagName), n.tagName === "template" || trimsEdges(n));
       out.push(n.namespaceURI === HTML_NS ? [n.tagName, attrs, inner] : [n.tagName, attrs, inner, n.namespaceURI]);
     }
-  }
+  });
   return out;
 }
 
@@ -392,11 +409,10 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
       const source = !def ? "external" : def.exported ? "local" : "unexported";
       const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)}; source: ${q(source)} }` : "";
       return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}${item} }`;
-    })
-    .join("; ");
+    });
   const type = `{
   refs: ${obj(a.scope.refs)};
-  lists: { ${lists} };
+  lists: ${members(lists)};
   ifs: ${union(a.scope.ifs)};
   slots: ${union(a.slots)};
   rootElement: ${rootElementType(html)};
