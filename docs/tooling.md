@@ -27,6 +27,8 @@ npm i @nativele/ts-dom
 }
 ```
 
+Set `"type": "module"` in `package.json`: with `"module": "NodeNext"`, a package without it is CommonJS, so `tsc` emits `require`/`exports` and the browser stops with `ReferenceError: exports is not defined`.
+
 Workflow: first generate the template modules, then compile and type-check with `tsc`.
 
 ```sh
@@ -37,6 +39,8 @@ npx tsc               # type-check and compile to out/
 Whitespace in text is kept as written. To collapse each run of whitespace into one space and drop line-break-only text between tags (so indented HTML does not add stray spaces), use `npx ts-dom gen --whitespace=collapse` or the Vite plugin option `whitespace: "collapse"`; `<pre>` and `<textarea>` are left alone.
 
 During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`.
+
+The generated files (`x.html.ts` next to each template, and `ts-dom-tags.ts` in each scanned folder) are derived from the templates, so most projects do not commit them: add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.
 
 `npx ts-dom gen --check` writes nothing: it lists generated files that are missing, outdated (their template or a `define()` changed) or orphaned (their template was deleted), and exits with code 1 if there are any (`--json` for machine-readable output). Use it in CI if your project commits the generated files, or to confirm they are fresh before reading type errors.
 

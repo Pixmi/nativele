@@ -111,6 +111,7 @@ Light-mode slot rules:
 - Matching is by `slot="name"`. Nodes without a slot attribute go into the default slot, and when there is no content, the fallback content inside `<slot>` is used.
 - `{{ }}`, `data-ref`, and `data-if` in user content are not parsed; they belong to the user's own DOM.
 - As with native Shadow DOM, only the **direct child nodes of the host element** are assigned (nodes nested deeper are not). Child nodes added to the element after creation are assigned to the matching slot; when the `slot` attribute of an assigned node is changed, it is reassigned immediately; when an assigned node is removed, the fallback content is restored if that slot becomes empty; nodes with no matching slot are not rendered, consistent with native behavior. These changes call `slotchange(name)` (the initial assignment at creation does not).
+- The rendered Light DOM has no `<slot>` elements: each slot position is the range between the comments `<!--slot:name-->` and `<!--/slot:name-->` (`<!--slot:-->` for the default slot). Read what a slot holds with `assignedNodes(name)` (`assignedNodes("")` for the default slot) rather than querying for `slot`.
 - Dynamic changes rely on a `MutationObserver`, which observes only while the element is connected and is disconnected on removal.
 
 ```ts
@@ -174,7 +175,7 @@ Design trade-offs:
 - **No fine-grained updates**: on every change, `render` re-runs as a whole, and its cost depends on what you write in it. For large lists, use `changed` to skip unnecessary redraws and enable `skipUnchanged` on `replace` (see [Lists](lists.md#lists)).
 - `set` may be called inside `render`; it is processed in another round after the current one ends. If it has not stabilized after 50 consecutive rounds, a "suspected infinite loop" error is thrown.
 - When `state` is not used, the original `refs`, `text`, `show`, `bind`, and `createStore` work as before, fully backward compatible.
-- Once a component has any of `state`, `props` or `derive`, every `{{ hole }}` and `data-if` in its template must name one of them; tsc reports any other name. To show data from a store in such a component, copy it into state in the `bind` callback (see [Recipes](recipes.md#showing-data-from-a-store)).
+- Once a component has any of `state`, `props` or `derive`, every `{{ hole }}` and `data-if` in its template, outside a `<template data-each>`, must name one of them; tsc reports any other name. Holes inside a list item belong to the item and are filled by `replace` (see [Lists](lists.md)). To show data from a store in such a component, copy it into state in the `bind` callback (see [Recipes](recipes.md#showing-data-from-a-store)).
 
 **Read-only all the way down**: `state`, `props`, the `view` passed to `render` and the argument of each `derive` function are typed `DeepReadonly`: arrays and objects inside them cannot be changed in place. `this.state.items[0].done = true` or `this.state.items.push(x)` is a `tsc` error, because an object changed in place keeps its identity and the list and child props, which compare by reference, would not update. Pass new objects instead: `this.set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, done: true } : i)) }))`. When you annotate `render`'s `view` or a helper that takes the state, use read-only types (`readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`).
 
