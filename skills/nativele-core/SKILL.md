@@ -142,6 +142,8 @@ define("todo-app", TodoApp);
 ## Known limitations
 
 - Holes are text only; attributes are set in TypeScript through `data-ref`.
+- Put `data-ref` only on an element the class reads through `this.refs`: an unused ref is the error `unused-ref`. Read a form's controls through one ref on the `<form>`, `this.refs.form.elements.<name>`, typed by each control's tag: https://github.com/Pixmi/nativele/blob/main/docs/components.md#reading-a-form
+- A handler on an element inside any list item, a component list or a list of plain elements, receives `(e, hit: EventHit<Item, "id">)`, and `hit.key` is the item's key: https://github.com/Pixmi/nativele/blob/main/docs/components.md#events-data-on-
 - A derived value cannot read another derived value; share the calculation as a plain function: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - `data-if` removes the element from the page (its state is kept in memory); to hide an element while it keeps focus or media playback, set `this.refs.x.hidden` in `render`.
 - Nativele has no router, data fetching, form validation library, styling system or global state manager by design; use the project's tools for those, and see the other Skills for how they connect.
