@@ -11,7 +11,12 @@ export interface ListSchema {
    * and where codegen found the component: defined and exported in a scanned directory, defined there without export, or not found (a component from elsewhere).
    */
   item?: { tag: string; prop: string; key: string; source?: "local" | "unexported" | "external" };
+  /** The type of the item's root element: the item component for a list with `data-key` and `data-prop`. */
+  // Not constrained to Element: checking it would need the class of a component whose template lists itself before that class is complete.
+  rootElement?: unknown;
 }
+
+type ItemElement<L> = L extends { rootElement: infer E extends Element } ? E : Element;
 
 type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
   ? T extends keyof HTMLElementTagNameMap
@@ -38,7 +43,8 @@ interface Entry<L extends ListSchema> extends ItemContext<L> {
 
 /** The per-item context passed to update(). */
 export interface ItemContext<L extends ListSchema> {
-  readonly el: Element;
+  /** The item's root element, typed by its tag: for a list with `data-key` and `data-prop`, the item component with its props. */
+  readonly el: ItemElement<L>;
   readonly refs: L["refs"];
   readonly text: TextOf<L["text"]>;
   /** Maps to a data-if inside the item */
@@ -153,7 +159,7 @@ export class List<L extends ListSchema = ListSchema> {
     const show = conds.show as ItemContext<L>["show"];
     el.remove();
     this.onCreate?.(el);
-    const entry: Entry<L> = { el, refs: refs as L["refs"], text, show, item: undefined, fresh: true };
+    const entry: Entry<L> = { el: el as ItemElement<L>, refs: refs as L["refs"], text, show, item: undefined, fresh: true };
     this.#byEl.set(el, { key, item: undefined });
     return entry;
   }

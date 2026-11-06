@@ -10,7 +10,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## Unreleased
+## 0.6.2 (not published)
+
+### New checks
+
+- `ts-dom gen` reports `data-each` on a `<template>` inside `<svg>` or `<math>` as the error `each-in-svg`, with its line, column and a `Fix:`, instead of crashing with `Cannot read properties of undefined (reading 'childNodes')`: the parser makes such a `<template>` an ordinary element without content, so no list can be built from it.
+- A `data-ref` on a `<form>` types `elements` with the controls the template puts inside the form, by `name` and `id`: one control is its element type (`<input name="fee">` makes `this.refs.form.elements.fee` an `HTMLInputElement`; `<select>`, `<textarea>`, `<button>`, `<output>`, `<fieldset>` and `<object>` likewise), several with one name (a radio group, repeated checkboxes) are a `RadioNodeList`, and one inside a `data-if` or `<slot>` may also be `undefined`. A misspelled name is a tsc error; the rest of `HTMLFormElement` is unchanged. Controls inside a child component's tag or a `data-each` item, `<input type="image">`, and controls joined from outside the form with `form="id"` are not typed. Types only: nothing changes at runtime.
+- The `el` of a list item (in `get(key)` and in the `update` callback of `replace()` and `upsert()`) is typed by the item's root tag instead of `Element`: the item component's class for a list with `data-key` and `data-prop`, so `row.el.selected = true` is checked against its props, and the element type for plain items (`HTMLLIElement` for an `<li>`). Codegen writes it to the list schema as `rootElement`.
+
+### Documentation
+
+- Lists: per-row state of the parent (selected, rank) is a separate prop of the item component, set on each row through `get(key).el`; only the rows whose value changed render again. This replaces the advice to map the items to new objects that carry the field, which re-renders every row.
+- The form recipes read values through `this.refs.form.elements` instead of a `data-ref` per field.
+
+### Breaking changes
+
+- Code that relied on a list item's `el` being `Element` can fail where the root's own type conflicts with it, for example a cast such as `ctx.el as HTMLInputElement` on an `<li>` item (`HTMLLIElement` and `HTMLInputElement` do not overlap). Remove the cast, or cast to the element the template has at the root.
+
+## 0.6.1 (not published)
 
 ### New checks
 

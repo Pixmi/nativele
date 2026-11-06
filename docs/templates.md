@@ -8,7 +8,7 @@ There are only a few kinds of markup, plus one kind of hole.
 
 | Markup | Meaning | TS side |
 |---|---|---|
-| `data-ref="name"` | Get the element; the type is derived from the tag | `this.refs.name` |
+| `data-ref="name"` | Get the element; the type is derived from the tag (on a `<form>`, `elements` is typed with its named controls too, see [Reading a form](components.md#reading-a-form)) | `this.refs.name` |
 | `data-if="name"` | Conditional block, **hidden by default** (removed from the DOM); shown only when TS says so | `this.show("name", bool)` |
 | `<template data-each="name">` | List; the content must be exactly one root element | `this.lists.name` |
 | `<slot name="x">` | Slot | The user provides child nodes with `slot="x"` |

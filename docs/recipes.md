@@ -160,12 +160,12 @@ addRow(e: EmitEvent<ContactForm, "contact-add">): void {
 
 ## Form validation
 
-Keep each message in state, show it with `data-if`, and clear the messages as the user types. `novalidate` leaves validation to this code, and `role="alert"` announces the messages.
+Keep each message in state, show it with `data-if`, and clear the messages as the user types. `novalidate` leaves validation to this code, and `role="alert"` announces the messages. The fields sit in the `<form data-ref="form">` of the dialog above, so `this.refs.form.elements.name` reads each one by its `name`, typed by its tag (`HTMLInputElement` here; a `<select>` is an `HTMLSelectElement` with `selectedOptions`, a radio group a `RadioNodeList` whose `value` is the checked one, a checkbox is read with `.checked`), and no field needs a `data-ref` of its own. Which controls are typed is in [Reading a form](components.md#reading-a-form).
 
 ```html
-<label>Name <input data-ref="name" name="name" data-on-input="clearErrors" /></label>
+<label>Name <input name="name" data-on-input="clearErrors" /></label>
 <p role="alert" data-if="nameError">{{ nameError }}</p>
-<label>Email <input data-ref="email" name="email" type="email" data-on-input="clearErrors" /></label>
+<label>Email <input name="email" type="email" data-on-input="clearErrors" /></label>
 <p role="alert" data-if="emailError">{{ emailError }}</p>
 ```
 
@@ -175,8 +175,9 @@ clearErrors(): void {
 }
 submit(e: Event): void {
   e.preventDefault();
-  const name = this.refs.name.value.trim();
-  const email = this.refs.email.value.trim();
+  const { elements } = this.refs.form;
+  const name = elements.name.value.trim();
+  const email = elements.email.value.trim();
   const nameError = name ? "" : "Name is required";
   const emailError = /^\S+@\S+\.\S+$/.test(email) ? "" : "Enter a valid email";
   this.set({ nameError, emailError });

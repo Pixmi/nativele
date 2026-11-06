@@ -94,9 +94,38 @@ describe("codegen diagnostics", () => {
   it("the generated module contains text and list types and is valid TS", () => {
     const m = generateModule(`<p>{{ a }}</p><template data-each="l"><i>{{ b }}</i></template>`);
     expect(m).toContain(`text: "a"`);
-    expect(m).toContain(`"l": { refs: Record<never, never>; text: "b"; ifs: never }`);
+    expect(m).toContain(`"l": { refs: Record<never, never>; text: "b"; ifs: never; rootElement: El<"i"> }`);
     expect(m).toContain(`export default template<`);
     expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
+  });
+  it("data-each on a <template> inside <svg> or <math> is a diagnostic at the template, not a crash", () => {
+    const [d] = analyze(`<p>x</p>\n<svg>\n  <g><template data-each="dots"><circle></circle></template></g>\n</svg>`).diagnostics;
+    expect(d).toMatchObject({ rule: "each-in-svg", severity: "error", line: 3, col: 6 });
+    expect(d?.message).toMatch(/Fix: /);
+    expect(analyze(`<math><template data-each="m"><mi>x</mi></template></math>`).diagnostics.map((x) => x.rule)).toEqual(["each-in-svg"]);
+    expect(analyze(`<svg><foreignObject><template data-each="l"><p>x</p></template></foreignObject></svg>`).diagnostics).toEqual([]);
+  });
+  it("a list records the type of its item's root element: the item component for a bound list, SVGElement outside HTML", () => {
+    expect(generateModule(`<template data-each="l"><li>x</li></template>`)).toContain(`rootElement: El<"li"> }`);
+    expect(generateModule(`<template data-each="l" data-key="id" data-prop="row"><x-row></x-row></template>`)).toContain(`rootElement: El<"x-row">; item: { tag: "x-row"`);
+    expect(generateModule(`<template data-each="l"><svg></svg></template>`)).toContain(`rootElement: SVGElement }`);
+  });
+  it("a form ref types elements by the controls inside the form, keyed by id and name", () => {
+    const refOf = (html: string) => /"f": ([^\n]*) };\n  lists:/.exec(generateModule(html))?.[1];
+    expect(refOf(`<form data-ref="f"><p>x</p></form>`)).toBe(`El<"form">`);
+    expect(refOf(`<form data-ref="f"><input name="fee"><select name="tags"></select><textarea id="note"></textarea><button name="go"></button><output name="sum"></output><fieldset name="more"></fieldset><object name="obj"></object></form>`)).toBe(
+      `El<"form"> & { readonly elements: HTMLFormControlsCollection & { "fee": El<"input">; "tags": El<"select">; "note": El<"textarea">; "go": El<"button">; "sum": El<"output">; "more": El<"fieldset">; "obj": El<"object"> } }`,
+    );
+    expect(refOf(`<form data-ref="f"><input type="radio" name="plan"><input type="radio" name="plan"><input id="a" name="a"></form>`)).toBe(`El<"form"> & { readonly elements: HTMLFormControlsCollection & { "plan": RadioNodeList; "a": El<"input"> } }`);
+    expect(refOf(`<form data-ref="f"><input name="a" data-if="on"><input name="b"><p data-if="on"><input name="b"></p><slot><input name="c"></slot><input name="d" data-if="x"><input name="d" data-if="y"></form>`)).toBe(
+      `El<"form"> & { readonly elements: HTMLFormControlsCollection & { "a": El<"input"> | undefined; "b": El<"input"> | RadioNodeList; "c": El<"input"> | undefined; "d": El<"input"> | RadioNodeList | undefined } }`,
+    );
+  });
+  it("a form ref leaves out what form.elements does not show by that name", () => {
+    const refOf = (html: string) => /"f": ([^\n]*) };\n  lists:/.exec(generateModule(html))?.[1];
+    expect(refOf(`<form data-ref="f"><input type="image" name="a"><input name="length"><input name="toString"><input name="0"><input name=""><x-field><input name="b"></x-field><template><input name="c"></template><template data-each="l"><input name="d"></template><input name="e" form="other"></form><input name="g" form="x">`)).toBe(`El<"form">`);
+    expect(refOf(`<form data-ref="f" id="x"><input name="e" form="x"><input name="h" form="y"></form>`)).toBe(`El<"form"> & { readonly elements: HTMLFormControlsCollection & { "e": El<"input"> } }`);
+    expect(generateModule(`<template data-each="l"><li><form data-ref="f"><input name="q"></form></li></template>`)).toContain(`refs: { "f": El<"form"> & { readonly elements: HTMLFormControlsCollection & { "q": El<"input"> } } }`);
   });
   it("the generated types have no empty object type literal, which typescript-eslint's no-empty-object-type reports", () => {
     const type = (html: string) => generateModule(html).split("export default template<")[1]?.split(">([")[0] ?? "";
@@ -213,6 +242,7 @@ const RULE_INPUTS: Record<string, string> = {
   "each-not-template": `<ul data-each="a"></ul>`,
   "empty-each": `<template data-each=""><i></i></template>`,
   "nested-each": `<template data-each="a"><i><template data-each="b"><u></u></template></i></template>`,
+  "each-in-svg": `<svg><template data-each="dots"><circle></circle></template></svg>`,
   "duplicate-each": `<template data-each="a"><i></i></template><template data-each="a"><i></i></template>`,
   "each-binding-incomplete": `<template data-each="a" data-key="id"><x-row></x-row></template>`,
   "invalid-each-binding": `<template data-each="a" data-key="a.b" data-prop="item"><x-row></x-row></template>`,

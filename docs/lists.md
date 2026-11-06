@@ -96,7 +96,35 @@ render(view, changed) {
 toggle(_e: Event, hit: EventHit<Todo, "id">) { /* hit.key is the item's id, typed Todo["id"]; hit.item is the Todo */ }
 ```
 
-Assigning `items` keeps the element of each key that stays (moved with `moveBefore` where the browser has it, so focus and state survive), creates one for a new key, removes the ones that are gone, and sets `todo` on each element whose item is not the same object as last time. Use immutable updates: changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, for example `{ ...todo, done: true }`. Each item component receives its whole item through that one property; to give it more (whether it is selected, its rank), map the items to objects that carry it before assigning, for example `items.map((t) => ({ ...t, selected: t.id === selectedId }))`. The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned. `tsc` checks the assignment: each item must have the type of the `todo` property that `<todo-row>` declares and a `data-key` field (`id`), and the item component must declare the `data-prop` property; a list without `data-key` and `data-prop` takes no items. This relies on the component being registered in `ts-dom-tags.ts` (an exported `define("todo-row", TodoRow)` in a scanned directory). When the component is defined in a scanned directory but its class is not exported, or `ts-dom-tags.ts` does not list it yet, the assignment is a type error that says so (`itemComponentClassNotExported`, `itemComponentMissingFromTagMap`); a component from outside the scanned directories has no item type to check against, so the list accepts an object literal or a type alias with the `id` field, but rejects items typed by an interface (`Index signature for type 'string' is missing in type 'Tag'`): map them to new objects (`items.map((t) => ({ ...t }))`), or bring the component's tag map into the program (a component package exports it from its entry). At runtime, assigning throws when the value is not an array of objects, when an item has no string or number `id`, when two items share one, or when the template has no `data-key` and `data-prop`.
+Assigning `items` keeps the element of each key that stays (moved with `moveBefore` where the browser has it, so focus and state survive), creates one for a new key, removes the ones that are gone, and sets `todo` on each element whose item is not the same object as last time. Use immutable updates: changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, for example `{ ...todo, done: true }`. Each item component receives its whole item through that one property; state that belongs to the parent's view of a row (whether it is selected, its rank) is a separate prop, set per row through `get(key).el` (see [Per-row state](#per-row-state-selected-rank)). The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned. `tsc` checks the assignment: each item must have the type of the `todo` property that `<todo-row>` declares and a `data-key` field (`id`), and the item component must declare the `data-prop` property; a list without `data-key` and `data-prop` takes no items. This relies on the component being registered in `ts-dom-tags.ts` (an exported `define("todo-row", TodoRow)` in a scanned directory). When the component is defined in a scanned directory but its class is not exported, or `ts-dom-tags.ts` does not list it yet, the assignment is a type error that says so (`itemComponentClassNotExported`, `itemComponentMissingFromTagMap`); a component from outside the scanned directories has no item type to check against, so the list accepts an object literal or a type alias with the `id` field, but rejects items typed by an interface (`Index signature for type 'string' is missing in type 'Tag'`): map them to new objects (`items.map((t) => ({ ...t }))`), or bring the component's tag map into the program (a component package exports it from its entry). At runtime, assigning throws when the value is not an array of objects, when an item has no string or number `id`, when two items share one, or when the template has no `data-key` and `data-prop`.
+
+`this.lists.todos.get(key)` returns the item's context, whose `el` is the item component itself, typed as its class: its props are checked by tsc like any other component's.
+
+#### Per-row state (selected, rank)
+
+Give the item component a prop of its own for it, assign the items only when they change, and set the extra prop on each row:
+
+```ts
+// variant-row.ts
+export class VariantRow extends Component(tpl, {
+  props: { variant: null as Variant | null, selected: false },
+}) {}
+```
+
+```ts
+// variant-picker.ts
+render(view, changed) {
+  if (changed.has("variants")) this.lists.variants.items = view.variants;
+  if (changed.has("variants") || changed.has("selectedId")) {
+    for (const v of view.variants) {
+      const row = this.lists.variants.get(v.id);
+      if (row) row.el.selected = v.id === view.selectedId; // VariantRow: a wrong prop name or type is a tsc error
+    }
+  }
+}
+```
+
+A prop setter does nothing when the new value is the same as the current one (`Object.is`), so when the selection moves only the row that loses it and the row that gains it render again. Do not map the items to new objects that carry the extra field (`items.map((v) => ({ ...v, selected: v.id === selectedId }))`): every object is new, so every row receives a new `variant` and renders again on each change of the selection.
 
 Inside a `<ul>` or `<ol>` the item component needs `role="listitem"`, because a custom element is not an `<li>`; the accessibility check (`list-structure`) asks for it. `data-each` cannot be nested, on purpose: an item is one component, so a list inside an item is that component's own `data-each`. Every template then holds one level, with its own `refs`, `text` and event handling.
 
@@ -127,16 +155,18 @@ this.lists.tags.replace(
 | `upsert(key, item, update)` | Add (at the end) or update a single item |
 | `remove(key)` | Remove a single item |
 | `clear()` | Clear everything |
-| `has(key)` / `get(key)` / `size` | Queries |
+| `has(key)` / `get(key)` / `size` | Queries; `get(key)` returns the item's context (`el`, `refs`, `text`, `show`) or `undefined` |
 
 `replace` only does one-dimensional key matching; the DOM nodes of existing items are kept and moved, and subtrees are not compared. The content of an item is entirely decided by your `update`.
 
 Notes:
 
+- `el`, in `update` and in what `get(key)` returns, is the item's root element, typed by its tag (`HTMLLIElement` for the `<li>` above).
 - `data-ref`, holes, and `data-if` inside an item belong to that item and do not appear in the component-level `refs` / `text`.
 - `data-if` cannot be placed on an item's root element; wrap it in one more layer.
 - `data-each` cannot be nested. Split it into two templates: put the inner list in its own `.html` (a child component with its own `data-each`) and use that component's tag inside the outer item.
 - `<slot>` cannot be placed inside an item.
+- `data-each` does not work on a `<template>` inside `<svg>` or `<math>` (`each-in-svg`): there the parser makes `<template>` an ordinary SVG or MathML element, with no content to repeat. Create the repeated SVG elements in TypeScript (`document.createElementNS` in `render`), or repeat an HTML element or a component that contains its own `<svg>`.
 
 ### Moving items, connecting and subscriptions
 

@@ -1,9 +1,9 @@
 <dialog data-ref="dialog" aria-labelledby="contact-form-title">
   <form data-ref="form" data-on-submit="submit" novalidate>
     <h2 id="contact-form-title">New contact</h2>
-    <label>Name <input data-ref="name" name="name" data-on-input="clearErrors" /></label>
+    <label>Name <input name="name" data-on-input="clearErrors" /></label>
     <p role="alert" data-if="nameError">{{ nameError }}</p>
-    <label>Email <input data-ref="email" name="email" type="email" data-on-input="clearErrors" /></label>
+    <label>Email <input name="email" type="email" data-on-input="clearErrors" /></label>
     <p role="alert" data-if="emailError">{{ emailError }}</p>
     <button type="submit">Add</button>
     <button type="button" data-on-click="cancel">Cancel</button>
