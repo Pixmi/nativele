@@ -176,14 +176,14 @@ export function unusedMarkup(html: string, code: string): Diagnostic[] {
 }
 
 /** Check every HTML template under `dirs` against the TypeScript files that import it. */
-export function lintUsage(dirs: string[], tsFiles: string[]): LintIssue[] {
+export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
   const issues: LintIssue[] = [];
   for (const dir of dirs) {
     for (const html of listHtml(dir)) {
       const name = basename(html);
       const importers = [...sources].filter(([f, src]) => dirname(f) === dirname(html) && importsHtml(src, name));
-      const file = relative(process.cwd(), html);
+      const file = relative(cwd, html);
       if (!importers.length) {
         issues.push({
           file,
@@ -306,7 +306,7 @@ export type PropKind = "string" | "number" | "boolean" | "other";
 export interface Contract {
   props: Map<string, PropKind>;
   emits: Set<string>;
-  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the working directory, and text. */
+  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and text. */
   template?: { file: string; html: string };
 }
 
@@ -333,7 +333,7 @@ function packageOf(file: string): string {
  * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[]): Contracts {
+export function contractsFor(dirs: string[], cwd = process.cwd()): Contracts {
   const out: Contracts = new Map();
   for (const def of scanDefines(dirs)) {
     const code = readFileSync(def.file, "utf8");
@@ -347,7 +347,7 @@ export function contractsFor(dirs: string[]): Contracts {
     const tpl = /^\(\s*([A-Za-z_$][\w$]*)/.exec(call)?.[1];
     const spec = tpl && new RegExp(`import\\s+${esc(tpl)}\\s+from\\s+["'](\\.{1,2}/[^"']+\\.html)\\.js["']`).exec(code)?.[1];
     const html = spec && resolve(dirname(def.file), spec);
-    if (html && existsSync(html)) contract.template = { file: relative(process.cwd(), html), html: readFileSync(html, "utf8") };
+    if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(def.file), contract }]);
   }
   return out;
@@ -537,16 +537,16 @@ export function dataFlow(
 }
 
 /** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
-export function lintDataFlow(dirs: string[], tsFiles: string[]): LintIssue[] {
+export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
-  const contracts = contractsFor(dirs);
+  const contracts = contractsFor(dirs, cwd);
   const issues: LintIssue[] = [];
   const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
   for (const dir of dirs) {
     for (const html of listHtml(dir)) {
       const name = basename(html);
       const spec = `./${name}.js`;
-      const file = relative(process.cwd(), html);
+      const file = relative(cwd, html);
       let classes: ComponentClass[] = [];
       for (const [f, src] of sources) {
         if (dirname(f) === dirname(html) && importsHtml(src, name)) classes = classes.concat(componentClasses(src, spec));
@@ -558,7 +558,7 @@ export function lintDataFlow(dirs: string[], tsFiles: string[]): LintIssue[] {
         if (here.has(use.tag) || unchecked.has(use.tag)) continue;
         const defs = contracts.get(use.tag);
         const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-        unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(process.cwd(), d.pkg) || ".") } : { first });
+        unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
       }
     }
   }

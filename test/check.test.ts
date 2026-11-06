@@ -371,3 +371,19 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     expect(runCheck({ dirs: ["src"], cwd: dir }).find((i) => i.rule === "tsc-not-found")).toMatchObject({ severity: "error" });
   });
 });
+
+describe("ts-dom check with a cwd other than the process's", () => {
+  it("gives the lint file paths and the child template in click-semantics relative to that cwd", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src/x-card.html"), `<div><span>{{ title }}</span></div>\n`);
+    writeFileSync(join(dir, "src/x-card.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./x-card.html.js";\nexport class Card extends Component(tpl) {}\ndefine("x-card", Card);\n`);
+    writeFileSync(join(dir, "src/page.html"), `<x-card data-on-click="go"></x-card>\n<p data-ref="dead"></p>\n`);
+    writeFileSync(join(dir, "src/page.ts"), `import { Component } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`);
+    const issues = runCheck({ dirs: ["src"], cwd: dir, a11y: true });
+    expect(issues.find((i) => i.rule === "unused-ref")?.file).toBe(join("src", "page.html"));
+    const click = issues.find((i) => i.rule === "click-semantics");
+    expect(click?.file).toBe(join("src", "page.html"));
+    expect(click?.message).toContain(`its template (${join("src", "x-card.html")}) has no operable element`);
+  }, 30_000);
+});

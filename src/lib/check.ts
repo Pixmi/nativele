@@ -333,13 +333,13 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   }
 
   const tsFiles = dirs.flatMap(listTs);
-  const lint = [...lintUsage(dirs, tsFiles), ...lintDataFlow(dirs, tsFiles)].map((i) => ({ ...i, file: rel(resolve(cwd, i.file)) }));
+  const lint = [...lintUsage(dirs, tsFiles, cwd), ...lintDataFlow(dirs, tsFiles, cwd)];
   for (const i of lint) {
     if (i.rule === "missing-handler" && issues.some((x) => x.rule === "missing-handler" && x.file === i.file && x.line === i.line && x.col === i.col)) continue;
     issues.push(i);
   }
   if (options.a11y) {
-    const contracts = contractsFor(dirs);
+    const contracts = contractsFor(dirs, cwd);
     for (const dir of dirs) {
       for (const f of listHtml(dir)) for (const d of checkA11y(readFileSync(f, "utf8"), [], contractsAt(contracts, f))) issues.push({ file: rel(f), ...d });
     }
