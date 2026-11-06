@@ -1,0 +1,29 @@
+<form data-ref="order" id="order">
+  <input aria-label="Field" name="fee" />
+  <select aria-label="Field" name="tags" multiple><option>a</option></select>
+  <textarea aria-label="Field" name="note"></textarea>
+  <button type="submit" name="go">Go</button>
+  <output name="total"></output>
+  <fieldset name="extra">
+    <input aria-label="Field" type="radio" name="plan" value="a" />
+    <input aria-label="Field" type="radio" name="plan" value="b" />
+  </fieldset>
+  <input aria-label="Field" type="checkbox" name="opt" value="1" />
+  <input aria-label="Field" type="checkbox" name="opt" value="2" />
+  <input aria-label="Field" id="code" />
+  <input aria-label="Field" name="maybe" data-if="showMaybe" />
+  <input aria-label="Field" name="pair" />
+  <p data-if="showPair"><input aria-label="Field" name="pair" /></p>
+  <input aria-label="Field" name="length" />
+  <input aria-label="Field" type="image" name="pic" alt="Send" src="send.png" />
+  <x-wrap><input aria-label="Field" name="slotted" /></x-wrap>
+  <input aria-label="Field" name="elsewhere" form="other" />
+  <input aria-label="Field" name="owned" form="order" />
+</form>
+<input aria-label="Field" name="outside" form="order" />
+<form data-ref="empty"><p>No controls</p></form>
+<ul>
+  <template data-each="rows">
+    <li><form data-ref="row"><input aria-label="Field" name="qty" /></form></li>
+  </template>
+</ul>

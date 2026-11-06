@@ -58,6 +58,8 @@ interface Scope {
   refs: Map<string, string>;
   text: Set<string>;
   ifs: Set<string>;
+  /** In a `data-each` scope: the type of the item's root element. */
+  root?: string;
 }
 export interface Analysis {
   scope: Scope;
@@ -95,6 +97,44 @@ const locOf = (n: Node, attrName?: string): Loc => {
   const loc = (attrName && el?.attrs?.[attrName]) || el;
   return { line: loc?.startLine ?? 1, col: loc?.startCol ?? 1 };
 };
+
+const LISTED_CONTROLS = new Set(["button", "fieldset", "input", "object", "output", "select", "textarea"]);
+// A named property of HTMLFormControlsCollection is hidden by a member of its prototype chain, and an array index is not a name.
+const isHiddenName = (name: string) => !name || ["length", "item", "namedItem"].includes(name) || name in Object.prototype || /^(0|[1-9]\d*)$/.test(name);
+
+/**
+ * `HTMLFormElement` with `elements` typed by the controls the template puts inside the form, keyed by `id` and `name` as the collection is:
+ * one control is its element type, several are a `RadioNodeList`, and a control inside a `data-if` or `<slot>` may be missing.
+ * Controls inside a nested component or a `<template>` are not known here, and neither are those outside the form that name it with `form`.
+ */
+function formType(form: Element): string {
+  const own = attr(form, "id");
+  const names = new Map<string, { type: string; hidden: boolean }[]>();
+  const visit = (parent: Element, maybe: boolean): void => {
+    for (const n of parent.childNodes) {
+      if (!isEl(n) || n.tagName === "template" || (n.namespaceURI === HTML_NS && n.tagName.includes("-"))) continue;
+      const hidden = maybe || n.tagName === "slot" || attr(n, "data-if") !== undefined;
+      const owner = attr(n, "form");
+      const listed = n.namespaceURI === HTML_NS && LISTED_CONTROLS.has(n.tagName) && !(n.tagName === "input" && attr(n, "type")?.trim().toLowerCase() === "image");
+      if (listed && (owner === undefined || owner === own)) {
+        for (const name of new Set([attr(n, "id"), attr(n, "name")])) {
+          if (name === undefined || isHiddenName(name)) continue;
+          names.set(name, [...(names.get(name) ?? []), { type: `El<${q(n.tagName)}>`, hidden }]);
+        }
+      }
+      visit(n, hidden);
+    }
+  };
+  visit(form, false);
+  if (!names.size) return `El<"form">`;
+  const controls = [...names].map(([name, found]) => {
+    const always = found.filter((c) => !c.hidden);
+    const single = always.length === 0 ? found : always.length === 1 ? always : [];
+    const options = [...new Set(single.map((c) => c.type)), ...(found.length > 1 ? ["RadioNodeList"] : []), ...(always.length === 0 ? ["undefined"] : [])];
+    return `${q(name)}: ${options.join(" | ")}`;
+  });
+  return `El<"form"> & { readonly elements: HTMLFormControlsCollection & ${members(controls)} }`;
+}
 
 /** Scan an HTML template for data-ref / data-each / data-if / <slot name> / {{ name }} / data-on-* and collect diagnostics. */
 export function analyze(html: string): Analysis {
@@ -216,7 +256,7 @@ export function analyze(html: string): Analysis {
         else if (scope.refs.has(ref)) {
           report("duplicate-ref", "error", `data-ref="${ref}" is used more than once in the same scope, so this.refs.${ref} would be ambiguous. Fix: use a different name (names inside different data-each templates may repeat).`, n);
         } else {
-          scope.refs.set(ref, n.namespaceURI === HTML_NS ? `El<${JSON.stringify(tag)}>` : "SVGElement");
+          scope.refs.set(ref, n.namespaceURI !== HTML_NS ? "SVGElement" : tag === "form" ? formType(n) : `El<${JSON.stringify(tag)}>`);
           mark(listName ? `ref:${listName}/${ref}` : `ref:${ref}`, n);
         }
       }
@@ -283,6 +323,8 @@ export function analyze(html: string): Analysis {
             }
           }
           const s = newScope();
+          const root = items.length === 1 ? items[0] : undefined;
+          if (root && isEl(root)) s.root = root.namespaceURI === HTML_NS ? `El<${q(root.tagName)}>` : "SVGElement";
           a.lists.set(each, s);
           mark(`each:${each}`, n);
           walk(n, s, each, true, false);
@@ -415,7 +457,7 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
       const def = bound && defs.find((d) => d.tag === bound.tag);
       const source = !def ? "external" : def.exported ? "local" : "unexported";
       const item = bound ? `; item: { tag: ${q(bound.tag)}; prop: ${q(bound.prop)}; key: ${q(bound.key)}; source: ${q(source)} }` : "";
-      return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}${item} }`;
+      return `${q(n)}: { refs: ${obj(s.refs)}; text: ${union(s.text)}; ifs: ${union(s.ifs)}; rootElement: ${s.root ?? "Element"}${item} }`;
     });
   const type = `{
   refs: ${obj(a.scope.refs)};

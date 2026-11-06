@@ -18,8 +18,9 @@ export class ContactForm extends Component(tpl, {
   }
   submit(e: Event): void {
     e.preventDefault();
-    const name = this.refs.name.value.trim();
-    const email = this.refs.email.value.trim();
+    const { elements } = this.refs.form;
+    const name = elements.name.value.trim();
+    const email = elements.email.value.trim();
     const nameError = name ? "" : "Name is required";
     const emailError = /^\S+@\S+\.\S+$/.test(email) ? "" : "Enter a valid email";
     this.set({ nameError, emailError });

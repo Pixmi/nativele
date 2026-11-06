@@ -462,7 +462,7 @@ export function dataFlow(
     }
   }
 
-  const formControls = new Set([...a.scope.refs].filter(([, type]) => /El<"(input|textarea|select)">/.test(type)).map(([name]) => name));
+  const formControls = new Set([...a.scope.refs].filter(([, type]) => /^El<"(input|textarea|select)">$/.test(type)).map(([name]) => name));
   for (const { body } of classes) {
     const render = methodBody(body, "render");
     if (!render || !formControls.size) continue;

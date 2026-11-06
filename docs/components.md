@@ -350,6 +350,39 @@ connected() { this.bind(session, (s) => (this.text.user = s.user)); }
 
 Enable it the same way as other lint rules: `"ts-dom/data-flow": ["warn", { ignore: [] }]`, or the CLI `npx ts-dom lint` (which also shows data flow warnings; adding `--strict` makes the exit code 1).
 
+### Reading a Form
+
+A `data-ref` on a `<form>` is typed with the controls the template puts inside it, so a form needs one ref, not one per field: `this.refs.form.elements.<name>` is each control by its `name` or `id`, typed by its tag, and a misspelled name is a tsc error.
+
+```html
+<form data-ref="form" data-on-submit="save">
+  <label>Fee <input name="fee" type="number" /></label>
+  <label>Tags <select name="tags" multiple>…</select></label>
+  <label><input type="radio" name="plan" value="basic" /> Basic</label>
+  <label><input type="radio" name="plan" value="pro" /> Pro</label>
+  <label><input type="checkbox" name="gift" /> Gift</label>
+</form>
+```
+
+```ts
+save(e: SubmitEvent) {
+  e.preventDefault();
+  const { fee, tags, plan, gift } = this.refs.form.elements;
+  const amount = fee.valueAsNumber;                              // fee: HTMLInputElement
+  const picked = [...tags.selectedOptions].map((o) => o.value); // tags: HTMLSelectElement
+  const chosen = plan.value;                                    // plan: RadioNodeList, the checked radio's value
+  const wrap = gift.checked;                                    // gift: HTMLInputElement
+}
+```
+
+| Controls with that name or id in the form | Type |
+|---|---|
+| One `<input>`, `<select>`, `<textarea>`, `<button>`, `<output>`, `<fieldset>` or `<object>` | Its element type (`HTMLInputElement`, ...) |
+| Several (a radio group, repeated checkboxes) | `RadioNodeList` (`.value` is the checked radio's value; iterate it for the checkboxes) |
+| Inside a `data-if` element or `<slot>` fallback, so possibly not in the document | The type above, or `undefined` |
+
+The rest of `HTMLFormElement` is unchanged (`elements.length`, `namedItem()`, iteration, `reset()`, `requestSubmit()`). The type only describes what the browser already returns; nothing changes at runtime. Codegen only sees the form's own template, so these controls are not typed: those inside a child component's tag or a `data-each` item (they come from another template or exist once per item), `<input type="image">` (the browser leaves it out of `elements`), a name the collection hides behind its own members (`length`, `item`, `namedItem`, `toString`, ...), a control inside the form whose `form` attribute names another form, and a control outside the form that joins it with `form="id"`. Read those through their own `data-ref`, or with `elements.namedItem("name")`.
+
 ### A Small Reminder About Form Inputs
 
 When writing data back to an `<input>` in `render`, first compare whether the value is the same: when data returns to the child component through "input → emit → parent → props", writing the same value again makes the cursor jump to the end.
