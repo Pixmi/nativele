@@ -119,6 +119,16 @@ describe("reading component classes", () => {
     const code = `import t from "./a.html.js";\nexport default class extends Component(t) { a() {} }\nclass B<T extends Map<string, number>> extends Component(t) { b() {} }`;
     expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
   });
+  it("reads type parameters with a default object type or a function type", () => {
+    const code = `import t from "./a.html.js";\nclass A<T = {}> extends Component(t, {}) { a() {} }\nclass B<T extends (x: number) => void> extends Component(t) { b() {} }`;
+    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+  });
+  it("does not count an import inside a string or a comment as the template's importer", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "a.html"), `<p></p>`);
+    writeFileSync(join(d, "doc.ts"), `export const sample = 'import tpl from "./a.html.js";';\n// import tpl from "./a.html.js";\n/* import tpl from "./a.html.js"; */\n`);
+    expect(lintUsage([d], [join(d, "doc.ts")]).map((i) => i.rule)).toEqual(["no-importer"]);
+  });
   it("reads the contract of a generic component", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(d, "kid.html"), `<p></p>`);

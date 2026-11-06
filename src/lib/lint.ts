@@ -25,11 +25,24 @@ function defaultImportName(code: string, spec: string): string | null {
   return templateImports(code).find((i) => i.spec === spec && i.local)?.local ?? null;
 }
 
-const COMPONENT_CLASS = /\bclass(?:\s+([A-Za-z_$][\w$]*))?(?:\s*<[^{(]*?>)?\s+extends\s+Component\s*\(/g;
+const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
+const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
 
-/** Every `class X extends Component(` in `code`: the class name (none for `class extends`) and the offset of the `(`. */
+/** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
 export function componentClassHeads(code: string): { name?: string; open: number }[] {
-  return [...code.matchAll(COMPONENT_CLASS)].map((m) => ({ ...(m[1] ? { name: m[1] } : {}), open: m.index + m[0].length - 1 }));
+  const out: { name?: string; open: number }[] = [];
+  for (const m of code.matchAll(CLASS_NAME)) {
+    let at = m.index + m[0].length;
+    if (code[at] === "<") {
+      const end = matchClose(code, at, "<", ">");
+      if (end < 0) continue;
+      at = end + 1;
+    }
+    EXTENDS_COMPONENT.lastIndex = at;
+    const e = EXTENDS_COMPONENT.exec(code);
+    if (e) out.push({ ...(m[1] ? { name: m[1] } : {}), open: at + e[0].length - 1 });
+  }
+  return out;
 }
 
 /** The `Component(...)` call whose `(` is at `open` and the class body after it: the offsets of the call's `)` and of the body's braces; null when one is not closed. */
@@ -53,9 +66,10 @@ export interface ComponentClass {
 export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
   const local = defaultImportName(code, htmlSpec);
   if (!local) return [];
-  const arg = new RegExp(`^\\(\\s*${esc(local)}\\b`);
+  const arg = new RegExp(`\\(\\s*${esc(local)}\\b`, "y");
   return componentClassHeads(code).flatMap(({ open }) => {
-    const span = arg.test(code.slice(open)) ? classSpan(code, open) : null;
+    arg.lastIndex = open;
+    const span = arg.test(code) ? classSpan(code, open) : null;
     return span ? [{ call: code.slice(open, span.callEnd + 1), body: code.slice(span.bodyStart, span.bodyEnd + 1) }] : [];
   });
 }
@@ -103,12 +117,16 @@ interface Importer {
 /** The modules that import each template, by the template's absolute path; each file is read once. */
 function importersByTemplate(tsFiles: readonly string[]): Map<string, Importer[]> {
   const out = new Map<string, Importer[]>();
-  for (const f of tsFiles) {
+  for (const f of new Set(tsFiles.map((t) => resolve(t)))) {
     const code = readFileSync(f, "utf8");
+    const seen = new Set<string>();
     for (const { html, spec } of templateImports(code)) {
       const file = resolve(dirname(f), html);
-      const here = out.get(file) ?? [];
-      if (!here.some((i) => i.code === code && i.spec === spec)) out.set(file, [...here, { code, spec }]);
+      if (seen.has(`${file}\0${spec}`)) continue;
+      seen.add(`${file}\0${spec}`);
+      const here = out.get(file);
+      if (here) here.push({ code, spec });
+      else out.set(file, [{ code, spec }]);
     }
   }
   return out;

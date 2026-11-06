@@ -16,7 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 - `ts-dom lint` alone no longer reports a `data-on-*` method that the class does not define: `tsc` reports it at the `define()` call, and `ts-dom check` reports it once, at the template, as `missing-handler` (a check rule now). While the class has a contract error such as `missing-binding`, tsc reports the missing handler only after that error is fixed.
-- `<div role="button" data-on-click>` without `tabindex` gets one warning, `role-tabindex`, instead of that and `click-semantics` with the same fix: `click-semantics` leaves an element with an interactive role to `role-tabindex`. It also uses the same definition of an operable element as the check of a child template, so `data-on-click` on `contenteditable` content is no longer reported, and on a `<label>` it is reported unless the label wraps an operable element (a click on that control, by keyboard too, reaches the label; a bare label or a `<label for>` is pointer-only).
+- `<div role="button" data-on-click>` without `tabindex` gets one warning, `click-semantics`, instead of that and `role-tabindex` with the same fix: `role-tabindex` leaves an element that `click-semantics` reports to it, so the warning stays when `role-tabindex` is ignored or the element has a `data-ref`. `click-semantics` uses the same definition of an operable element as the check of a child template, so `data-on-click` on `contenteditable` content is no longer reported, and on a `<label>` it is reported unless the label wraps an operable element or a component whose template has one (a click on that control, by keyboard too, reaches the label; a bare label or a `<label for>` is pointer-only).
 - The a11y rules are described in `ts-dom rules` and in the oxlint rule metadata by a short description, as the other groups are, instead of the first sentence of a default message that had drifted from the messages printed. The messages are unchanged.
 
 ### Removed
@@ -25,8 +25,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixes
 
-- `ts-dom lint` and `ts-dom check` find the module that imports a template in any folder, by the relative path it imports (`../views/card.html.js`, `./parts/row.html.js`), as the oxlint plugin already did, instead of reporting `no-importer` and skipping the checks of that template. Lint, check, doctor and the oxlint plugin now recognize one form of template import: a relative path to the `.html` file followed by `.js`.
-- A template imported without `.js` (`import tpl from "./x.html"`) is no longer reported by lint as `no-importer` with a message that says nothing imports it: `ts-dom doctor` (`template-import-without-js`) and tsc report that mistake, and lint checks the template against the class that imports it.
+- `ts-dom lint` and `ts-dom check` find the module that imports a template in any folder, by the relative path it imports (`../views/card.html.js`, `./parts/row.html.js`), as the oxlint plugin already did, instead of reporting `no-importer` and skipping the checks of that template. Lint, check, doctor and the oxlint plugin now recognize the same template imports: a relative path to the `.html` file, with `.js` or without it. An import inside a string or a comment is not one.
+- A template imported without `.js` (`import tpl from "./x.html"`) is no longer reported by lint as `no-importer` with a message that says nothing imports it: `ts-dom doctor` (`template-import-without-js`) and tsc report that mistake, and `ts-dom lint`, `ts-dom check` and the oxlint plugin check the template against the class that imports it (the plugin skipped such an import before).
 - A generic component class (`class List<T> extends Component(tpl, ...)`) has its props, events and template read for the checks of the parent templates, and `ts-dom check` finds its body when it has a contract error.
 
 ## 0.6.6 (not published)

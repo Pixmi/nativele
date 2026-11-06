@@ -621,7 +621,8 @@ export function matchClose(code: string, start: number, open: string, close: str
     const end = skipNonCode(code, i);
     if (end > i) i = end - 1;
     else if (code[i] === open) depth++;
-    else if (code[i] === close && --depth === 0) return i;
+    // The > of an arrow in a type parameter list closes nothing.
+    else if (code[i] === close && !(close === ">" && code[i - 1] === "=") && --depth === 0) return i;
   }
   return -1;
 }
@@ -634,17 +635,17 @@ const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s
 export interface TemplateImport {
   /** The local name of the default import, when the template is imported as one. */
   local?: string;
-  /** The specifier as written. */
   spec: string;
   /** The template's path relative to the importing module: the specifier without `.js`. */
   html: string;
-  /** Whether the specifier ends in `.js`. */
   js: boolean;
 }
 
-/** Every `import x from "./x.html.js"` (or other `from` clause naming a template by a relative path) in `code`. */
+/** Every `import x from "./x.html.js"` (or other `from` clause naming a template by a relative path) in `code`, outside strings and comments. */
 export function templateImports(code: string): TemplateImport[] {
-  return [...code.matchAll(TEMPLATE_IMPORT)].map((m) => {
+  const found = [...code.matchAll(TEMPLATE_IMPORT)];
+  const skip = found.length ? nonCodeRanges(code) : [];
+  return found.filter((m) => !skip.some(([a, b]) => m.index >= a && m.index < b)).map((m) => {
     const html = m[2] as string;
     return { ...(m[1] ? { local: m[1] } : {}), spec: html + (m[3] ?? ""), html, js: m[3] !== undefined };
   });
