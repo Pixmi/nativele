@@ -236,7 +236,7 @@ All three read the components defined in the scanned folders, so `click-semantic
 | `heading-empty` | `h1`–`h6` must not be empty |
 | `aria-role` | `role` must be a valid ARIA role |
 | `aria-attr` | `aria-*` must be a valid ARIA attribute |
-| `role-tabindex` | A non-natively-focusable element with an interactive role (button, tab, checkbox…) needs `tabindex` |
+| `role-tabindex` | A non-natively-focusable element with an interactive role (button, tab, checkbox…) needs `tabindex`; one with a `data-on-click` that `click-semantics` reports is left to that rule |
 | `tabindex-positive` | Do not use a `tabindex` greater than 0 |
 | `hidden-focusable` | A focusable element must not have `aria-hidden="true"` |
 | `label-for` | `<label for>` must point to an `id` that exists in the template |
@@ -248,7 +248,7 @@ All three read the components defined in the scanned folders, so `click-semantic
 | `list-structure` | The children of `<ul>`/`<ol>` (including the root element of a `data-each` item) must be `<li>`; `<li>` must be inside `<ul>`, `<ol>`, or `<menu>` |
 | `landmark-label` | When a template has multiple `<nav>` or `<aside>`, they need to be distinguished with `aria-label` |
 | `redundant-role` | `role` is the same as the element's native semantics, for example `<button role="button">` |
-| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `input` other than `hidden`, `select`, `textarea`, `summary`, `contenteditable`, or an element with an interactive role plus `tabindex`), or on a `label` that wraps one (a click on that control, by keyboard too, reaches the label); otherwise keyboards and assistive technologies cannot use it. An element with an interactive role and no `tabindex` is reported by `role-tabindex` instead. On a Nativele component's tag it is reported only when the component's template has no operable element a click could come from, and the tag itself has no interactive role; the message names that template. A custom element lint has no single definition of (another library's, outside the scanned folders, or defined in several packages) is not checked, see `unchecked-custom-elements` |
+| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `input` other than `hidden`, `select`, `textarea`, `summary`, `contenteditable`, or an element with an interactive role plus `tabindex`), or on a `label` that wraps one or a component with one (a click on that control, by keyboard too, reaches the label); otherwise keyboards and assistive technologies cannot use it. An element it reports is not reported again by `role-tabindex`, which has the same fix. On a Nativele component's tag it is reported only when the component's template has no operable element a click could come from, and the tag itself has no interactive role plus `tabindex`; the message names that template. A custom element lint has no single definition of (another library's, outside the scanned folders, or defined in several packages) is not checked, see `unchecked-custom-elements` |
 
 To avoid many false positives, elements with `data-ref` are treated as "managed by TS", and the checks whose "name or reference may be set in TS" are skipped for them: `img-alt`, `control-name`, `form-label`, `iframe-title`, `dialog-name`, `heading-empty`, `role-tabindex`, `table-header`, `landmark-label`, `aria-idref`.
 

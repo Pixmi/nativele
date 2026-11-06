@@ -98,8 +98,13 @@ describe("click-semantics", () => {
     expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><p contenteditable data-on-click="go">x</p>`)).toEqual([]);
     expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
   });
-  it("an interactive role without tabindex gets one warning, role-tabindex", () => {
-    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["role-tabindex"]);
+  it("data-on-click on an interactive role without tabindex gets one warning, click-semantics, whatever the other rule's setting", () => {
+    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button">x</div>`)).toEqual(["role-tabindex"]);
+  });
+  it("role-tabindex still reports a custom element whose click click-semantics accepts", () => {
     expect(rules(`<x-card role="button" data-on-click="go"></x-card>`)).toEqual(["role-tabindex"]);
   });
   it("a label warns unless it wraps a control, whose click, by keyboard too, reaches the label", () => {
@@ -149,6 +154,10 @@ describe("click-semantics", () => {
   });
   it("the component tag with an interactive role plus tabindex does not warn", () => {
     expect(children.check(`<x-card role="button" tabindex="0" data-on-click="go"></x-card>`)).toEqual([]);
+  });
+  it("a label wrapping a component counts the component's template, and an unreadable custom element as operable", () => {
+    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label><label data-on-click="go"><wa-switch></wa-switch> b</label>`)).toEqual([]);
+    expect(children.check(`<label data-on-click="go"><x-card></x-card> a</label>`).map((d) => d.rule)).toEqual(["click-semantics"]);
   });
   it("a tag defined in several packages, none of them the template's, is not checked", () => {
     const card = `<div><span>{{ title }}</span></div>`;

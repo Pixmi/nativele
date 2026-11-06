@@ -467,7 +467,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button>save</button>`,
   },
   "click-semantics": {
-    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control is fine: a click on the control, by keyboard too, reaches the label's handler. An element with an interactive role and no tabindex is left to role-tabindex. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control, or a component with one, is fine: a click on the control, by keyboard too, reaches the label's handler. An element this rule reports is not reported again by role-tabindex, which has the same fix. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
     bad: `<div data-on-click="open">open</div>
 <!-- x-card.html: <div class="card"><span>{{ title }}</span></div> -->
 <x-card data-on-click="open"></x-card>`,

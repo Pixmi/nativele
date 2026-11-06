@@ -157,6 +157,8 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     });
   };
 
+  const clickable = (el: Element) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, new Set()));
+
   let lastHeading = 0;
   const landmarks = all.filter((x) => (x.el.tagName === "nav" || x.el.tagName === "aside") && attr(x.el, "role") !== "presentation");
   for (const { el, parent, inList, inLabel } of all) {
@@ -192,17 +194,19 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     const tabindex = attr(el, "tabindex");
-    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed) {
+    // A control inside a label, clicked or activated by keyboard, reaches the label's handler.
+    const unoperableClick = has(el, "data-on-click") && !clickable(el) && !(tag === "label" && descendants(kids(el)).some(clickable));
+    // role-tabindex has the same fix as click-semantics, so an element click-semantics reports is not reported twice.
+    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed && !unoperableClick) {
       report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);
     if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el, `A focusable element has aria-hidden="true", so keyboard users can reach something screen readers cannot see. Fix: remove aria-hidden, or make the element non-focusable.`);
 
-    // An interactive role without tabindex is left to role-tabindex. A control inside a label, clicked or activated by keyboard, reaches the label's handler.
-    if (has(el, "data-on-click") && !operable(el) && !(role && INTERACTIVE_ROLES.has(role)) && !(tag === "label" && descendants(kids(el)).some(operable))) {
+    if (unoperableClick) {
       if (!tag.includes("-")) {
         report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
-      } else if (!clickableInside(tag, children, new Set())) {
+      } else {
         report("click-semantics", el, `data-on-click is on <${tag}>, and its template (${children.get(tag)?.template?.file}) has no operable element a click could come from, so keyboard and assistive technology users cannot use it. Fix: put a <button> or <a href> in that template, or add an interactive role plus tabindex to <${tag}> here and handle keyboard events.`);
       }
     }
