@@ -278,7 +278,7 @@ A template can use a custom element from another library (a date picker, a chart
 | `refs` | Typed as its class, through `ts-dom-tags.ts` | Typed by its entry in `HTMLElementTagNameMap`; a tag the map does not list is `HTMLElement` |
 | `data-on-<event>` | Its `emits` type the handler: `EmitEvent<Child, "event">` | Write the event name the element dispatches (lowercase; a mixed-case name goes through `this.on()`, see [Events](#events-data-on-)). The handler receives the type `HTMLElementEventMap` lists for that name, otherwise `Event` |
 | Attributes and events in lint | `unknown-prop`, `invalid-prop-value` and `unknown-event` check them | Not checked: lint does not know the element's props or events, so a misspelled attribute or event name is not reported |
-| `data-on-click` in the accessibility check | `click-semantics` reports it when the component's template has no operable element (`<button>`, `<a href>`, a form control, `<summary>`, `contenteditable`, an interactive role plus `tabindex`) a click could come from, unless the tag itself has an interactive role plus `tabindex` | Not checked: the element may handle the keyboard itself |
+| `data-on-click` in the accessibility check | `click-semantics` reports it when the component's template has no operable element (`<button>`, `<a href>`, a form control, `<summary>`, `contenteditable`, an interactive role plus `tabindex`) a click could come from, unless the tag itself has an interactive role (without `tabindex`, `role-tabindex` reports it) | Not checked: the element may handle the keyboard itself |
 
 When the package does not declare its tag and events, declare them in any module of your program:
 

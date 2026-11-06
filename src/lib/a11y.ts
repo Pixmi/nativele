@@ -202,7 +202,8 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);
     if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el);
 
-    if (has(el, "data-on-click") && !focusable(el) && tag !== "label" && !(role && INTERACTIVE_ROLES.has(role) && tabindex !== undefined)) {
+    // An interactive role without tabindex is left to role-tabindex. A control inside a label, clicked or activated by keyboard, reaches the label's handler.
+    if (has(el, "data-on-click") && !operable(el) && !(role && INTERACTIVE_ROLES.has(role)) && !(tag === "label" && descendants(kids(el)).some(operable))) {
       if (!tag.includes("-")) {
         report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
       } else if (!clickableInside(tag, children, new Set())) {

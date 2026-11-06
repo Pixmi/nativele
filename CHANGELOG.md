@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 - `ts-dom lint` alone no longer reports a `data-on-*` method that the class does not define: `tsc` reports it at the `define()` call, and `ts-dom check` reports it once, at the template, as `missing-handler` (a check rule now). While the class has a contract error such as `missing-binding`, tsc reports the missing handler only after that error is fixed.
+- `<div role="button" data-on-click>` without `tabindex` gets one warning, `role-tabindex`, instead of that and `click-semantics` with the same fix: `click-semantics` leaves an element with an interactive role to `role-tabindex`. It also uses the same definition of an operable element as the check of a child template, so `data-on-click` on `contenteditable` content is no longer reported, and on a `<label>` it is reported unless the label wraps an operable element (a click on that control, by keyboard too, reaches the label; a bare label or a `<label for>` is pointer-only).
 
 ### Removed
 

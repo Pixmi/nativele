@@ -93,10 +93,18 @@ describe("click-semantics", () => {
     expect(rules(`<div data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
     expect(rules(`<template data-each="l"><li data-on-click="go">{{ a }}</li></template>`)).toEqual(["click-semantics"]);
   });
-  it("button, a[href], label and elements with a role and tabindex do not warn", () => {
-    expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><label data-on-click="go">x</label>`)).toEqual([]);
+  it("button, a[href], editable content and elements with a role and tabindex do not warn", () => {
+    expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><p contenteditable data-on-click="go">x</p>`)).toEqual([]);
     expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
-    expect(rules(`<div role="button" data-on-click="go">x</div>`).sort()).toEqual(["click-semantics", "role-tabindex"]);
+  });
+  it("an interactive role without tabindex gets one warning, role-tabindex", () => {
+    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["role-tabindex"]);
+    expect(rules(`<x-card role="button" data-on-click="go"></x-card>`)).toEqual(["role-tabindex"]);
+  });
+  it("a label warns unless it wraps a control, whose click, by keyboard too, reaches the label", () => {
+    expect(rules(`<label data-on-click="go"><input type="checkbox"> x</label>`)).toEqual([]);
+    expect(rules(`<label data-on-click="go">x</label>`)).toEqual(["click-semantics"]);
+    expect(rules(`<label for="a" data-on-click="go">x</label><input id="a" type="checkbox">`)).toEqual(["click-semantics"]);
   });
   it("other events are not checked", () => {
     expect(rules(`<form data-on-submit="go"></form><input data-on-input="go" aria-label="x">`)).toEqual([]);
