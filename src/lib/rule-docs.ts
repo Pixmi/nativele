@@ -139,6 +139,14 @@ this.set({ saved: true });`,
 </template>
 <!-- group-row.html has its own data-each="items" -->`,
   },
+  "each-in-svg": {
+    why: "Inside <svg> or <math> the parser makes <template> an ordinary element of that namespace, without the inert content a list is built from.",
+    bad: `<svg viewBox="0 0 100 10">
+  <template data-each="dots"><circle r="2"></circle></template>
+</svg>`,
+    good: `<svg viewBox="0 0 100 10" data-ref="chart"></svg>
+<!-- create the <circle> elements in render with document.createElementNS -->`,
+  },
   "duplicate-each": {
     why: "Each data-each name becomes one entry of this.lists, so two lists with one name would be the same list in TypeScript.",
     bad: `<template data-each="rows"><li>{{ a }}</li></template>

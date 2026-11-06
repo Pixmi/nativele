@@ -98,6 +98,13 @@ describe("codegen diagnostics", () => {
     expect(m).toContain(`export default template<`);
     expect(m).toContain(`[["p",{},["{{ a }}"]],["template",{"data-each":"l"},[["i",{},["{{ b }}"]]]]]`);
   });
+  it("data-each on a <template> inside <svg> or <math> is a diagnostic at the template, not a crash", () => {
+    const [d] = analyze(`<p>x</p>\n<svg>\n  <g><template data-each="dots"><circle></circle></template></g>\n</svg>`).diagnostics;
+    expect(d).toMatchObject({ rule: "each-in-svg", severity: "error", line: 3, col: 6 });
+    expect(d?.message).toMatch(/Fix: /);
+    expect(analyze(`<math><template data-each="m"><mi>x</mi></template></math>`).diagnostics.map((x) => x.rule)).toEqual(["each-in-svg"]);
+    expect(analyze(`<svg><foreignObject><template data-each="l"><p>x</p></template></foreignObject></svg>`).diagnostics).toEqual([]);
+  });
   it("a list records the type of its item's root element: the item component for a bound list, SVGElement outside HTML", () => {
     expect(generateModule(`<template data-each="l"><li>x</li></template>`)).toContain(`rootElement: El<"li"> }`);
     expect(generateModule(`<template data-each="l" data-key="id" data-prop="row"><x-row></x-row></template>`)).toContain(`rootElement: El<"x-row">; item: { tag: "x-row"`);
@@ -235,6 +242,7 @@ const RULE_INPUTS: Record<string, string> = {
   "each-not-template": `<ul data-each="a"></ul>`,
   "empty-each": `<template data-each=""><i></i></template>`,
   "nested-each": `<template data-each="a"><i><template data-each="b"><u></u></template></i></template>`,
+  "each-in-svg": `<svg><template data-each="dots"><circle></circle></template></svg>`,
   "duplicate-each": `<template data-each="a"><i></i></template><template data-each="a"><i></i></template>`,
   "each-binding-incomplete": `<template data-each="a" data-key="id"><x-row></x-row></template>`,
   "invalid-each-binding": `<template data-each="a" data-key="a.b" data-prop="item"><x-row></x-row></template>`,

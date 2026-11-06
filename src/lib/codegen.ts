@@ -37,6 +37,7 @@ export const CODEGEN_RULES = {
   "each-not-template": "data-each only works on <template>",
   "empty-each": "data-each must not be empty",
   "nested-each": "data-each templates cannot be nested",
+  "each-in-svg": "data-each does not work on a <template> inside <svg> or <math>",
   "duplicate-each": "data-each names must be unique",
   "each-binding-incomplete": "data-key and data-prop go together on a data-each template",
   "invalid-each-binding": "data-key and data-prop must each be a single identifier",
@@ -296,7 +297,9 @@ export function analyze(html: string): Analysis {
         report("each-not-template", "error", `data-each is on <${tag}> but it only works on <template>. Fix: write <template data-each="${each || "items"}"><li>...</li></template>.`, n);
       }
       if (tag === "template" && each !== undefined) {
-        if (!each.trim()) report("empty-each", "error", 'data-each is empty. Fix: give it a name, e.g. <template data-each="items">.', n);
+        if (n.namespaceURI !== HTML_NS) {
+          report("each-in-svg", "error", `data-each="${each}" is on a <template> inside <${n.namespaceURI === SVG_NS ? "svg" : "math"}>, where <template> is an ordinary element with no content to repeat, so no list can be built from it. Fix: create the repeated SVG elements in TypeScript (in render or connected, with document.createElementNS), or repeat an HTML element or a component that contains its own <svg>.`, n);
+        } else if (!each.trim()) report("empty-each", "error", 'data-each is empty. Fix: give it a name, e.g. <template data-each="items">.', n);
         else if (listName) {
           report("nested-each", "error", `data-each="${each}" is nested inside data-each="${listName}". Lists cannot be nested; an inner list belongs to its own template. Fix: move the inner list and its item markup into a separate .html file (a child component with its own data-each) and use that component's tag inside the outer item.`, n);
         } else if (a.lists.has(each)) {
