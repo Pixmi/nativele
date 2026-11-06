@@ -4,7 +4,7 @@ import { LightSlots } from "./slots.ts";
 import type { ReadableStore } from "./store.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
-import type { Schema, Template } from "./template.ts";
+import type { El, Schema, Template } from "./template.ts";
 import { mountTemplate } from "./mount.ts";
 
 export interface ComponentOptions {
@@ -111,7 +111,7 @@ export type EventHit<Item = unknown, KeyField extends keyof Item = never> = [Key
     };
 
 export interface ComponentInstance<S extends Schema> extends HTMLElement {
-  /** Type inference only (define() uses it to check that data-on-* methods exist); does not exist at runtime. */
+  /** Type inference only (define() uses it to check the data-on-* methods and the events they receive); does not exist at runtime. */
   readonly "~events"?: S["events"];
   readonly refs: S["refs"];
   readonly lists: Lists<S>;
@@ -556,15 +556,28 @@ export function Component(
   return Base;
 }
 
+// The event type is resolved here, not in the template module: a component whose template uses its own tag would otherwise reference itself in its own base type.
+type HandlerEvent<B> = B extends readonly [infer T extends string, infer N extends string]
+  ? [EmitEvent<El<T>, N>] extends [never]
+    ? N extends keyof HTMLElementEventMap
+      ? HTMLElementEventMap[N]
+      : Event
+    : EmitEvent<El<T>, N>
+  : never;
+type Missing<I, E> = Exclude<keyof E, keyof I>;
+// Method parameters are compared bivariantly, so assigning the method type would accept a parameter narrower than the event: compare the parameter itself.
+type Mismatched<I, E> = {
+  [K in keyof E & keyof I]: I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
+}[keyof E & keyof I];
 type CheckHandlers<I> = I extends { readonly "~events"?: infer E }
-  ? [Exclude<NonNullable<E>, keyof I>] extends [never]
-    ? unknown
-    : { missingHandlers: Exclude<NonNullable<E>, keyof I> }
+  ? ([Missing<I, NonNullable<E>>] extends [never] ? unknown : { missingHandlers: Missing<I, NonNullable<E>> }) &
+      ([Mismatched<I, NonNullable<E>>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, NonNullable<E>>]: HandlerEvent<NonNullable<E>[K]> } })
   : unknown;
 
 /**
  * Register a custom element. Also checks types: every method name referenced by data-on-* in the HTML must exist on the
- * component as a public method, otherwise tsc reports an error that lists the missing names (`missingHandlers`).
+ * component as a public method, otherwise tsc reports an error that lists the missing names (`missingHandlers`), and its first
+ * parameter, when it has one, must accept the event the template binds it to, otherwise tsc lists the method with that event type (`wrongHandlerParameters`).
  */
 export function define<C extends abstract new (...args: never[]) => HTMLElement>(
   name: string,

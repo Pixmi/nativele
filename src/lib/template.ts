@@ -7,8 +7,8 @@ export interface Schema {
   lists: Record<string, ListSchema>;
   /** Names of the {{ hole }}s */
   text: string;
-  /** Method names referenced by data-on-* */
-  events: string;
+  /** Each method named by data-on-*, with every `[tag, event]` it is bound to */
+  events: Record<string, readonly [tag: string, event: string]>;
   ifs: string;
   slots: string;
   /** The template's only top-level element (a `<style>` does not count), or `never` when there is not exactly one. */

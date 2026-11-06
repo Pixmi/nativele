@@ -56,6 +56,67 @@ describe("ts-dom check on a project", () => {
   }, 30_000);
 });
 
+describe("ts-dom check: handler parameter types", () => {
+  it("points a handler whose parameter does not accept the bound event at its data-on-* attribute, and accepts the right types", () => {
+    const dir = join(process.cwd(), "check-handler-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "pick.html"), `<button type="button" data-on-click="pick">Pick</button>\n`);
+      writeFileSync(
+        join(dir, "pick.ts"),
+        `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./pick.html.js";\nexport class Picker extends Component(tpl, { emits: { "item-picked": event<{ id: number }>() } }) {\n  pick(): void {\n    this.emit("item-picked", { id: 1 });\n  }\n}\ndefine("x-picker", Picker);\n`,
+      );
+      writeFileSync(join(dir, "list.html"), `<section>\n  <x-picker data-on-item-picked="onPicked"></x-picker>\n  <input data-on-keydown="onKey" />\n</section>\n`);
+      writeFileSync(
+        join(dir, "list.ts"),
+        `import { Component, define } from "@nativele/ts-dom";\nimport type { EmitEvent } from "@nativele/ts-dom";\nimport type { Picker } from "./pick.ts";\nimport tpl from "./list.html.js";\nexport class List extends Component(tpl) {\n  onPicked(e: MouseEvent): void {\n    void e;\n  }\n  onKey(e: KeyboardEvent): void {\n    void e.key;\n  }\n}\ndefine("x-list", List);\nexport class Right extends Component(tpl) {\n  onPicked(e: EmitEvent<Picker, "item-picked">): void {\n    void e.detail.id;\n  }\n  onKey(e: KeyboardEvent): void {\n    void e.key;\n  }\n}\ndefine("x-right", Right);\n`,
+      );
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-handler-tmp", "--project=check-handler-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/list.html", 2, 13, "handler-event-type"]]);
+      expect(issues[0]?.message).toContain("onPicked() is bound to data-on-item-picked on <x-picker>, which delivers CustomEvent<{ id: number; }>");
+      expect(issues[0]?.message).toMatch(/Fix: type the first parameter as `CustomEvent<\{ id: number; \}>` \(for data-on-item-picked on <x-picker> that is `EmitEvent<Child, "item-picked">`/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("reads several handlers and union types out of one tsc message", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+    try {
+      writeFileSync(join(dir, "card.html"), `<button data-on-click="onBoth">a</button>\n  <x-row data-on-row-closed="onBoth"></x-row><input data-on-change="onChange" />\n`);
+      writeFileSync(join(dir, "card.ts"), `import tpl from "./card.html.js";\n`);
+      const issues = mapTscErrors(
+        [
+          {
+            file: "card.ts",
+            line: 9,
+            col: 15,
+            code: "TS2345",
+            message: "Argument of type 'typeof Card' is not assignable to parameter of type 'typeof Card & { wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.\nProperty 'wrongHandlerParameters' is missing in type 'typeof Card' but required in type '{ wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.",
+          },
+        ],
+        dir,
+      );
+      expect(issues.map((i) => [i.rule, i.line, i.col])).toEqual([
+        ["handler-event-type", 1, 9],
+        ["handler-event-type", 2, 53],
+      ]);
+      expect(issues[0]?.message).toContain("onBoth() is bound to data-on-click on <button> and data-on-row-closed on <x-row>, which delivers CustomEvent<void> | PointerEvent");
+      expect(issues[1]?.message).toContain("Fix: type the first parameter as `Event`");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("ts-dom check when tsc cannot run", () => {
   it("reports tsc-failed instead of no issues", () => {
     let out = "";

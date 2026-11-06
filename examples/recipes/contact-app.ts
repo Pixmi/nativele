@@ -36,8 +36,8 @@ export class ContactApp extends Component(tpl, {
   openForm(): void {
     this.refs.form.open();
   }
-  addRow(e: Event): void {
-    const { name, email } = (e as EmitEvent<ContactForm, "contact-add">).detail;
+  addRow(e: EmitEvent<ContactForm, "contact-add">): void {
+    const { name, email } = e.detail;
     addContact(name, email);
   }
   removeRow(_e: Event, hit: EventHit<Contact, "id">): void {

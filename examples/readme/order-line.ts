@@ -8,8 +8,8 @@ export class OrderLine extends Component(tpl, {
   derive: { total: (s) => s.quantity * s.price },
 }) {
   // Event up: the child asked for a new quantity; the parent decides.
-  onQuantity(e: Event): void {
-    this.set({ quantity: (e as EmitEvent<QuantityInput, "quantity-change">).detail.value });
+  onQuantity(e: EmitEvent<QuantityInput, "quantity-change">): void {
+    this.set({ quantity: e.detail.value });
   }
 
   // Data down: the child's props are typed (a wrong name or type is a tsc error).
