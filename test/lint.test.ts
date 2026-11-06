@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -378,6 +379,53 @@ describe("a tag defined more than once under the scanned folders", () => {
     write(root, { "package.json": "{}", "ui/package.json": "{}", "ui/row.ts": row(`"row-toggle": event()`) });
     expect(contractsAt(contractsFor([root]), join(root, "app/board.html")).has("x-row")).toBe(true);
   });
+
+  const unchecked = () => {
+    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    write(root, {
+      "package.json": "{}",
+      "app/page.html": `<section>\n  <wa-input></wa-input><x-known></x-known>\n</section>\n`,
+      "app/page.ts": `import t from "./page.html.js";\nclass Page extends Component(t) {}`,
+      "app/other.html": `<x-item></x-item><wa-input></wa-input><wa-button data-on-click="go"></wa-button>`,
+      "app/other.ts": `import t from "./other.html.js";\nclass Other extends Component(t) { go() {} }`,
+      "app/known.ts": row(`"one": event()`).replace("x-row", "x-known"),
+      "lib1/package.json": "{}",
+      "lib1/item.ts": row(`"one": event()`).replace("x-row", "x-item"),
+      "lib2/package.json": "{}",
+      "lib2/item.ts": row(`"two": event()`).replace("x-row", "x-item"),
+    });
+    return root;
+  };
+  it("unchecked-custom-elements: one warning per run lists the tags without a definition and the ambiguous ones, at the first use", () => {
+    const root = unchecked();
+    const dirs = [join(root, "app"), join(root, "lib1"), join(root, "lib2")];
+    const issues = lintDataFlow(dirs, dirs.flatMap((d) => ["page.ts", "other.ts", "known.ts", "item.ts"].map((f) => join(d, f)).filter((f) => existsSync(f))));
+    const found = issues.filter((i) => i.rule === "unchecked-custom-elements");
+    expect(found).toHaveLength(1);
+    const [d] = found;
+    expect([d?.file.endsWith(join("app", "other.html")), d?.line, d?.col, d?.severity]).toEqual([true, 1, 18, "warning"]);
+    expect(d?.message).toContain("No define() in the scanned folders: <wa-input>, <wa-button>. Defined in several packages, and not exactly once in the template's package: <x-item> (");
+    expect(d?.message).toContain("(unknown-prop, invalid-prop-value, unknown-event)");
+    expect(d?.message).toContain("(click-semantics)");
+    expect(d?.message).not.toContain("x-known");
+    expect(d?.message).toMatch(/Fix: nothing needs to change for elements from another library \(pass --ignore=unchecked-custom-elements/);
+  });
+  it("unchecked-custom-elements is not reported when every custom element has one definition", () => {
+    const root = twoApps();
+    const dirs = [join(root, "app"), join(root, "other")];
+    expect(lintDataFlow(dirs, []).filter((i) => i.rule === "unchecked-custom-elements")).toEqual([]);
+  });
+  it("ts-dom lint reports unchecked-custom-elements once, fails --strict on it, and --ignore silences it", () => {
+    const root = unchecked();
+    const cli = (...flags: string[]) => spawnSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "lint", "app", "lib1", "lib2", ...flags], { cwd: root, encoding: "utf8" });
+    const strict = cli("--strict");
+    expect(strict.stderr.match(/\[unchecked-custom-elements\]/g)).toHaveLength(1);
+    expect(strict.stderr).toMatch(/^app\/other\.html:1:18 warning \[unchecked-custom-elements\] /m);
+    expect(strict.status).toBe(1);
+    const ignored = cli("--strict", "--ignore=unchecked-custom-elements");
+    expect(ignored.stderr).not.toContain("unchecked-custom-elements");
+    expect(ignored.status).toBe(0);
+  }, 30_000);
 });
 
 describe("formatIssue", () => {

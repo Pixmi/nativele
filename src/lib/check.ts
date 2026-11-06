@@ -6,7 +6,7 @@ import { checkA11y } from "./a11y.ts";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, listHtml, listTs, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
-import { lintDataFlow, lintUsage } from "./lint.ts";
+import { contractsAt, contractsFor, lintDataFlow, lintUsage } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
 
 export const CHECK_RULES = {
@@ -339,8 +339,9 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     issues.push(i);
   }
   if (options.a11y) {
+    const contracts = contractsFor(dirs);
     for (const dir of dirs) {
-      for (const f of listHtml(dir)) for (const d of checkA11y(readFileSync(f, "utf8"))) issues.push({ file: rel(f), ...d });
+      for (const f of listHtml(dir)) for (const d of checkA11y(readFileSync(f, "utf8"), [], contractsAt(contracts, f))) issues.push({ file: rel(f), ...d });
     }
   }
   const seen = new Set<string>();

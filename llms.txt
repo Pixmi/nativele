@@ -55,7 +55,7 @@ The compiler rejects: a hole or `data-if` name missing from state, props and der
 - A table whose columns come from a config array: [recipes](docs/recipes.md#a-table-with-configurable-columns).
 - A component that is a control of a native `<form>`: [recipes](docs/recipes.md#a-form-control-of-your-own).
 - Re-rendering text when the locale changes: [recipes](docs/recipes.md#switching-the-language).
-- A custom element from another library in a template: [components](docs/components.md#custom-elements-from-other-libraries).
+- A custom element from another library in a template: [components](docs/components.md#custom-elements-from-other-libraries); `ts-dom lint` and `ts-dom check` list the tags they cannot check once per run (`unchecked-custom-elements`), which `--ignore=unchecked-custom-elements` silences: [data flow lint](docs/components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow).
 
 ## Template without a component
 `tpl.instantiate()` returns `{ root, rootElement, refs, lists, text, show }` for pieces created in code; `data-on-*` is inert and `<slot>` is not projected there: [templates](docs/templates.md#templates-without-a-component).

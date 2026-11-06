@@ -114,6 +114,7 @@ Without oxlint, the same checks are available through the CLI:
 npx ts-dom lint [dirs...]   # unused markup (errors) and data flow suggestions (warnings)
 npx ts-dom lint --a11y      # additionally check ARIA / accessibility (warnings)
 npx ts-dom lint --strict    # warnings also make the exit code 1 (errors always do)
+npx ts-dom lint --ignore=unchecked-custom-elements   # leave out the warnings with this rule id (repeatable; also for ts-dom check)
 npx ts-dom lint --json      # output JSON: { "issues": [{ file, line, col, severity, rule, message }] }
 npx ts-dom rules            # list all rule ids and descriptions
 npx ts-dom rules --explain=unused-ref   # why the rule exists, a wrong example and the fix
@@ -126,6 +127,8 @@ Every message has the same format. It explains **what is wrong, why, and how to 
 a.html:2:1 error [unused-ref] data-ref="dead" is never used by the component class. Fix: use this.refs.dead, or remove the attribute if the element needs no TypeScript access.
 a.html:3:1 warning [unknown-prop] <x-kid lable> is not a declared prop of <x-kid>. Declared props: label, count. Did you mean "label"? Fix: declare "lable" in the child's props option, or remove the attribute.
 ```
+
+`ts-dom lint` and `ts-dom check` also print `unchecked-custom-elements` once per run when the templates use custom elements that lint has no single definition of, so their attributes, events and `data-on-click` are not checked: it lists the tags with no `define()` in the scanned folders and the tags defined in several packages, at the first use of the first one. Elements from another library need no change; silence the warning with `--ignore=unchecked-custom-elements`, which a `--strict` run needs. The oxlint plugin does not report it, as it would repeat it in every file.
 
 Exit codes: 0 = no problems, 1 = there are errors (or warnings when `--strict` is used). Messages from the oxlint plugin start with `./x.html.js:line:column [rule id] message` and are reported on the `import` line.
 
@@ -244,7 +247,7 @@ npx ts-dom lint --a11y [--strict]
 | `list-structure` | The children of `<ul>`/`<ol>` (including the root element of a `data-each` item) must be `<li>`; `<li>` must be inside `<ul>`, `<ol>`, or `<menu>` |
 | `landmark-label` | When a template has multiple `<nav>` or `<aside>`, they need to be distinguished with `aria-label` |
 | `redundant-role` | `role` is the same as the element's native semantics, for example `<button role="button">` |
-| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `label`, or an element with an interactive role plus `tabindex`); otherwise keyboards and assistive technologies cannot use it |
+| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `label`, or an element with an interactive role plus `tabindex`); otherwise keyboards and assistive technologies cannot use it. On a Nativele component's tag it is reported only when the component's template has no operable element (`button`, `a[href]`, `input` other than `hidden`, `select`, `textarea`, `summary`, `contenteditable`, or an interactive role plus `tabindex`) a click could come from, and the tag itself has no interactive role plus `tabindex`; the message names that template. A custom element lint has no single definition of (another library's, outside the scanned folders, or defined in several packages) is not checked, see `unchecked-custom-elements` |
 
 To avoid many false positives, elements with `data-ref` are treated as "managed by TS", and the checks whose "name or reference may be set in TS" are skipped for them: `img-alt`, `control-name`, `form-label`, `iframe-title`, `dialog-name`, `heading-empty`, `role-tabindex`, `table-header`, `landmark-label`, `aria-idref`.
 

@@ -56,6 +56,31 @@ describe("ts-dom check on a project", () => {
   }, 30_000);
 });
 
+describe("ts-dom check: unchecked-custom-elements", () => {
+  it("is reported once for the whole run and --ignore leaves it out", () => {
+    const dir = join(process.cwd(), "check-unchecked-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      for (const name of ["one", "two"]) {
+        writeFileSync(join(dir, `${name}.html`), `<vendor-picker></vendor-picker>\n<vendor-chart></vendor-chart>\n`);
+        writeFileSync(join(dir, `${name}.ts`), `import { Component } from "@nativele/ts-dom";\nimport tpl from "./${name}.html.js";\nexport class C extends Component(tpl) {}\n`);
+      }
+      const check = (...flags: string[]) => {
+        const out = execFileSync(process.execPath, ["src/cli.ts", "check", "check-unchecked-tmp", "--project=check-unchecked-tmp/tsconfig.json", "--json", ...flags], { encoding: "utf8" });
+        return (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      };
+      const issues = check();
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-unchecked-tmp/one.html", 1, 1, "unchecked-custom-elements"]]);
+      expect(issues[0]?.message).toContain("No define() in the scanned folders: <vendor-picker>, <vendor-chart>.");
+      expect(check("--ignore=unchecked-custom-elements")).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
 describe("ts-dom check: handler parameter types", () => {
   it("points a handler whose parameter does not accept the bound event at its data-on-* attribute, and accepts the right types", () => {
     const dir = join(process.cwd(), "check-handler-tmp");
