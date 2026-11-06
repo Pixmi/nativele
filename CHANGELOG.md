@@ -8,7 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - From `1.0.0` on, [SemVer](https://semver.org/) applies: breaking changes only in major versions.
 - Public API: the exports of `ts-dom`, `@nativele/ts-dom/vite` and `@nativele/ts-dom/oxlint`; the commands and flags of the `ts-dom` CLI; the `data-*` and `{{ }}` syntax of templates; rule ids (`ts-dom/unused-markup`, `ts-dom/a11y`, `ts-dom/data-flow` and their `ignore` ids).
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
+- Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
+
+## 0.6.4 (not published)
+
+### Documentation
+
+- The Skills `nativele-svelte`, `nativele-angular`, `nativele-zod`, `nativele-tanstack-query` and `nativele-tailwind` are Official.
+- Every library rule is stated in one guide in `docs/`: `llms.txt` keeps each rule as one line with a link to its guide section, and the Skills state what their task requires and link to the guide instead of explaining library behavior again.
+- Recipes: cancelling a component's own request when it is removed, with an `AbortController` created in `connected()` and aborted from `onCleanup`; `onCleanup` documents that a registered function runs once, at the next removal.
 
 ## 0.6.3 (not published)
 
@@ -44,11 +53,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - `Schema["events"]`, written by codegen, maps each handler to the `[tag, event]` pairs it is bound to (`{ onSave: ["button", "click"] }`) instead of being a union of handler names. Only a schema written by hand for `template<...>()` has to change: `events: Record<never, never>` for a template without handlers.
 - A handler that already declared a parameter type the bound event cannot satisfy (for example `CustomEvent<Detail>` on an element where the event is typed `Event`, such as a wrapper that catches a bubbling event of a grandchild) is now a tsc error. Type it `Event` and cast in the body, or move the handler to the tag that emits the event.
-### Documentation
-
-- The Skills `nativele-svelte`, `nativele-angular`, `nativele-zod`, `nativele-tanstack-query` and `nativele-tailwind` are Official.
-- Every library rule is stated in one guide in `docs/`: `llms.txt` keeps each rule as one line with a link to its guide section, and the Skills state what their task requires and link to the guide instead of explaining library behavior again.
-- Recipes: cancelling a component's own request when it is removed, with an `AbortController` created in `connected()` and aborted from `onCleanup`; `onCleanup` documents that a registered function runs once, at the next removal.
 
 ## 0.6.0
 
