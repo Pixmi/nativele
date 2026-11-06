@@ -351,8 +351,8 @@ export class ProjectPage extends Component(tpl, {
     this.bind(preferences, (p) => this.set({ showDone: p.showDone }));
   }
 
-  onAdd(e: Event): void {
-    addTask(this.props.projectId, (e as EmitEvent<TextEntry, "entry-submit">).detail.value);
+  onAdd(e: EmitEvent<TextEntry, "entry-submit">): void {
+    addTask(this.props.projectId, e.detail.value);
   }
 
   onToggle(_e: Event, hit: EventHit<Task, "id">): void {

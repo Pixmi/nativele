@@ -217,8 +217,8 @@ import tpl from "./app-shell.html.js";
 export class AppShell extends Component(tpl, {
   state: { message: "No tags yet", tags: [] as Tag[] },
 }) {
-  onAdd(e: Event): void {
-    const { label } = (e as EmitEvent<UiButton, "ui-press">).detail;
+  onAdd(e: EmitEvent<UiButton, "ui-press">): void {
+    const { label } = e.detail;
     const n = this.state.tags.length + 1;
     this.set({ message: `${label}: ${n}`, tags: [...this.state.tags, { id: `t${n}`, label: `tag ${n}` }] });
   }
