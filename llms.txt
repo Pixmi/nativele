@@ -2,17 +2,18 @@
 
 > Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML. A lightweight library for building web components: bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
 
-Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.ts`, runs tsc, or vue-tsc when the project has it, and lint, points errors at the template). Import a template as `import tpl from "./x.html.js"` (note the `.js`). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it.
+Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.ts`, runs tsc, or vue-tsc when the project has it, and lint, points errors at the template). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it. Each rule below is one line; its guide section has the details.
 
 ## Template syntax (HTML only names things; no expressions)
-- `{{ name }}`: text hole, a single identifier only. NOT `{{ a.b }}` / `{{ a + 1 }}`. Not allowed in attributes.
-- `data-ref="x"`: element available as `this.refs.x` (typed by tag). On a `<form>`, `elements` is typed too: `this.refs.form.elements.fee` is the control named (or with the id) `fee` in that template, by tag (`HTMLInputElement`, `HTMLSelectElement` with `selectedOptions`, ...), a `RadioNodeList` when several share the name (`.value` is the checked radio), `| undefined` inside `data-if`; a misspelled name is a tsc error. Read form values this way instead of a `data-ref` per field. Not typed: controls inside a child component's tag or a `data-each` item, `<input type="image">`, controls joined from outside with `form="id"`.
-- `data-if="x"`: hidden by default (the element is REMOVED from the DOM, replaced by a comment); shown when state/props/derive `x` is truthy (or `this.show("x", true)`).
-- `<template data-each="items"><li>...</li></template>`: list with exactly one root element; fill it with `this.lists.items.replace(array, item => item.id, (item, { text, refs, show, el }) => {...})`. Not nestable; no `<slot>`, no `data-if` on the root; not inside `<svg>` or `<math>`, where `<template>` has no content (`each-in-svg`): create repeated SVG elements in TS with `document.createElementNS`.
-- `data-on-<event>="method"`: calls the public method `method(e, hit: EventHit)` on the component; type `e` as the event it receives: `EmitEvent<Child, "event-name">` on a child component tag, otherwise the DOM type for the name (`click` `MouseEvent`, `keydown` `KeyboardEvent`, `submit` `SubmitEvent`), `Event` for names neither knows. `define()` checks it (`wrongHandlerParameters`); a handler bound to several events must accept all of them; `e: Event` always compiles. Method name only (no calls). Event name lowercase. Inside a list item `hit.key` is the item key, also for events emitted by a child component placed in the item. Do not name a method like a DOM/ts-dom member (`remove`, `click`, `focus`, `set`, `render`, ...).
-- `<slot name="x">`: Light DOM by default (library moves children); native with `shadow: true`.
-- `<style>` must be top-level in the HTML file; `<style scoped>` limits it to the component (Light DOM).
-- Using another component: just write its tag (`<form-field data-ref="f" label="Name" data-on-field-input="onName">`); the generated module imports it automatically.
+- `{{ name }}`: text hole, a single identifier (NOT `{{ a.b }}` / `{{ a + 1 }}`), never in an attribute: [templates](docs/templates.md#html-syntax).
+- `data-ref="x"`: the element as `this.refs.x`, typed by its tag; on a `<form>`, `elements.<name>` is typed too (`RadioNodeList` for a shared name, a misspelled name is a tsc error): [templates](docs/templates.md#html-syntax), [reading a form](docs/components.md#reading-a-form).
+- `data-if="x"`: hidden by default (removed from the DOM, kept in memory); shown when `x` is truthy or by `this.show("x", true)`: [templates](docs/templates.md#html-syntax).
+- `<template data-each="x">`: a list with exactly one root element; never nested, no `<slot>` in it, no `data-if` on its root, not inside `<svg>` or `<math>` (`each-in-svg`); an item's `el` is typed by its root tag: [lists](docs/lists.md#items-as-plain-elements-replace).
+- Per-row state of the parent (selected, rank) is a separate prop of the item component, set through `this.lists.x.get(key)?.el`, so only changed rows render: [lists](docs/lists.md#per-row-state-selected-rank).
+- `data-on-<event>="method"`: a lowercase event name and a method name only; calls the public `method(e, hit: EventHit)` with `e` typed as the event it receives (`EmitEvent<Child, "name">` on a child component tag, else the DOM type: `click` is a `PointerEvent`), checked against the template; never name it like a DOM or Nativele member (`remove`, `click`, `set`, `render`): [events](docs/components.md#events-data-on-).
+- `<slot name="x">`: Light DOM by default (the library moves the children), native with `shadow: true`: [Light and Shadow](docs/components.md#light-default-and-shadow).
+- `<style>` only at the top level of the file; `<style scoped>` limits it to the component in Light DOM: [styles](docs/components.md#styles).
+- Another component: write its tag; the generated module imports it: [composition](docs/components.md#composition-using-multiple-components-together).
 
 ## Component (TypeScript)
 ```ts
@@ -21,88 +22,70 @@ import type { EmitEvent, EventHit } from "@nativele/ts-dom";
 import tpl from "./counter.html.js";
 
 class MyCounter extends Component(tpl, {
-  state: { count: 0 },                         // owned by the component, change ONLY with this.set()
-  props: { step: 1 },                          // owned by the parent, read-only here (string/number/boolean default => settable from an HTML attribute `step="2"`)
-  derive: { double: (s) => s.count * 2 },      // recomputed after every change; usable by {{ double }} / data-if
-  emits: { "count-change": event<{ count: number }>() },   // events this component sends up (do not bubble by default)
+  state: { count: 0 },                         // owned by the component, changed only with this.set()
+  props: { step: 1 },                          // owned by the parent, read-only here
+  derive: { double: (s) => s.count * 2 },      // usable by {{ double }} / data-if
+  emits: { "count-change": event<{ count: number }>() },   // events sent up
   // shadow: true,                             // optional Shadow DOM
 }) {
   inc() {                                      // referenced by data-on-click="inc"
     this.set((s) => ({ count: s.count + this.props.step }));
     this.emit("count-change", { count: this.state.count });
   }
-  override render(view, changed) { /* only for what automatic binding cannot do: lists, attributes, focus */ }
+  override render(view, changed) { /* lists, attributes, focus */ }
 }
 define("my-counter", MyCounter);
 ```
-Rules the compiler enforces: every `{{ hole }}` / `data-if` name must exist in state, props or derive (error `missingStateKeys`); state/props/derive names must be unique (`conflictingKeys`); a prop must not be named like an HTMLElement/ts-dom member such as `title`, `hidden`, `render` (`reservedPropNames`); emitted event names must not be native events (`nativeEventNames`); every `data-on-*` method must exist as a public method (`missingHandlers`, reported by `define()`), and its first parameter must accept the event the HTML binds it to (`wrongHandlerParameters`, reported by `define()`).
+The compiler rejects: a hole or `data-if` name missing from state, props and derive (`missingStateKeys`), a name used twice (`conflictingKeys`), a prop named like an element member (`reservedPropNames`), an emitted native event name (`nativeEventNames`), a missing `data-on-*` method (`missingHandlers`), a handler parameter the bound event cannot satisfy (`wrongHandlerParameters`): [safeguards](docs/components.md#safeguards-in-types-and-at-runtime).
 
 ## Data flow (one direction)
-- `state`, `props`, `render`'s `view` and `derive` arguments are `DeepReadonly`: changing an object or array inside them is a tsc error. Replace with new objects (`s.items.map((i) => (i.id === id ? { ...i, done: true } : i))`). Annotate with read-only types (`readonly Item[]`, `DeepReadonly<State>`).
-- State: changed only by its owner with `this.set(patch | s => patch)`; no change => no render. `this.batch(fn)` merges several updates. Rendering is synchronous.
-- Props go DOWN: the parent sets them with an attribute or a property (`this.refs.child.value = v.x`, typed). A component never assigns its own props; to ask for a change it `emit`s an event.
-- Events go UP: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag and a handler typed `onX(e: EmitEvent<Child, "event-name">)` (no cast).
-- Data needed several levels away: share a `createStore` module and `this.bind(store, fn)`; do not forward props or re-emit events through middle components (lint rules `prop-forwarding`, `emit-forwarding`).
-- `store.set` REPLACES the value (a component's `this.set` merges): `store.set((s) => ({ ...s, status: "loading" }))`. In a component with state/props/derive every `{{ hole }}` must be one of them, so copy store data into state in the `bind` callback: `this.bind(store, (s) => this.set({ total: s.items.length }))`.
-- Loading/error states, modal dialogs (a public `open()` called through a typed ref), form validation messages, filtered lists: `docs/recipes.md` and `examples/recipes/` in the repository.
-- Writing form values back (lint rule `unguarded-input-value`): only assign `input.value` when it differs (`if (input.value !== v.value) input.value = v.value`), otherwise the caret jumps.
-
-## Minimal example
-```html
-<!-- counter.html -->
-<p>Count: {{ count }} (double: {{ double }})</p>
-<button type="button" data-on-click="inc">+1</button>
-<p data-if="big">A lot!</p>
-```
-```ts
-// counter.ts
-import { Component, define } from "@nativele/ts-dom";
-import tpl from "./counter.html.js";
-class MyCounter extends Component(tpl, {
-  state: { count: 0 },
-  derive: { double: (s) => s.count * 2, big: (s) => s.count >= 10 },
-}) {
-  inc() { this.set((s) => ({ count: s.count + 1 })); }
-}
-define("my-counter", MyCounter);
-```
+- `state`, `props`, `render`'s `view` and `derive`'s argument are `DeepReadonly`: replace objects (`{ ...item, done: true }`), never change them in place: [state](docs/components.md#data-and-view-state-optional).
+- Change state only with `this.set(patch | s => patch)`: it merges shallowly, renders synchronously, and does nothing when no field changed; `this.batch(fn)` combines updates: [state](docs/components.md#data-and-view-state-optional).
+- A `derive` function gets state and props merged and cannot read another derived value: [state](docs/components.md#data-and-view-state-optional).
+- Lists, attributes and focus go in `render(view, changed)`; guard each part with `changed.has("x")` and annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`: [state](docs/components.md#data-and-view-state-optional).
+- With `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a list item names one of them; show store data by copying it into state in the `bind` callback: [recipes](docs/recipes.md#showing-data-from-a-store).
+- Props go down: the parent sets them by attribute or typed property (`this.refs.child.value = v.x`); a component never assigns its own props: [data flow](docs/components.md#data-flow-props-down-events-up).
+- Events go up: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag with a handler typed `onX(e: EmitEvent<Child, "name">)` (no cast): [data flow](docs/components.md#data-flow-props-down-events-up).
+- Data needed several levels away goes in a shared `createStore` that components `bind`; never forward props or re-emit events (`prop-forwarding`, `emit-forwarding`): [shared stores](docs/components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow).
+- `store.set` replaces the whole value (`this.set` merges): `store.set((s) => ({ ...s, status: "loading" }))`: [stores](docs/components.md#state-store-when-not-using-state).
+- Call `bind`, `on` and `onCleanup` in `connected()`, never in the constructor: [stores](docs/components.md#state-store-when-not-using-state).
+- Cancel a component's own request on removal: an `AbortController` made in `connected()`, aborted from `onCleanup`, `AbortError` ignored: [recipes](docs/recipes.md#cancelling-a-request-when-the-component-is-removed).
+- Write a form control's value in `render` only when it differs (`unguarded-input-value`): [form inputs](docs/components.md#a-small-reminder-about-form-inputs).
+- Loading and error states, modal dialogs, form validation, filtered lists: [recipes](docs/recipes.md) and `examples/recipes/` in the repository.
 
 ## Template without a component
-`const view = tpl.instantiate()` returns `{ root: DocumentFragment, rootElement, refs, lists, text, show }` typed like a component (`rootElement` exists in the type only when the template has exactly one top-level element, `<style>` excluded), for pieces created in code. No host: `data-on-*` is inert (use `refs.x.addEventListener`) and `<slot>` is not projected.
+`tpl.instantiate()` returns `{ root, rootElement, refs, lists, text, show }` for pieces created in code; `data-on-*` is inert and `<slot>` is not projected there: [templates](docs/templates.md#templates-without-a-component).
 
 ## Lists
-- Rule: an item with anything of its own (state, events, a nested list) is a component filled with `items =`; an item of a few texts and `data-if` is plain elements filled with `replace()`.
-- Subscribe in `connected()`, never in the constructor: without `moveBefore` a moved item is disconnected (its `bind`/`on`/`onCleanup` released) and connected again. Data every item needs goes in a `createStore` the item binds.
+- An item with anything of its own (state, events, a nested list) is a component filled with `items =`; an item of a few texts and `data-if` is plain elements filled with `replace()`: [lists](docs/lists.md#lists).
+- Items as components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row role="listitem"></todo-row></template>`, `this.lists.todos.items = view.todos` in `render`, `hit: EventHit<Todo, "id">` in handlers; the item component is exported and declares `todo` in `props`: [items as components](docs/lists.md#items-as-components-items--).
+- Assign new item objects: an item that is the same object as last time does not update its component: [items as components](docs/lists.md#items-as-components-items--).
+- Items as plain elements: no `data-key` or `data-prop`; `this.lists.x.replace(items, keyFn, (item, { text, refs, show, el }) => ...)`: [plain items](docs/lists.md#items-as-plain-elements-replace).
+- Without `moveBefore` a moved item is disconnected and connected again: [moving items](docs/lists.md#moving-items-connecting-and-subscriptions).
 - Full example (add, remove, sort, toggle, child emit): `examples/readme/task-board.ts` and `task-row.ts` in the repository.
-- Items that are components: `<template data-each="todos" data-key="id" data-prop="todo"><todo-row></todo-row></template>`, then `this.lists.todos.items = view.todos` (inside `render`, guarded by `changed.has("todos")`; `changed` holds the state, prop and derived names that changed, so a derived list is guarded by its own name). Keeps the element of each key, creates and removes the rest, sets the `todo` prop of each changed item; `hit.key` in handlers (`hit: EventHit<Todo, "id">` types `hit.key` and `hit.item`). The item component declares `todo` in its `props`; `tsc` checks the items against that prop type and the `data-key` field; an item component defined in a scanned folder must be exported and listed in `ts-dom-tags.ts` (run `ts-dom gen`), otherwise the assignment is a type error that names the problem. `this.lists.todos.get(key)?.el` is the item component, typed as its class. Per-row state of the parent (selected, rank) is a separate prop of the item component set per row, `const row = this.lists.todos.get(t.id); if (row) row.el.selected = t.id === view.selectedId;`, which renders only the rows whose value changed (equal prop values are skipped); never map items to new objects carrying the field, which re-renders every row.
-- Items that are plain elements: `<template data-each="x">` with `this.lists.x.replace(items, keyFn, (item, { text, show, el }) => ...)`; `el` is the item's root element typed by its tag (`HTMLLIElement`).
-- `data-each` is never nested: a list inside an item is the item component's own `data-each`.
 
 ## Rules for agents
 - Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, `nativele-react`, `nativele-vue`, `nativele-svelte` and `nativele-angular` for those frameworks, `nativele-vite` for Vite, `nativele-integration` for other frameworks, `nativele-state-management`, `nativele-testing`, `nativele-tanstack-query`, `nativele-zod` and `nativele-tailwind` for those tools, `nativele-architecture` for laying out an app with several pages, `nativele-typescript`, `nativele-linting`, `nativele-formatting` and `nativele-ci` for the tsconfig, the linter, the formatter and CI, `nativele-monorepo` for a workspace of several packages, ...), each with verified versions; `npx ts-dom skills <name>` prints one, `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`, and `npx ts-dom doctor` suggests the ones that match the project's dependencies.
 - `npx ts-dom rules --explain=<id>` (or `rules --json`) explains any rule id from a diagnostic: why it exists, a wrong example and the fix.
-- Markup well-formedness is a formatter's job: `oxfmt --check` reports misnested tags that the library's parser would silently repair. Generate with `--whitespace=collapse` when a formatter is used: it keeps only the whitespace the browser renders, judged by each element's default display as formatters judge it, so reformatting a template changes neither the page nor `textContent` (a `<div>` restyled `display: inline` still counts as a block: use an inline tag for inline content). In SVG, only the content of `<text>` is inline (`<tspan>`, `<textPath>`, `<a>` inside it), as the browser lays it out and oxfmt formats it; Prettier formats SVG text content as blocks and puts a line break, which renders as a space, where text touches a `<tspan>`.
-- If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first: it reports tsconfig, import path, runtime, generated file and plugin problems with a `Fix:` each (`--project=<path>` picks the tsconfig, `--strict` also fails on warnings).
+- Markup well-formedness is a formatter's job (`oxfmt --check`): [checks](docs/tooling.md#checks). With a formatter, generate with `--whitespace=collapse`: [whitespace](docs/tooling.md#installation-and-setup).
+- If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first; fix each issue by its `Fix:` hint: [checks](docs/tooling.md#checks).
 - `npx ts-dom gen --check` (writes nothing, exit 1) tells whether the generated files are stale before you trust `tsc` errors.
-- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` or component change run `npx ts-dom check --json`: it regenerates, runs tsc, maps template contract errors to the template line/col (`missing-binding`, `missing-handler`, `handler-event-type`, item rules), and runs lint. Fix every issue by its `Fix:` hint; never cast a type error away.
-- No expressions in HTML; computed values go in `derive`. Change state only with `this.set()`. Lists, attributes and focus go in `render(view, changed)`; check `changed.has("items")` before rebuilding a list, and annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), not `ReadonlySet<string>`, so tsc checks them.
-- Props go down (parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `data-each` cannot be nested: make the inner list its own component.
+- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` or component change run `npx ts-dom check --json` and fix every issue by its `Fix:` hint; never cast a type error away.
 
 ## Setup
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
 npx ts-dom gen && npx tsc          # tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict true (required on TypeScript 5; 6 and 7 only reject false)
 ```
-In a browser without a bundler map the bare name once: `<script type="importmap">{"imports":{"@nativele/ts-dom":"/node_modules/@nativele/ts-dom/dist/index.mjs"}}</script>`; relative imports in your own code need `.js` extensions. With Vite, `@nativele/ts-dom/vite` is optional.
+In a browser without a bundler map the bare name once: `<script type="importmap">{"imports":{"@nativele/ts-dom":"/node_modules/@nativele/ts-dom/dist/index.mjs"}}</script>`; relative imports in your own code need `.js` extensions. With Vite, `@nativele/ts-dom/vite` is optional: [setup](docs/tooling.md#installation-and-setup).
 
 ## Pitfalls
-- Import templates with `./x.html.js`, not `./x.html`. Run `ts-dom gen` before `tsc` (it creates `x.html.ts` and `ts-dom-tags.ts`; both are generated, do not edit or commit).
-- Exports: `export class` the component to get typed `refs.child` in parent templates (`define("tag", Class)` is scanned).
-- `data-if` content is hidden until the name is truthy (it stays in memory, so its `refs` still work); `{{ hole }}` stays empty until filled.
-- With Vite, `package.json` needs `"type": "module"`.
-- `slotchange()` is Light-DOM only; with `shadow: true` use the native `slotchange` event.
-- A Light DOM component builds its content when connected (a `shadow: true` one in the constructor), so a new Light element has no children, `refs` or `text` until it is appended.
-- Inside a framework (React, Vue, Svelte, ...), children the framework later inserts, removes or reorders in a Light DOM host with slots break or land in the wrong slot: use `shadow: true`, or one stable element per slot.
+- Import templates with `./x.html.js`, not `./x.html`. Run `ts-dom gen` before `tsc`; `x.html.ts` and `ts-dom-tags.ts` are generated, never edited or committed: [setup](docs/tooling.md#installation-and-setup).
+- `export class` a component to get typed `refs.child` in parent templates: [composition](docs/components.md#composition-using-multiple-components-together).
+- `package.json` needs `"type": "module"` (with `tsc` emitting NodeNext, and with Vite): [setup](docs/tooling.md#installation-and-setup).
+- `slotchange()` is Light DOM only; with `shadow: true` use the native `slotchange` event: [Light and Shadow](docs/components.md#light-default-and-shadow).
+- A Light DOM component builds its content when connected (a `shadow: true` one in the constructor), so a new element has no children, `refs` or `text` until it is appended: [components](docs/components.md#components).
+- Inside a framework, children the framework later changes in a Light DOM host with slots break or land in the wrong slot: use `shadow: true`, or one stable element per slot: [framework children](docs/components.md#slots-and-children-managed-by-a-framework).
 
 ## Docs
 - [README](README.md): introduction, the short version, rules for agents, quick start. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.

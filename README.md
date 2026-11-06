@@ -63,16 +63,16 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-core` | building components: the `ts-dom check` loop, templates, state, lists, data flow |
 | `nativele-react` | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
 | `nativele-vue` | Nativele components in Vue 3: props, events, `v-model`, slots, `<KeepAlive>`, template types |
-| `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types (Experimental) |
-| `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection (Experimental) |
+| `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types |
+| `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection |
 | `nativele-architecture` | app layout: feature folders, shared components and stores, pages mounted by a router, lazy pages, the test split |
 | `nativele-vite` | Nativele in a Vite app: the plugin and `root`, multi-page builds, hot updates |
 | `nativele-integration` | Nativele components in a framework without its own Skill (Preact, Solid, ...): properties, events, slots, lifecycle, template types |
 | `nativele-state-management` | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` |
 | `nativele-testing` | component tests with Vitest, real-browser tests |
-| `nativele-tanstack-query` | data fetching with `@tanstack/query-core` (Experimental) |
-| `nativele-zod` | form validation with Zod or Valibot (Experimental) |
-| `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM (Experimental) |
+| `nativele-tanstack-query` | data fetching with `@tanstack/query-core` |
+| `nativele-zod` | form validation with Zod or Valibot |
+| `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM |
 | `nativele-typescript` | the tsconfig: what Nativele needs, stricter options, the generated files in the type check |
 | `nativele-linting` | the Nativele lint rules in oxlint, Vite+ or ESLint: rules, severities, ignore lists |
 | `nativele-formatting` | oxfmt, Prettier or `vp fmt` with templates: the whitespace mode, keeping the formatter off the generated files |

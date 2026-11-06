@@ -160,13 +160,13 @@ trial:
 | `nativele-integration` | Official | available | Nativele components in a framework without its own Skill: defining before render, properties and attributes, events, slots, lifecycle, types; verified with Preact |
 | `nativele-vite` | Official | available | Nativele in a Vite app: the plugin and `root`, multi-page builds, the build script, hot updates, Vite+ |
 | `nativele-vue` | Official | available | Nativele components in Vue 3: `isCustomElement`, props, events, `v-model`, slots, `<KeepAlive>`, template types |
-| `nativele-svelte` | Experimental | available | Nativele components in Svelte 5: props, event attributes, slots, `bind:this`, template types |
-| `nativele-angular` | Experimental | available | Nativele components in Angular: `CUSTOM_ELEMENTS_SCHEMA`, bindings, zoneless change detection, `ts-dom gen` in the build, content projection |
+| `nativele-svelte` | Official | available | Nativele components in Svelte 5: props, event attributes, slots, `bind:this`, template types |
+| `nativele-angular` | Official | available | Nativele components in Angular: `CUSTOM_ELEMENTS_SCHEMA`, bindings, zoneless change detection, `ts-dom gen` in the build, content projection |
 | `nativele-state-management` | Official | available | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` with a selector adapter |
 | `nativele-testing` | Official | available | component tests with Vitest and happy-dom or jsdom, real-browser tests with Vitest browser mode or Playwright |
-| `nativele-tanstack-query` | Experimental | available | `@tanstack/query-core` observers through `bind`: loading and error states, keys from props, mutations |
-| `nativele-zod` | Experimental | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
-| `nativele-tailwind` | Experimental | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
+| `nativele-tanstack-query` | Official | available | `@tanstack/query-core` observers through `bind`: loading and error states, keys from props, mutations |
+| `nativele-zod` | Official | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
+| `nativele-tailwind` | Official | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
 | `nativele-architecture` | Official | available | app layout: feature folders, shared components and stores, pages as custom elements mounted by a router (Navigation API or universal-router), lazy pages, one scanned folder, unit/browser/end-to-end split |
 | `nativele-typescript` | Official | available | the tsconfig covering the components: what Nativele needs and why, stricter options and layouts, the generated files in the type check, framework type checkers |
 | `nativele-linting` | Official | available | the Nativele lint rules in an existing oxlint, Vite+ or ESLint set-up: groups, single rule ids, severities, ignore lists, generated files and test folders |

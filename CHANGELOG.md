@@ -44,6 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - `Schema["events"]`, written by codegen, maps each handler to the `[tag, event]` pairs it is bound to (`{ onSave: ["button", "click"] }`) instead of being a union of handler names. Only a schema written by hand for `template<...>()` has to change: `events: Record<never, never>` for a template without handlers.
 - A handler that already declared a parameter type the bound event cannot satisfy (for example `CustomEvent<Detail>` on an element where the event is typed `Event`, such as a wrapper that catches a bubbling event of a grandchild) is now a tsc error. Type it `Event` and cast in the body, or move the handler to the tag that emits the event.
+### Documentation
+
+- The Skills `nativele-svelte`, `nativele-angular`, `nativele-zod`, `nativele-tanstack-query` and `nativele-tailwind` are Official.
+- Every library rule is stated in one guide in `docs/`: `llms.txt` keeps each rule as one line with a link to its guide section, and the Skills state what their task requires and link to the guide instead of explaining library behavior again.
+- Recipes: cancelling a component's own request when it is removed, with an `AbortController` created in `connected()` and aborted from `onCleanup`; `onCleanup` documents that a registered function runs once, at the next removal.
 
 ## 0.6.0
 

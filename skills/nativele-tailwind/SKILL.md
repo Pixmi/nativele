@@ -2,7 +2,7 @@
 name: nativele-tailwind
 description: "Style Nativele components with Tailwind CSS v4 in a Vite app that already uses Tailwind: classes in .html templates and in render, which files Tailwind scans, dynamic class names, <style scoped> next to utilities, and bringing the Tailwind stylesheet into shadow: true components. Use when a project depends on tailwindcss and @nativele/ts-dom."
 metadata:
-  tier: experimental
+  tier: official
   nativele: ">=0.6.0 <0.7.0"
   verified: "2026-11-06"
   tools: "tailwindcss@4.3.4 @tailwindcss/vite@4.3.4 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"

@@ -1,6 +1,6 @@
 # Recipes
 
-Patterns for common screens, built only from the library's own pieces. Every snippet comes from [examples/recipes](../examples/recipes), a contacts screen that `npm run check` type-checks and a real Chrome test drives.
+Patterns for common screens, built only from the library's own pieces. Every snippet comes from [examples/recipes](../examples/recipes), a contacts screen that `npm run check` type-checks and a real Chrome test drives, except the request cancellation, which comes from [browser/fixtures/abort-load.ts](../browser/fixtures/abort-load.ts) and its Chrome test [browser/abort.test.ts](../browser/abort.test.ts).
 
 ## Loading and error states
 
@@ -50,11 +50,41 @@ export class ContactApp extends Component(tpl, {
 }
 ```
 
-A store's `set` replaces the whole value, unlike a component's `this.set`, which merges; spread the rest yourself as above.
+A store's `set` replaces the whole value, so spread the rest as above ([stores](components.md#state-store-when-not-using-state)).
+
+## Cancelling a request when the component is removed
+
+A request that one component makes for itself is cancelled when the element leaves the page: create an `AbortController` in `connected()`, abort it from `onCleanup`, and pass its signal to `fetch`.
+
+```ts
+// abort-load.ts
+export class AbortLoad extends Component(tpl, { state: { status: "idle" } }) {
+  override connected(): void {
+    const ac = new AbortController();
+    this.onCleanup(() => ac.abort());
+    void this.#load(ac.signal);
+  }
+  async #load(signal: AbortSignal): Promise<void> {
+    this.set({ status: "loading" });
+    try {
+      const res = await fetch("/api/slow", { signal });
+      this.set({ status: res.ok ? await res.text() : "error" });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      this.set({ status: "error" });
+    }
+  }
+}
+```
+
+- When the element is removed, every function registered with `onCleanup` runs once and is dropped, so the request is aborted and its promise rejects with an `AbortError`, which the `catch` ignores: nothing is set on the removed element and no error shows.
+- `connected()` runs on every insertion, so each connection makes its own controller and request; an `onCleanup` registered in the constructor would run only at the first removal.
+- A list item moved without `moveBefore` is disconnected and connected again ([moving items](lists.md#moving-items-connecting-and-subscriptions)), so its request is aborted and started again, the same as a `bind`; with `moveBefore` it stays connected and the request goes on.
+- Data that several components share, or that must outlive the element, is loaded through a store instead, as in [Loading and error states](#loading-and-error-states).
 
 ## Showing data from a store
 
-When a component has `state`, `props` or `derive`, every `{{ hole }}` and `data-if` in its template must be one of them, and tsc reports any other name as `missing-binding`. To show a value from a store, `bind` the store and copy what the template shows into state:
+A component with `state`, `props` or `derive` shows only the names it declares ([state](components.md#data-and-view-state-optional)); any other name is `missing-binding`. To show a value from a store, `bind` the store in `connected()` and copy what the template shows into state:
 
 ```html
 <!-- contact-stats.html -->
@@ -69,11 +99,11 @@ export class ContactStats extends Component(tpl, { state: { total: 0 } }) {
 }
 ```
 
-The state holds only what this component shows; `bind` keeps it current and unsubscribes when the element leaves the page. A component with no options at all can write `this.text.total = ...` in the `bind` callback instead.
+The state holds only what this component shows; `bind` keeps it current ([stores](components.md#state-store-when-not-using-state)). A component with no options at all can write `this.text.total = ...` in the `bind` callback instead.
 
 ## A filtered list
 
-Derive the visible items and assign them in `render`, guarded by the derived name: `changed` lists the derived values that changed as well as state and props. When two derived values need the same calculation, put it in a plain function, because a derived value cannot read another one.
+Derive the visible items and assign them in `render`, guarded by the derived name (`changed` also holds derived names: [state](components.md#data-and-view-state-optional)). When two derived values need the same calculation, put it in a plain function, because a derived value cannot read another one.
 
 ```ts
 const matching = (s: DeepReadonly<State>) => s.contacts.filter((c) => c.name.toLowerCase().includes(s.query.toLowerCase()));
@@ -94,8 +124,6 @@ export class ContactApp extends Component(tpl, {
 }
 ```
 
-Annotate `changed` with the names you check, not `ReadonlySet<string>`: a misspelled name, or one that is not state, a prop or a derived value, is then a tsc error.
-
 ## Events from list items
 
 Name the item type and its key field in the handler's `EventHit`, and `hit.key` and `hit.item` are typed without a cast:
@@ -106,7 +134,7 @@ removeRow(_e: Event, hit: EventHit<Contact, "id">): void {
 }
 ```
 
-Use this form only for handlers on elements inside list items; elsewhere `hit.key` and `hit.item` are `undefined`.
+Use this form only for handlers inside list items ([events](components.md#events-data-on-)).
 
 ## A modal dialog
 

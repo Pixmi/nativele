@@ -113,9 +113,9 @@ export class TodoApp extends Component(tpl, {
 define("todo-app", TodoApp);
 ```
 
-- A `derive` function takes one argument: the state and props merged into one read-only object (other derived values are not in it).
-- `emits` declares each event with `event()`, or `event<Detail>()` when it carries data; send the data with `this.emit("name", detail)`. The parent listens with `data-on-<event>` on the child tag and reads the data as `(e as EmitEvent<Child, "name">).detail`, because an HTML attribute cannot carry the event's type.
-- `bind` goes in `connected()`; the subscription is released when the element is removed.
+- A `derive` function gets the state and props merged: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- Declare each event in `emits` with `event()` or `event<Detail>()`; the parent reads its data as `(e as EmitEvent<Child, "name">).detail`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
+- Call `bind` in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
 
 ## The loop
 
@@ -127,22 +127,22 @@ define("todo-app", TodoApp);
 
 ## Rules
 
-- No expressions in HTML: `{{ name }}` is a single identifier. Compute in `derive` (or in TypeScript) and fill a named hole.
-- Read state and props in methods as `this.state.x` and `this.props.x` (in `render`, from its `view`); change state only with `this.set()`. Rendering is synchronous; `this.batch()` combines updates.
-- Once a component has `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a `<template data-each>` must name one of them (holes inside a plain-element list are filled by `replace`). Show store data by copying it into state in the `bind` callback.
-- `store.set` replaces the whole value; a component's `this.set` merges. Spread the rest yourself: `store.set((s) => ({ ...s, status: "loading" }))`.
-- Lists, attributes and focus go in `render(view, changed)`. `changed` holds the state, prop and derived names that changed; annotate it with the names you check (`changed: ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`.
-- Props go down (the parent sets them), events go up (`emit`, handled with `data-on-<event>` on the child tag). `emit` does not bubble; data needed several levels away goes in a shared `createStore` that the components `bind`.
-- State, props and the view are deeply read-only: replace objects instead of changing them (`{ ...todo, done: true }`).
-- A `data-each` list cannot be nested: the inner list belongs to its own item component.
-- A list of plain elements (no item component) has neither `data-key` nor `data-prop`; fill it with `this.lists.x.replace(items, (item) => item.id, (item, { text, refs, show, el }) => { ... })` in `render`. In `fill`, a hole inside the item (any name, `<li>{{ label }}</li>`) is set with `text.label = ...`, a `data-ref` inside it is `refs.x`, a `data-if` inside it is `show("name", on)`, and `el` is the item's root element; an event handler on an element of the item receives `(e: Event, hit: EventHit)` with the item's key in `hit.key`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md
-- For a list of components, write `data-key` and `data-prop` on the `<template data-each>`, give the item component `role="listitem"` inside `<ul>` or `<ol>`, assign `this.lists.x.items = ...` in `render`, and type item handlers as `hit: EventHit<Item, "id">`. Each item component gets its item through that one prop; to pass more (selected, leading), map the items to objects that carry it before assigning.
-- Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both.
+- No expressions in HTML: `{{ name }}` is a single identifier; compute in `derive` or TypeScript: https://github.com/Pixmi/nativele/blob/main/docs/templates.md#html-syntax
+- Read `this.state.x` and `this.props.x` (in `render`, its `view`); change state only with `this.set()`; `this.batch()` combines updates: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- With `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a list item names one of them; show store data by copying it into state in the `bind` callback: https://github.com/Pixmi/nativele/blob/main/docs/recipes.md#showing-data-from-a-store
+- `store.set` replaces the whole value (`this.set` merges): spread the rest yourself: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
+- Lists, attributes and focus go in `render(view, changed)`; annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- Props go down, events go up; `emit` does not bubble; data needed several levels away goes in a shared `createStore`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
+- State, props and the view are deeply read-only: replace objects (`{ ...todo, done: true }`), never change them in place: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- A `data-each` list is never nested: the inner list belongs to its own item component: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
+- A list of plain elements has no `data-key` or `data-prop` and is filled with `this.lists.x.replace(items, (item) => item.id, (item, { text, refs, show, el }) => { ... })` in `render`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
+- A list of components has `data-key` and `data-prop` on the `<template data-each>`, `role="listitem"` on the item inside `<ul>` or `<ol>`, `this.lists.x.items = ...` in `render`, and `hit: EventHit<Item, "id">` in item handlers; extra data per item (selected, leading) goes into the item objects: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-components-items--
+- Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both: https://github.com/Pixmi/nativele/blob/main/docs/components.md#safeguards-in-types-and-at-runtime
 
 ## Known limitations
 
 - Holes are text only; attributes are set in TypeScript through `data-ref`.
-- A derived value cannot read another derived value; share the calculation as a plain function.
+- A derived value cannot read another derived value; share the calculation as a plain function: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - `data-if` removes the element from the page (its state is kept in memory); to hide an element while it keeps focus or media playback, set `this.refs.x.hidden` in `render`.
 - Nativele has no router, data fetching, form validation library, styling system or global state manager by design; use the project's tools for those, and see the other Skills for how they connect.
 

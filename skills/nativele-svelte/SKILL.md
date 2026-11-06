@@ -2,7 +2,7 @@
 name: nativele-svelte
 description: "Use Nativele web components inside an existing Svelte 5 app: passing props, listening to events, children and slots, lifecycle, template types with svelte-check, and ts-dom check. Use when a project depends on svelte and @nativele/ts-dom."
 metadata:
-  tier: experimental
+  tier: official
   nativele: ">=0.6.0 <0.7.0"
   verified: "2026-11-06"
   tools: "svelte@5.57.3 vite@8.3.6 @sveltejs/vite-plugin-svelte@7.3.1 svelte-check@4.7.8 @tsconfig/svelte@5.0.8 typescript@6.0.3"
