@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { listHtml, listTs, scanDefines, scanTags, staleGenerated } from "./codegen.ts";
+import { listHtml, listTs, scanDefines, scanTags, staleGenerated, templateImports } from "./codegen.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
 import { leftOutBy, projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
@@ -238,8 +238,8 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     for (const f of listTs(d)) {
       const lines = readFileSync(f, "utf8").split("\n");
       lines.forEach((text, i) => {
-        const m = /from\s+["'](\.{1,2}\/[^"']+\.html)["']/.exec(text);
-        if (m) add("template-import-without-js", "error", `${m[1]} is imported without .js, which works only through a bundler plugin that Nativele does not provide. Fix: import "${m[1]}.js" (TypeScript maps it to the generated ${m[1]}.ts).`, { file: rel(f), line: i + 1 });
+        const m = templateImports(text).find((t) => !t.js);
+        if (m) add("template-import-without-js", "error", `${m.html} is imported without .js, which works only through a bundler plugin that Nativele does not provide. Fix: import "${m.html}.js" (TypeScript maps it to the generated ${m.html}.ts).`, { file: rel(f), line: i + 1 });
       });
     }
     for (const s of staleGenerated(d, generate, defs, dirs)) {

@@ -23,6 +23,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - The lint rule `missing-handler` (`ts-dom/missing-handler` in the oxlint plugin, and its id in `ts-dom/unused-markup`), and the oxlint suggestion that added an empty method for it. The rule id stays, for the error `ts-dom check` maps from tsc. A linter config that turns on `ts-dom/missing-handler` must drop it, since the plugin no longer has that rule.
 
+### Fixes
+
+- `ts-dom lint` and `ts-dom check` find the module that imports a template in any folder, by the relative path it imports (`../views/card.html.js`, `./parts/row.html.js`), as the oxlint plugin already did, instead of reporting `no-importer` and skipping the checks of that template. Lint, check, doctor and the oxlint plugin now recognize one form of template import: a relative path to the `.html` file followed by `.js`.
+- A template imported without `.js` (`import tpl from "./x.html"`) is no longer reported by lint as `no-importer` with a message that says nothing imports it: `ts-dom doctor` (`template-import-without-js`) and tsc report that mistake, and lint checks the template against the class that imports it.
+- A generic component class (`class List<T> extends Component(tpl, ...)`) has its props, events and template read for the checks of the parent templates, and `ts-dom check` finds its body when it has a contract error.
+
 ## 0.6.6 (not published)
 
 ### Changed

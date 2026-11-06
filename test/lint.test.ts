@@ -94,6 +94,37 @@ describe("lintUsage", () => {
     expect(issue?.rule).toBe("no-importer");
     expect(issue?.message).toContain("Fix:");
   });
+  it("finds the importer in another folder or a subfolder and checks the template against its class", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    mkdirSync(join(d, "views/parts"), { recursive: true });
+    mkdirSync(join(d, "app"));
+    writeFileSync(join(d, "views/card.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
+    writeFileSync(join(d, "views/parts/row.html"), `<b data-ref="used"></b>`);
+    writeFileSync(join(d, "app/card.ts"), `import t from "../views/card.html.js";\nclass Card extends Component(t) { x() { this.refs.used; } }`);
+    writeFileSync(join(d, "views/row.ts"), `import t from "./parts/row.html.js";\nclass Row extends Component(t) { x() { this.refs.used; } }`);
+    const issues = lintUsage([d], [join(d, "app/card.ts"), join(d, "views/row.ts")]);
+    expect(issues.map((i) => [i.file.endsWith("card.html"), i.rule])).toEqual([[true, "unused-ref"]]);
+    expect(issues[0]?.message).toContain(`data-ref="dead"`);
+  });
+  it("counts an import without .js as the importer, leaving that mistake to ts-dom doctor and tsc", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "a.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
+    writeFileSync(join(d, "a.ts"), `import t from "./a.html";\nclass A extends Component(t) { x() { this.refs.used; } }`);
+    expect(lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule)).toEqual(["unused-ref"]);
+  });
+});
+
+describe("reading component classes", () => {
+  it("finds a class without a name and a generic class", () => {
+    const code = `import t from "./a.html.js";\nexport default class extends Component(t) { a() {} }\nclass B<T extends Map<string, number>> extends Component(t) { b() {} }`;
+    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+  });
+  it("reads the contract of a generic component", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "kid.html"), `<p></p>`);
+    writeFileSync(join(d, "kid.ts"), `import tpl from "./kid.html.js";\nexport class Kid<T> extends Component(tpl, { props: { label: "" } }) {}\ndefine("x-kid", Kid);`);
+    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract.props.keys() ?? [])]).toEqual(["label"]);
+  });
 });
 
 describe("data-flow checks", () => {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
-import { analyze, listHtml, listTs, scanDefines } from "./codegen.ts";
+import { analyze, listHtml, listTs, matchClose, scanDefines, templateImports } from "./codegen.ts";
 import type { Analysis, DefineDef, Diagnostic } from "./codegen.ts";
 
 export type { Diagnostic };
@@ -22,28 +22,24 @@ const STATEFUL_MARK = "/*ts-dom:stateful*/";
 
 /** Find the local name of `import X from "<spec>"`. */
 export function defaultImportName(code: string, spec: string): string | null {
-  const m = new RegExp(`import\\s+([A-Za-z_$][\\w$]*)\\s+from\\s+["']${esc(spec)}["']`).exec(code);
-  return m?.[1] ?? null;
+  return templateImports(code).find((i) => i.spec === spec && i.local)?.local ?? null;
 }
 
-/** From `start`, find the position that closes `open` (skipping strings and comments). */
-function matchClose(code: string, start: number, open: string, close: string): number {
-  let depth = 0;
-  for (let i = start; i < code.length; i++) {
-    const c = code[i] as string;
-    if (c === '"' || c === "'" || c === "`") {
-      for (i++; i < code.length && code[i] !== c; i++) if (code[i] === "\\") i++;
-    } else if (c === "/" && code[i + 1] === "/") {
-      i = code.indexOf("\n", i);
-      if (i < 0) return -1;
-    } else if (c === "/" && code[i + 1] === "*") {
-      i = code.indexOf("*/", i + 2);
-      if (i < 0) return -1;
-      i++;
-    } else if (c === open) depth++;
-    else if (c === close && --depth === 0) return i;
-  }
-  return -1;
+const COMPONENT_CLASS = /\bclass(?:\s+([A-Za-z_$][\w$]*))?(?:\s*<[^{(]*?>)?\s+extends\s+Component\s*\(/g;
+
+/** Every `class X extends Component(` in `code`: the class name (none for `class extends`) and the offset of the `(`. */
+export function componentClassHeads(code: string): { name?: string; open: number }[] {
+  return [...code.matchAll(COMPONENT_CLASS)].map((m) => ({ ...(m[1] ? { name: m[1] } : {}), open: m.index + m[0].length - 1 }));
+}
+
+/** The `Component(...)` call whose `(` is at `open` and the class body after it: the offsets of the call's `)` and of the body's braces; null when one is not closed. */
+export function classSpan(code: string, open: number): { callEnd: number; bodyStart: number; bodyEnd: number } | null {
+  const callEnd = matchClose(code, open, "(", ")");
+  if (callEnd < 0) return null;
+  const bodyStart = code.indexOf("{", callEnd);
+  if (bodyStart < 0) return null;
+  const bodyEnd = matchClose(code, bodyStart, "{", "}");
+  return bodyEnd > 0 ? { callEnd, bodyStart, bodyEnd } : null;
 }
 
 export interface ComponentClass {
@@ -57,18 +53,11 @@ export interface ComponentClass {
 export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
   const local = defaultImportName(code, htmlSpec);
   if (!local) return [];
-  const re = new RegExp(`extends\\s+Component\\s*\\(\\s*${esc(local)}\\b`, "g");
-  const out: ComponentClass[] = [];
-  for (let m = re.exec(code); m; m = re.exec(code)) {
-    const call = code.indexOf("(", m.index);
-    const callEnd = matchClose(code, call, "(", ")");
-    if (callEnd < 0) continue;
-    const bodyStart = code.indexOf("{", callEnd);
-    if (bodyStart < 0) continue;
-    const bodyEnd = matchClose(code, bodyStart, "{", "}");
-    if (bodyEnd > 0) out.push({ call: code.slice(call, callEnd + 1), body: code.slice(bodyStart, bodyEnd + 1) });
-  }
-  return out;
+  const arg = new RegExp(`^\\(\\s*${esc(local)}\\b`);
+  return componentClassHeads(code).flatMap(({ open }) => {
+    const span = arg.test(code.slice(open)) ? classSpan(code, open) : null;
+    return span ? [{ call: code.slice(open, span.callEnd + 1), body: code.slice(span.bodyStart, span.bodyEnd + 1) }] : [];
+  });
 }
 
 const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
@@ -105,22 +94,24 @@ export function readTemplates(dirs: readonly string[]): LintTemplate[] {
   );
 }
 
-/** The TypeScript sources by folder, each file read once. */
-function sourcesByDir(tsFiles: readonly string[]): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const f of tsFiles) {
-    const src = readFileSync(f, "utf8");
-    const here = out.get(dirname(f));
-    if (here) here.push(src);
-    else out.set(dirname(f), [src]);
-  }
-  return out;
+/** A module that imports a template: its source and the specifier it imports the template with. */
+interface Importer {
+  code: string;
+  spec: string;
 }
 
-/** The sources next to the template `html` that import it. */
-function importersOf(sources: ReadonlyMap<string, string[]>, html: string): string[] {
-  const re = new RegExp(`from\\s+["']\\./${esc(basename(html))}\\.js["']`);
-  return (sources.get(dirname(html)) ?? []).filter((src) => re.test(src));
+/** The modules that import each template, by the template's absolute path; each file is read once. */
+function importersByTemplate(tsFiles: readonly string[]): Map<string, Importer[]> {
+  const out = new Map<string, Importer[]>();
+  for (const f of tsFiles) {
+    const code = readFileSync(f, "utf8");
+    for (const { html, spec } of templateImports(code)) {
+      const file = resolve(dirname(f), html);
+      const here = out.get(file) ?? [];
+      if (!here.some((i) => i.code === code && i.spec === spec)) out.set(file, [...here, { code, spec }]);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,16 +186,16 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
 
 /** Check every HTML template under `dirs` against the TypeScript files that import it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return usage(readTemplates(dirs), sourcesByDir(tsFiles), cwd);
+  return usage(readTemplates(dirs), importersByTemplate(tsFiles), cwd);
 }
 
-function usage(templates: readonly LintTemplate[], sources: ReadonlyMap<string, string[]>, cwd: string): LintIssue[] {
+function usage(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
   for (const { file: html, text, analysis } of templates) {
     const name = basename(html);
-    const importers = importersOf(sources, html);
+    const by = importers.get(resolve(html)) ?? [];
     const file = relative(cwd, html);
-    if (!importers.length) {
+    if (!by.length) {
       issues.push({
         file,
         rule: "no-importer",
@@ -215,7 +206,7 @@ function usage(templates: readonly LintTemplate[], sources: ReadonlyMap<string, 
       });
       continue;
     }
-    const code = importers.map((s) => templateCode(s, `./${name}.js`)).join("\n");
+    const code = by.map((i) => templateCode(i.code, i.spec)).join("\n");
     for (const d of unusedMarkup(text, code, analysis)) issues.push({ file, ...d });
   }
   return issues;
@@ -367,15 +358,13 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), defs: readonly
   const { folders } = lookupOf(out);
   for (const def of defs) {
     const code = readFileSync(def.file, "utf8");
-    const m = new RegExp(`class\\s+${esc(def.className)}\\s+extends\\s+Component\\s*\\(`).exec(code);
-    if (!m) continue;
-    const open = code.indexOf("(", m.index + m[0].length - 1);
-    const close = matchClose(code, open, "(", ")");
-    if (close < 0) continue;
-    const call = code.slice(open, close + 1);
+    const head = componentClassHeads(code).find((h) => h.name === def.className);
+    const close = head ? matchClose(code, head.open, "(", ")") : -1;
+    if (!head || close < 0) continue;
+    const call = code.slice(head.open, close + 1);
     const contract: Contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
     const tpl = /^\(\s*([A-Za-z_$][\w$]*)/.exec(call)?.[1];
-    const spec = tpl && new RegExp(`import\\s+${esc(tpl)}\\s+from\\s+["'](\\.{1,2}/[^"']+\\.html)\\.js["']`).exec(code)?.[1];
+    const spec = tpl && templateImports(code).find((i) => i.local === tpl)?.html;
     const html = spec && resolve(dirname(def.file), spec);
     if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract }]);
@@ -573,16 +562,15 @@ export function dataFlow(
 
 /** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return flow(readTemplates(dirs), sourcesByDir(tsFiles), contractsFor(dirs, cwd), cwd);
+  return flow(readTemplates(dirs), importersByTemplate(tsFiles), contractsFor(dirs, cwd), cwd);
 }
 
-function flow(templates: readonly LintTemplate[], sources: ReadonlyMap<string, string[]>, contracts: Contracts, cwd: string): LintIssue[] {
+function flow(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, contracts: Contracts, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
   for (const { file: html, text, analysis } of templates) {
-    const spec = `./${basename(html)}.js`;
     const file = relative(cwd, html);
-    const classes = importersOf(sources, html).flatMap((src) => componentClasses(src, spec));
+    const classes = (importers.get(resolve(html)) ?? []).flatMap((i) => componentClasses(i.code, i.spec));
     const here = contractsAt(contracts, html);
     for (const d of dataFlow(text, classes, [], here, analysis)) issues.push({ file, ...d });
     for (const use of analysis.customUses) {
@@ -622,10 +610,10 @@ export interface LintOptions {
  * Each template is parsed once, and the TypeScript sources and child definitions are read once, for all of them.
  */
 export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), templates = readTemplates(dirs) }: LintOptions = {}): LintIssue[] {
-  const sources = sourcesByDir(dirs.flatMap(listTs));
+  const importers = importersByTemplate(dirs.flatMap(listTs));
   const contracts = contractsFor(dirs, cwd);
   const checks = a11y ? templates.flatMap((t) => checkA11y(t.text, [], contractsAt(contracts, t.file), t.analysis.root).map((d) => ({ file: relative(cwd, t.file), ...d }))) : [];
-  return [...usage(templates, sources, cwd), ...flow(templates, sources, contracts, cwd), ...checks];
+  return [...usage(templates, importers, cwd), ...flow(templates, importers, contracts, cwd), ...checks];
 }
 
 /** `file:line:col severity [rule] message` for a lint issue. */

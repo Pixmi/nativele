@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { A11Y_RULES, checkA11y } from "./a11y.ts";
 import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
 import type { Contracts } from "./lint.ts";
-import { analyze } from "./codegen.ts";
+import { analyze, TEMPLATE_SPEC } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 
 interface ImportNode {
@@ -42,9 +42,9 @@ function groupDiagnostics(group: Group, html: string, code: string, spec: string
     group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename), a));
 }
 
-function readTemplate(filename: string, spec: string): string | null {
+function readTemplate(filename: string, html: string): string | null {
   try {
-    return readFileSync(resolve(dirname(filename), spec.slice(0, -3)), "utf8");
+    return readFileSync(resolve(dirname(filename), html), "utf8");
   } catch {
     return null; // a missing file is reported by tsc / the bundler
   }
@@ -63,8 +63,9 @@ function templateRule(group: Group, description: string, only?: string) {
       return {
         ImportDeclaration(node: ImportNode) {
           const spec = node.source.value;
-          if (!spec.endsWith(".html.js")) return;
-          const html = readTemplate(context.filename, spec);
+          const path = TEMPLATE_SPEC.exec(spec)?.[1];
+          if (!path) return;
+          const html = readTemplate(context.filename, path);
           if (html === null) return;
           const code = context.sourceCode.text;
           const ignore = context.options?.[0]?.ignore ?? [];
