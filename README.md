@@ -73,6 +73,7 @@ npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the 
 | `nativele-tanstack-query` | data fetching with `@tanstack/query-core` |
 | `nativele-zod` | form validation with Zod or Valibot |
 | `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM |
+| `nativele-web-awesome` | Web Awesome components in templates: typed events, forms, Light and Shadow DOM |
 | `nativele-typescript` | the tsconfig: what Nativele needs, stricter options, the generated files in the type check |
 | `nativele-linting` | the Nativele lint rules in oxlint, Vite+ or ESLint: rules, severities, ignore lists |
 | `nativele-formatting` | oxfmt, Prettier or `vp fmt` with templates: the whitespace mode, keeping the formatter off the generated files |

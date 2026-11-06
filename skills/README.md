@@ -167,6 +167,7 @@ trial:
 | `nativele-tanstack-query` | Official | available | `@tanstack/query-core` observers through `bind`: loading and error states, keys from props, mutations |
 | `nativele-zod` | Official | available | form validation with Zod or Valibot: per-field messages, nested and array fields, `aria-invalid` |
 | `nativele-tailwind` | Official | available | Tailwind CSS v4 in templates: source detection, `shadow: true` with adopted style sheets, `<style scoped>` layers |
+| `nativele-web-awesome` | Official | available | Web Awesome (`@awesome.me/webawesome`) in templates: cherry-picked components, typed events, form controls in `FormData`, Shadow DOM styles, what the tools cannot check |
 | `nativele-architecture` | Official | available | app layout: feature folders, shared components and stores, pages as custom elements mounted by a router (Navigation API or universal-router), lazy pages, one scanned folder, unit/browser/end-to-end split |
 | `nativele-typescript` | Official | available | the tsconfig covering the components: what Nativele needs and why, stricter options and layouts, the generated files in the type check, framework type checkers |
 | `nativele-linting` | Official | available | the Nativele lint rules in an existing oxlint, Vite+ or ESLint set-up: groups, single rule ids, severities, ignore lists, generated files and test folders |

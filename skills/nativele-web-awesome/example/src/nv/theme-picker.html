@@ -1,0 +1,8 @@
+<div class="wa-stack">
+  <wa-select label="Theme" placeholder="Choose a theme" data-ref="select" data-on-change="onChange">
+    <template data-each="themes">
+      <wa-option>{{ label }}</wa-option>
+    </template>
+    <slot name="hint" slot="hint"></slot>
+  </wa-select>
+</div>

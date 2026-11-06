@@ -1,0 +1,17 @@
+<table>
+  <thead>
+    <tr>
+      <template data-each="headers">
+        <th scope="col">
+          <button type="button" data-ref="sort" data-on-click="sortBy">{{ header }}</button>
+          <span data-ref="label">{{ header }}</span>
+        </th>
+      </template>
+    </tr>
+  </thead>
+  <tbody data-ref="body">
+    <template data-each="rows" data-key="id" data-prop="user">
+      <user-row></user-row>
+    </template>
+  </tbody>
+</table>

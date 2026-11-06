@@ -65,7 +65,7 @@ There is no host element, so `data-on-*` attributes do nothing here (listen on `
 ## Trusted Types, Translations and Icons
 
 - Trusted Types: pages that enforce `require-trusted-types-for 'script'` work with no policy, because `ts-dom gen` writes the markup as data and the runtime builds it with DOM calls. Your own code must avoid `innerHTML` too.
-- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way.
+- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way. Switching the language at runtime: [Recipes](recipes.md#switching-the-language).
 - Icons: ts-dom does not manage icons. Make an icon a custom element of your own that builds its SVG with `createElementNS` from whatever source you use, and place it in a template as a child component:
 
 ```html

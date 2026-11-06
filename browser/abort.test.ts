@@ -12,7 +12,7 @@ let requests = 0;
 let aborted = 0;
 
 beforeAll(async () => {
-  const s = await startServer(5312);
+  const s = await startServer(5317);
   stop = s.stop;
   browser = await launchChrome();
   page = await browser.newPage();

@@ -15,10 +15,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Documentation
 
+- New Skill `nativele-web-awesome`: Web Awesome components in Nativele templates: importing only the components used and the theme, attributes and properties, typed Web Awesome events (with `import type` of the library's event types), its form controls in `FormData` and `form.elements`, styles and slots in Light and Shadow DOM, and what `ts-dom check` and lint cannot check for its tags.
 - The Skills `nativele-svelte`, `nativele-angular`, `nativele-zod`, `nativele-tanstack-query` and `nativele-tailwind` are Official.
 - Every library rule is stated in one guide in `docs/`: `llms.txt` keeps each rule as one line with a link to its guide section, and the Skills state what their task requires and link to the guide instead of explaining library behavior again.
 - The Skills declare a handler's event type instead of casting (`onAdd(e: EmitEvent<TextEntry, "entry-submit">)`), `nativele-core` sets per-row state through `get(key).el`, and `nativele-zod` names the typed `elements` of a form.
 - Recipes: cancelling a component's own request when it is removed, with an `AbortController` created in `connected()` and aborted from `onCleanup`; `onCleanup` documents that a registered function runs once, at the next removal.
+- Recipes: a table whose columns come from a config array (header, cell builder, optional comparator), with rows as item components that build their cells in `render`, a cell that holds a component and a cell button handled by the table, and what a column change costs compared with a plain list.
+- Recipes: a form control of your own, a form-associated component with `static formAssociated = true` and `ElementInternals` (`setFormValue`, `setValidity`, `formResetCallback`, `formDisabledCallback`); the Shadow DOM forms row links to it instead of saying `ElementInternals` must be handled by hand.
+- Recipes: switching the language with a locale store that components `bind` in `connected()`, text from a plain messages object, and `document.documentElement.lang` set by the store's owner.
+- Components: custom elements from other libraries in a template: importing them, declaring their tag and events in `HTMLElementTagNameMap` and `GlobalEventHandlersEventMap`, and what codegen and lint do not check for them.
 
 ## 0.6.3 (not published)
 
