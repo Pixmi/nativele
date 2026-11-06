@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -212,12 +213,18 @@ describe("rule coverage and messages", () => {
     }
     for (const rule of Object.keys(INPUTS)) expect(A11Y_RULES, rule).toHaveProperty(rule);
   });
-  it("every default message contains a Fix: hint", () => {
-    for (const [rule, msg] of Object.entries(A11Y_RULES)) {
-      expect(msg, rule).toContain("Fix:");
-      expect(msg, rule).not.toMatch(/^\[/);
-    }
+  it("every rule has a short description, without the Fix: hint that each message carries", () => {
+    for (const [rule, description] of Object.entries(A11Y_RULES)) expect(description, rule).not.toMatch(/Fix:|\.$/);
   });
+  it("ts-dom rules and the oxlint rules describe each rule with its A11Y_RULES text", async () => {
+    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
+    const described = plugin.rules as Record<string, { meta: { docs: { description: string } } }>;
+    const listed = (JSON.parse(execFileSync(process.execPath, ["src/cli.ts", "rules", "--json"], { encoding: "utf8" })) as { rules: { id: string; group: string; description: string }[] }).rules;
+    for (const [rule, description] of Object.entries(A11Y_RULES)) {
+      expect(described[rule]?.meta.docs.description, rule).toBe(description);
+      expect(listed.find((r) => r.group === "lint: a11y" && r.id === rule)?.description, rule).toBe(description);
+    }
+  }, 30_000);
   it("every produced diagnostic is a warning with a position and a Fix: hint", () => {
     for (const [rule, html] of Object.entries(INPUTS)) {
       const ds = checkA11y(html).filter((d) => d.rule === rule);

@@ -94,6 +94,6 @@ export default {
     // One rule per rule id, so a project can give each its own severity (for example "ts-dom/unused-ref": "warn").
     ...perRule("unused-markup", unusedMarkupRules),
     ...perRule("data-flow", dataFlowRules),
-    ...perRule("a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))),
+    ...perRule("a11y", A11Y_RULES),
   },
 };

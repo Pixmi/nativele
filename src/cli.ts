@@ -65,7 +65,7 @@ function ruleGroups(): [string, string, Record<string, string>][] {
     ["doctor", "reported by `ts-dom doctor` (project set-up)", DOCTOR_RULES],
     ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup (or ts-dom/<id>); no-importer only from `ts-dom lint`, as the oxlint plugin sees one file at a time and cannot tell that no file imports a template", UNUSED_MARKUP_RULES],
     ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow (or ts-dom/<id>); unchecked-custom-elements only from `ts-dom lint` and `ts-dom check`, as it is reported once per run over every scanned template", DATA_FLOW_RULES],
-    ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y (or ts-dom/<id>)", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
+    ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y (or ts-dom/<id>)", A11Y_RULES],
   ];
 }
 
