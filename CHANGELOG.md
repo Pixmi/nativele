@@ -10,12 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## 0.6.3 (not published)
+## 0.6.2 (not published)
 
 ### New checks
 
-- A `data-on-*` handler may declare its first parameter as the event it receives, and `define()` checks it against the template: `EmitEvent<Child, "event">` for an event that the child component on that tag declares in `emits`, otherwise the type `HTMLElementEventMap` lists for the event name (`click` `MouseEvent`, `keydown` `KeyboardEvent`, `submit` `SubmitEvent`), otherwise `Event`. A parameter that does not accept that event, for example `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error (`wrongHandlerParameters`) that names the method and its event type; a handler bound to several events or tags must accept all of them. A handler typed `(e: Event)`, or without a parameter, compiles as before, so the cast `(e as EmitEvent<Child, "event">)` is no longer needed.
-- `ts-dom check` reports that error as `handler-event-type` at the `data-on-*` attribute, with the event type to declare in its `Fix:`.
 - `ts-dom gen` reports `data-each` on a `<template>` inside `<svg>` or `<math>` as the error `each-in-svg`, with its line, column and a `Fix:`, instead of crashing with `Cannot read properties of undefined (reading 'childNodes')`: the parser makes such a `<template>` an ordinary element without content, so no list can be built from it.
 - A `data-ref` on a `<form>` types `elements` with the controls the template puts inside the form, by `name` and `id`: one control is its element type (`<input name="fee">` makes `this.refs.form.elements.fee` an `HTMLInputElement`; `<select>`, `<textarea>`, `<button>`, `<output>`, `<fieldset>` and `<object>` likewise), several with one name (a radio group, repeated checkboxes) are a `RadioNodeList`, and one inside a `data-if` or `<slot>` may also be `undefined`. A misspelled name is a tsc error; the rest of `HTMLFormElement` is unchanged. Controls inside a child component's tag or a `data-each` item, `<input type="image">`, and controls joined from outside the form with `form="id"` are not typed. Types only: nothing changes at runtime.
 - The `el` of a list item (in `get(key)` and in the `update` callback of `replace()` and `upsert()`) is typed by the item's root tag instead of `Element`: the item component's class for a list with `data-key` and `data-prop`, so `row.el.selected = true` is checked against its props, and the element type for plain items (`HTMLLIElement` for an `<li>`). Codegen writes it to the list schema as `rootElement`.
@@ -27,8 +25,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Breaking changes
 
-- `Schema["events"]`, written by codegen, maps each handler to the `[tag, event]` pairs it is bound to (`{ onSave: ["button", "click"] }`) instead of being a union of handler names. Only a schema written by hand for `template<...>()` has to change: `events: Record<never, never>` for a template without handlers.
 - Code that relied on a list item's `el` being `Element` can fail where the root's own type conflicts with it, for example a cast such as `ctx.el as HTMLInputElement` on an `<li>` item (`HTMLLIElement` and `HTMLInputElement` do not overlap). Remove the cast, or cast to the element the template has at the root.
+
+## 0.6.1 (not published)
+
+### New checks
+
+- A `data-on-*` handler may declare its first parameter as the event it receives, and `define()` checks it against the template: `EmitEvent<Child, "event">` for an event that the child component on that tag declares in `emits`, otherwise the type `HTMLElementEventMap` lists for the event name (`click` `MouseEvent`, `keydown` `KeyboardEvent`, `submit` `SubmitEvent`), otherwise `Event`. A parameter that does not accept that event, for example `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error (`wrongHandlerParameters`) that names the method and its event type; a handler bound to several events or tags must accept all of them. A handler typed `(e: Event)`, or without a parameter, compiles as before, so the cast `(e as EmitEvent<Child, "event">)` is no longer needed.
+- `ts-dom check` reports that error as `handler-event-type` at the `data-on-*` attribute, with the event type to declare in its `Fix:`.
+
+### Breaking changes
+
+- `Schema["events"]`, written by codegen, maps each handler to the `[tag, event]` pairs it is bound to (`{ onSave: ["button", "click"] }`) instead of being a union of handler names. Only a schema written by hand for `template<...>()` has to change: `events: Record<never, never>` for a template without handlers.
 - A handler that already declared a parameter type the bound event cannot satisfy (for example `CustomEvent<Detail>` on an element where the event is typed `Event`, such as a wrapper that catches a bubbling event of a grandchild) is now a tsc error. Type it `Event` and cast in the body, or move the handler to the tag that emits the event.
 
 ## 0.6.0
