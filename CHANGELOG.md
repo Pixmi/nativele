@@ -10,6 +10,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.3 (not published)
+
+### Fixes
+
+- A `data-on-*` on an element inside a `data-if` block of a list item never fired: the list registered the item's events after taking its hidden blocks out. Events are registered first, as refs already were.
+
 ## 0.6.2 (not published)
 
 ### New checks

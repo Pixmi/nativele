@@ -149,16 +149,16 @@ export class List<L extends ListSchema = ListSchema> {
     holder.append(el);
     const conds = mountConds(holder);
     const text = mountHoles(holder) as TextOf<L["text"]>;
-    // Before hideAll(), which takes the data-if blocks out of the item, so their data-ref elements are still found.
+    // Before hideAll(), which takes the data-if blocks out of the item, so their data-ref and data-on-* elements are still found.
     const refs: Record<string, Element> = {};
     for (const n of [el, ...el.querySelectorAll("[data-ref]")]) {
       const name = n.getAttribute("data-ref");
       if (name) refs[name] = n;
     }
+    this.onCreate?.(el);
     conds.hideAll();
     const show = conds.show as ItemContext<L>["show"];
     el.remove();
-    this.onCreate?.(el);
     const entry: Entry<L> = { el: el as ItemElement<L>, refs: refs as L["refs"], text, show, item: undefined, fresh: true };
     this.#byEl.set(el, { key, item: undefined });
     return entry;
