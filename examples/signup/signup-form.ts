@@ -34,11 +34,11 @@ export class SignupForm extends Component(tpl, {
 }) {
   #nextId = 1;
 
-  onName(e: Event): void {
-    this.set({ name: (e as EmitEvent<FormField, "field-input">).detail.value });
+  onName(e: EmitEvent<FormField, "field-input">): void {
+    this.set({ name: e.detail.value });
   }
-  onEmail(e: Event): void {
-    this.set({ email: (e as EmitEvent<FormField, "field-input">).detail.value });
+  onEmail(e: EmitEvent<FormField, "field-input">): void {
+    this.set({ email: e.detail.value });
   }
   onAgree(): void {
     this.set({ agree: this.refs.agree.checked });

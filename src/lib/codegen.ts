@@ -67,8 +67,8 @@ export interface Analysis {
   boundLists: Map<string, { tag: string; prop: string; key: string }>;
   /** Method names referenced by data-on-* (including inside list items). */
   events: Set<string>;
-  /** Every data-on-* occurrence: event type, handler method, element tag (used by data-flow checks). */
-  eventSites: { event: string; method: string; tag: string; attrs: string[] }[];
+  /** Every data-on-* occurrence: event type, handler method, element tag, and the position of the attribute. */
+  eventSites: { event: string; method: string; tag: string; attrs: string[]; line: number; col: number }[];
   /** Custom element tags used by the template; codegen imports the modules that define them. */
   customTags: Set<string>;
   /** Attributes of every custom element occurrence (used by prop/event contract checks). */
@@ -89,8 +89,10 @@ const newScope = (): Scope => ({ refs: new Map(), text: new Set(), ifs: new Set(
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
 const isEl = (n: Node): n is Element => "tagName" in n;
 const isRaw = (n: Element) => n.tagName === "style" || n.tagName === "script";
-const locOf = (n: Node): Loc => {
-  const loc = (n as { sourceCodeLocation?: { startLine: number; startCol: number } | null }).sourceCodeLocation;
+type SourceLoc = { startLine: number; startCol: number; attrs?: Record<string, { startLine: number; startCol: number }> };
+const locOf = (n: Node, attrName?: string): Loc => {
+  const el = (n as { sourceCodeLocation?: SourceLoc | null }).sourceCodeLocation;
+  const loc = (attrName && el?.attrs?.[attrName]) || el;
   return { line: loc?.startLine ?? 1, col: loc?.startCol ?? 1 };
 };
 
@@ -201,7 +203,7 @@ export function analyze(html: string): Analysis {
         } else {
           a.events.add(method);
           mark(`event:${method}`, n);
-          a.eventSites.push({ event: type, method, tag, attrs: n.attrs.map((x) => x.name) });
+          a.eventSites.push({ event: type, method, tag, attrs: n.attrs.map((x) => x.name), ...locOf(n, at.name) });
           handlers.push(type);
         }
       }
@@ -422,7 +424,7 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
   slots: ${union(a.slots)};
   rootElement: ${rootElementType(html)};
   text: ${union(a.scope.text)};
-  events: ${union(a.events)};
+  events: ${members([...a.events].map((m) => `${q(m)}: ${[...new Set(a.eventSites.filter((s) => s.method === m).map((s) => `[${q(s.tag)}, ${q(s.event)}]`))].join(" | ")}`))};
 }`;
   const needsEl = type.includes("El<");
   // Child components used by the template: import the modules that define them

@@ -49,8 +49,8 @@ export class OrderLine extends Component(tpl, {
   derive: { total: (s) => s.quantity * s.price },
 }) {
   // Event up: the child asked for a new quantity; the parent decides.
-  onQuantity(e: Event): void {
-    this.set({ quantity: (e as EmitEvent<QuantityInput, "quantity-change">).detail.value });
+  onQuantity(e: EmitEvent<QuantityInput, "quantity-change">): void {
+    this.set({ quantity: e.detail.value });
   }
 
   // Data down: the child's props are typed (a wrong name or type is a tsc error).
@@ -218,8 +218,8 @@ HTML writes only the event name and the method name; the logic is in TS:
 ```
 
 ```ts
-add(e: Event) { e.preventDefault(); … }
-removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((i) => i.id !== hit.key) })); }
+add(e: SubmitEvent) { e.preventDefault(); … }
+removeItem(e: MouseEvent, hit: EventHit) { this.set((s) => ({ items: s.items.filter((i) => i.id !== hit.key) })); }
 ```
 
 - The method receives `(event, hit)`. `hit.el` is the element carrying the `data-on-*`; when the event happens inside a list item, `hit.key` is that item's key and `hit.item` is the data most recently passed to `update`; this also holds for events emitted by a child component placed inside the item. `hit.key` and `hit.item` are untyped and optional unless the handler names the item type and its key field, e.g. `hit: EventHit<Todo, "id">`, which makes `hit.item` a `Todo` and `hit.key` a `Todo["id"]` (use that form only for handlers inside list items). If you need extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
@@ -227,6 +227,15 @@ removeItem(e: Event, hit: EventHit) { this.set((s) => ({ items: s.items.filter((
 - **Only elements in the component's own template count**: content a user puts into a slot does not trigger anything even if it has `data-on-click`.
 - Only a method name may be written; `add(1)` and `a.b` cause an error at codegen time. A method name must not collide with DOM built-in methods or ts-dom members (for example `remove`, `click`, `focus`, `set`, `render`); otherwise they would be overridden, and codegen reports an error and suggests renaming.
 - **tsc checks that the method exists**: `define(name, Class)` checks that every method referenced by the HTML is a public member of the class, and reports an error listing the names when one is missing (`missingHandlers: "name"`). The check runs again when the element is connected to the page and throws a clear runtime error.
+- **tsc checks the event parameter**: codegen records the tag and event each handler is bound to, and `define()` checks that the handler's first parameter accepts the event it receives there:
+
+  | Bound to | The handler receives |
+  |---|---|
+  | `data-on-<event>` on a child component tag whose class declares `<event>` in `emits` | `EmitEvent<Child, "<event>">` (`CustomEvent<Detail>`) |
+  | Any other `data-on-<event>` (a native element, or a native event on a component tag) | The type `HTMLElementEventMap` lists for the name: `click` is `MouseEvent` (`PointerEvent` in recent DOM types, which a `MouseEvent` parameter accepts), `keydown` `KeyboardEvent`, `submit` `SubmitEvent` |
+  | A name neither of them knows (a bubbling event of a grandchild caught on a wrapper, a third-party element's event) | `Event` |
+
+  A parameter that does not accept that event, such as `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error at `define()` that names the method and the event type it receives (`wrongHandlerParameters: { onSaved: CustomEvent<{ id: number }> }`), and `ts-dom check` reports it as `handler-event-type` at the `data-on-*` attribute. A handler bound to several events or tags must accept all of them (their union). `Event`, or no parameter, always compiles. The check compares the parameter itself, because TypeScript compares method types bivariantly and would let a parameter narrower than the event pass. A third-party element's events get their types when its package adds them to `HTMLElementEventMap` (or `GlobalEventHandlersEventMap`). The second parameter, `hit`, is not checked.
 - Event names must be lowercase (HTML attributes are case-insensitive); for mixed-case events such as `DOMContentLoaded`, use `this.on()` instead.
 
 ## Composition: Using Multiple Components Together
@@ -246,8 +255,8 @@ render(v) {
   this.refs.name.value = v.name;          // data down: the child's props, fully typed
   this.lists.entries.replace(v.entries, (x) => x.id, (x, { refs }) => { refs.row.name = x.name; });
 }
-onName(e: Event) {                         // event up: sent only to the direct parent of this tag
-  this.set({ name: (e as EmitEvent<FormField, "field-input">).detail.value });
+onName(e: EmitEvent<FormField, "field-input">) {   // event up: sent only to the direct parent of this tag
+  this.set({ name: e.detail.value });
 }
 ```
 
@@ -286,7 +295,7 @@ class FormField extends Component(tpl, {
 - The default value of a prop determines its type and how the attribute is converted: `string`, `number` (an invalid number warns and uses the default), `boolean` (the attribute being present means `true`; `"false"` and removal mean `false`). Arrays and objects can only be passed through JS properties. camelCase names map to kebab-case attributes: `maxLength` ↔ `max-length`.
 - Like `state` and `derive`, `props` can be bound automatically by `{{ }}` and `data-if`, and also appear in the `view` and `changed` of `render`; a prop assigned before the element is upgraded is not lost either.
 - Events in `emits` **do not bubble** by default, and only the child's own tag can receive them: the handler is always written on `<child data-on-xxx="method">` in the parent's HTML, so you can see from the HTML where data goes. Declare `event({ bubbles: true })` explicitly only when you need bubbling.
-- The event's data type is obtained from `EmitEvent<FormField, "field-input">` (`CustomEvent<{ value: string }>`). A name the component does not declare resolves to `never`, so reading `.detail` fails with `Property 'detail' does not exist on type 'never'`.
+- The parent's handler names the event's type with `EmitEvent<FormField, "field-input">` (`CustomEvent<{ value: string }>`) as its parameter type, and `define()` checks it against the tag and event the HTML binds the handler to (see [Events](#events-data-on-)). A name the component does not declare resolves to `never`, so reading `.detail` fails with `Property 'detail' does not exist on type 'never'`.
 
 ### Element types for framework declarations
 
@@ -307,6 +316,7 @@ A framework's template type checker (TSX, `vue-tsc`, `svelte-check`) learns the 
 | A prop name that is the same as a member of `HTMLElement` or ts-dom (`title`, `hidden`, `render`…) | tsc reports an error (`reservedPropNames`); an error is thrown at runtime |
 | `emits` with the same name as a native event (`click`, `input`…) | tsc reports an error (`nativeEventNames`); an error is thrown at runtime |
 | The parent gives the child a prop with a wrong name or type | tsc reports an error (types come from `HTMLElementTagNameMap`) |
+| A handler's parameter does not accept the event the HTML binds it to | tsc reports an error at `define()` (`wrongHandlerParameters`) |
 
 ### Avoiding Layer-by-Layer Passing (lint: `ts-dom/data-flow`)
 

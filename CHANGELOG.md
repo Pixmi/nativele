@@ -10,6 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## Unreleased
+
+### New checks
+
+- A `data-on-*` handler may declare its first parameter as the event it receives, and `define()` checks it against the template: `EmitEvent<Child, "event">` for an event that the child component on that tag declares in `emits`, otherwise the type `HTMLElementEventMap` lists for the event name (`click` `MouseEvent`, `keydown` `KeyboardEvent`, `submit` `SubmitEvent`), otherwise `Event`. A parameter that does not accept that event, for example `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error (`wrongHandlerParameters`) that names the method and its event type; a handler bound to several events or tags must accept all of them. A handler typed `(e: Event)`, or without a parameter, compiles as before, so the cast `(e as EmitEvent<Child, "event">)` is no longer needed.
+- `ts-dom check` reports that error as `handler-event-type` at the `data-on-*` attribute, with the event type to declare in its `Fix:`.
+
+### Breaking changes
+
+- `Schema["events"]`, written by codegen, maps each handler to the `[tag, event]` pairs it is bound to (`{ onSave: ["button", "click"] }`) instead of being a union of handler names. Only a schema written by hand for `template<...>()` has to change: `events: Record<never, never>` for a template without handlers.
+- A handler that already declared a parameter type the bound event cannot satisfy (for example `CustomEvent<Detail>` on an element where the event is typed `Event`, such as a wrapper that catches a bubbling event of a grandchild) is now a tsc error. Type it `Event` and cast in the body, or move the handler to the tag that emits the event.
+
 ## 0.6.0
 
 Five new Official Skills cover the technical areas every Nativele project shares, and the Skills now work together by clear ownership: each configuration area has one owning Skill, and the others state what they need and point to it.

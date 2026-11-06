@@ -15,6 +15,7 @@ export const CHECK_RULES = {
   "conflicting-keys": "the same name is declared in more than one of state, props and derive (found by tsc)",
   "reserved-prop": "a prop is named like a member of HTMLElement or ts-dom (found by tsc)",
   "native-event-name": "an emitted event is named like a native DOM event (found by tsc)",
+  "handler-event-type": "the first parameter of a data-on-* handler does not accept the event the template binds it to (found by tsc)",
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
   "item-class-not-exported": "the item component class passed to define() is not exported (found by tsc)",
@@ -67,6 +68,27 @@ const CONTRACT: [string, string, string][] = [
 const namesAfter = (message: string, key: string): string[] => {
   const m = new RegExp(`${key}: ((?:"[^"]+"(?:\\s*\\|\\s*)?)+)`).exec(message);
   return m ? [...(m[1] as string).matchAll(/"([^"]+)"/g)].map((x) => x[1] as string) : [];
+};
+
+/** The `name: type` members of the object type that follows `key: ` in a tsc message. */
+const membersAfter = (message: string, key: string): [string, string][] => {
+  const start = message.indexOf(`${key}: { `);
+  if (start < 0) return [];
+  const out: [string, string][] = [];
+  let depth = 0;
+  let from = start + key.length + 4;
+  for (let i = from; i < message.length; i++) {
+    const c = message[i] as string;
+    if ("({[<".includes(c)) depth++;
+    else if (")]>".includes(c) && message[i - 1] !== "=") depth--;
+    else if (c === "}" && depth-- === 0) break;
+    else if (c === ";" && depth === 0) {
+      const m = /^\s*"?([\w$]+)"?\??:\s*([\s\S]*)$/.exec(message.slice(from, i));
+      if (m) out.push([m[1] as string, (m[2] as string).trim()]);
+      from = i + 1;
+    }
+  }
+  return out;
 };
 
 const templatesOf = (tsFile: string): string[] => {
@@ -137,6 +159,18 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
         "missing-handler",
         `data-on-*="${name}" refers to a method the component class does not define (tsc at ${where}). Fix: add a public method \`${name}(e: Event, hit: EventHit)\` to the class.`,
         found && { file: rel(found.file), line: found.line, col: found.col },
+      );
+    }
+    for (const [name, type] of membersAfter(e.message, "wrongHandlerParameters")) {
+      named = true;
+      const sites = templatesOf(file).flatMap((html) => analysisOf(html).eventSites.filter((x) => x.method === name).map((x) => ({ html, ...x })));
+      const first = sites[0];
+      const bound = sites.map((x) => `data-on-${x.event} on <${x.tag}>`);
+      const child = type.includes("CustomEvent<") ? sites.find((x) => x.tag.includes("-")) : undefined;
+      issue(
+        "handler-event-type",
+        `${name}() is bound to ${bound.length ? [...new Set(bound)].join(" and ") : "a data-on-* attribute"}, which delivers ${type}, but its first parameter does not accept that event (tsc at ${where}). Fix: type the first parameter as \`${type}\`${child ? ` (for data-on-${child.event} on <${child.tag}> that is \`EmitEvent<Child, "${child.event}">\` with the class that defines <${child.tag}>)` : ""}, or as \`Event\`.`,
+        first && { file: rel(first.html), line: first.line, col: first.col },
       );
     }
     for (const [key, rule, fix] of CONTRACT) {

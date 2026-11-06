@@ -502,6 +502,17 @@ Component(tpl, { state: { title: "" } })`,
     bad: `Component(tpl, { emits: { click: event() } })`,
     good: `Component(tpl, { emits: { "item-select": event() } })`,
   },
+  "handler-event-type": {
+    why: "Types are derived from the HTML: codegen records the tag and event each handler is bound to, and define() checks that the handler's first parameter accepts that event, so renaming the event or moving the handler to another tag cannot leave a wrong parameter type behind. A handler bound to several events must accept all of them; `Event` always does.",
+    bad: `<!-- list.html -->
+<item-picker data-on-item-picked="onPicked"></item-picker>
+// list.ts
+onPicked(e: MouseEvent) { /* ... */ }`,
+    good: `<!-- list.html -->
+<item-picker data-on-item-picked="onPicked"></item-picker>
+// list.ts
+onPicked(e: EmitEvent<ItemPicker, "item-picked">) { this.set({ picked: e.detail.id }); }`,
+  },
   "item-prop-missing": {
     why: "A list with data-prop assigns each item to that property of the item component. If the component does not declare it, the items go nowhere.",
     bad: `<template data-each="tasks" data-key="id" data-prop="task"><task-row></task-row></template>

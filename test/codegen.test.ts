@@ -66,7 +66,12 @@ describe("codegen diagnostics", () => {
     expect(errs(`<b data-on-click="a.b"></b>`)[0]).toMatch(/plain method name/);
     expect(errs(`<b data-on-click=""></b>`)[0]).toMatch(/plain method name/);
     expect(errs(`<b data-on-="x"></b>`)[0]).toMatch(/invalid event name/);
-    expect(generateModule(`<b data-on-click="add"></b>`)).toContain(`events: "add"`);
+    expect(generateModule(`<b data-on-click="add"></b>`)).toContain(`events: { "add": ["b", "click"] }`);
+  });
+  it("data-on-*: records every tag and event a handler is bound to, once each, in document order", () => {
+    const out = generateModule(`<x-row data-on-row-closed="close"></x-row><button data-on-click="close"></button><button data-on-click="close"></button><template data-each="l"><li data-on-keydown="key"></li></template>`);
+    expect(out).toContain(`events: { "close": ["x-row", "row-closed"] | ["button", "click"]; "key": ["li", "keydown"] };`);
+    expect(generateModule(`<p></p>`)).toContain("events: Record<never, never>;");
   });
   it("data-on-* method names must not clash with DOM or ts-dom members", () => {
     for (const name of ["remove", "click", "focus", "append", "set", "render", "show", "state", "refs"]) {
@@ -302,7 +307,7 @@ describe("rule ids and diagnostic shape", () => {
     const a = analyze(`<x-k a="1" b data-on-ping="onPing"></x-k><button class="c" data-on-click="go"></button>`);
     expect(a.customUses).toHaveLength(1);
     expect(a.customUses[0]).toMatchObject({ tag: "x-k", attrs: ["a", "b", "data-on-ping"], events: ["ping"], line: 1 });
-    expect(a.eventSites.find((s) => s.method === "go")?.attrs).toEqual(["class", "data-on-click"]);
+    expect(a.eventSites.find((s) => s.method === "go")).toMatchObject({ attrs: ["class", "data-on-click"], line: 1, col: 60 });
   });
   it("formatDiagnostics prints file:line:col severity [rule] message, one line each", () => {
     const ds = analyze(`<a data-ref="x"></a>\n<b data-ref="x"></b><slot></slot><slot></slot>`).diagnostics;
