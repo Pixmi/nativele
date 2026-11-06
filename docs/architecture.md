@@ -155,7 +155,7 @@ A router library works with the same contract: call `show()` from its route hand
 
 - A store module exports the store and its actions (`addProject`, `addTask`, `toggleTask`) as plain functions. Components call the actions from their `data-on-*` handlers and `bind` the store in `connected()`; tests call the same actions with no element at all.
 - Props cross one layer: the projects page gives each `project-card` its summary through `data-prop`. Data that a deeper component or another feature needs comes from a store, which is how the settings page's "show done tasks" reaches the project page without a prop on the way.
-- Update stores immutably (`{ ...task, done: true }`), because lists and child props compare items by reference.
+- Update stores immutably (`{ ...task, done: true }`): lists and child props compare items by reference ([Lists](lists.md#items-as-components-items--)).
 - Data from a server enters through a store module too: [Loading and error states](recipes.md#loading-and-error-states) shows the status, the error and the retry; a data library such as TanStack Query has its own Skill (`npx ts-dom skills nativele-tanstack-query`).
 
 The rules for `state`, `set`, `bind` and `createStore` are in [Components](components.md#data-and-view-state-optional) and [Shared stores](components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow).

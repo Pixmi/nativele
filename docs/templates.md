@@ -26,7 +26,7 @@ A hidden `data-if` block is kept in memory, not destroyed: `refs` and holes insi
 
 ## How Types Are Generated
 
-Next to each `x.html`, an `x.html.ts` is generated (a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)); add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`, since both are rebuilt by `ts-dom gen`. It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
+Next to each `x.html`, an `x.html.ts` is generated (a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)) and neither is committed (see [Setup](tooling.md#installation-and-setup)). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
 
 ```ts
 // user-card.html.ts (auto-generated)
@@ -65,7 +65,7 @@ There is no host element, so `data-on-*` attributes do nothing here (listen on `
 ## Trusted Types, Translations and Icons
 
 - Trusted Types: pages that enforce `require-trusted-types-for 'script'` work with no policy, because `ts-dom gen` writes the markup as data and the runtime builds it with DOM calls. Your own code must avoid `innerHTML` too.
-- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way.
+- Translations: ts-dom has no i18n. Write the translated string into a hole, `this.text.title = t("title")`, or into `render()` for attributes; the HTML stays free of words if you want it that way. Switching the language at runtime: [Recipes](recipes.md#switching-the-language).
 - Icons: ts-dom does not manage icons. Make an icon a custom element of your own that builds its SVG with `createElementNS` from whatever source you use, and place it in a template as a child component:
 
 ```html

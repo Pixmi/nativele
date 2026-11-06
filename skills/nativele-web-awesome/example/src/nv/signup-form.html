@@ -1,0 +1,18 @@
+<form data-ref="form" data-on-submit="save">
+  <wa-input name="email" type="email" label="Email" required with-clear data-ref="email" data-on-input="onEmail" data-on-wa-clear="onClear"></wa-input>
+  <wa-select name="plan" label="Plan" value="basic" data-ref="plan" data-on-change="onPlan">
+    <wa-option value="basic">Basic</wa-option>
+    <wa-option value="pro">Pro</wa-option>
+  </wa-select>
+  <wa-checkbox name="news">Send me news</wa-checkbox>
+  <wa-button type="submit" variant="brand">Sign up</wa-button>
+</form>
+<p>{{ status }}</p>
+<small>{{ note }}</small>
+<wa-dialog label="Welcome" data-ref="dialog" data-on-wa-hide="onDialogHide">
+  <p>{{ summary }}</p>
+  <theme-picker data-ref="themes" data-on-theme-change="onTheme">
+    <span slot="hint">Applies at once</span>
+  </theme-picker>
+  <wa-button slot="footer" variant="brand" data-on-click="closeDialog">Done</wa-button>
+</wa-dialog>

@@ -83,7 +83,7 @@ Provided members:
 | `assignedNodes(name)` | The nodes currently assigned to that slot (excluding fallback content); behaves the same in Light and Shadow |
 | `bind(store, fn)` | Subscribe to a store, call once immediately, and unsubscribe automatically when the element is removed |
 | `on(target, type, fn)` | Attach a native event listener, removed automatically when the element is removed; returns a function for manual removal. Event types and parameters are inferred from `HTMLElementEventMap` |
-| `onCleanup(fn)` | Register a cleanup function to run when the element is removed |
+| `onCleanup(fn)` | Register a cleanup function to run when the element is removed; it runs once and is dropped, so register it in `connected()` to have it for every connection (see [Recipes](recipes.md#cancelling-a-request-when-the-component-is-removed)) |
 | `root` | The element itself (default), or the `ShadowRoot` (`shadow: true`) |
 | `connected()` / `disconnected()` | Override to attach your own behavior |
 
@@ -106,7 +106,7 @@ ts-dom does no style management, so by default it renders into the element itsel
 | Slot change notification | Override `slotchange(name)` | **Native `slotchange` event** (`slot.addEventListener("slotchange", …)`); the `slotchange(name)` method is only called in Light mode |
 | `assignedNodes(name)` | Yes | Yes (equivalent to native `slot.assignedNodes()`) |
 | `state`, `props`, `derive`, `emit`, `data-on-*`, lists, `data-if`, attributes | All supported | All supported, with the same behavior |
-| Forms | Naturally compatible with outer forms | You must handle `ElementInternals` yourself |
+| Forms | Controls in the template are part of an outer form | Controls in the shadow root are not part of an outer form; the component can be a [form control of its own](recipes.md#a-form-control-of-your-own) |
 
 Shadow DOM is verified in real Chrome ([browser/shadow.test.ts](../browser/shadow.test.ts), 18 tests), covering: rendering and style isolation, `:host`, native slots and `slotchange`, attributes and props (including assignment before upgrade), `state` / `derive` / `data-if`, event delegation (including non-bubbling `focus`), `emit` not bubbling to `window`, child components inside list items (`hit.key`), **a Shadow parent containing a Light child and a Light parent containing a Shadow child**, and the fact that content a user puts into a slot is not treated as the component's own `data-on-*`.
 
@@ -178,7 +178,7 @@ class Counter extends Component(tpl, {
 | `set(patch)` / `set(s => patch)` | **The only entry point for changing data**: shallow-merges the patch; **if no field actually changes (`Object.is`), it does nothing** and `render` is not called. When something changes, it updates the automatic bindings synchronously and then calls `render` |
 | `render(view, changed)` | Override it to handle updates other than automatic binding. `view` is `state`, props and the derived values, and `changed` holds the names of the state fields, props and derived values that changed this time (all of them on the first render). Use `changed.has("x")` to skip the parts that did not change, and annotate it with the names you check, for example `changed: ReadonlySet<"items" | "visible">`, so tsc reports a misspelled name or one that is not state, a prop or a derived value |
 | `batch(fn)` | Combine multiple `set` calls: after `fn` finishes, the update runs once and `render` is called once |
-| `derive` option | Derived values, usable directly by `{{ }}`, `data-if`, and `render`. They are recomputed after every state change, with **no dependency tracking** |
+| `derive` option | Derived values, usable directly by `{{ }}`, `data-if`, and `render`. They are recomputed after every state change, with **no dependency tracking**. Each function takes one argument, the state and props merged (read-only); it cannot read another derived value, so share a calculation as a plain function |
 
 **Automatic binding**: `{{ name }}` and `data-if="admin"` map to the same-named state field (or derived value) and are written automatically when the field's value changes; `data-if` shows the block based on truthiness. **Names are checked by tsc**: when the HTML uses a name that neither `state` nor `derive` has, `class X extends Component(...)` reports an error that lists the missing names (the error message is `missingStateKeys: "name"`). Lists (`data-each`) are not bound automatically, because the key and how each item is filled are for you to decide; use `replace` in `render`.
 
@@ -235,7 +235,7 @@ removeItem(e: MouseEvent, hit: EventHit) { this.set((s) => ({ items: s.items.fil
   | Any other `data-on-<event>` (a native element, or a native event on a component tag) | The type `HTMLElementEventMap` lists for the name: `click` is `MouseEvent` (`PointerEvent` in recent DOM types, which a `MouseEvent` parameter accepts), `keydown` `KeyboardEvent`, `submit` `SubmitEvent` |
   | A name neither of them knows (a bubbling event of a grandchild caught on a wrapper, a third-party element's event) | `Event` |
 
-  A parameter that does not accept that event, such as `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error at `define()` that names the method and the event type it receives (`wrongHandlerParameters: { onSaved: CustomEvent<{ id: number }> }`), and `ts-dom check` reports it as `handler-event-type` at the `data-on-*` attribute. A handler bound to several events or tags must accept all of them (their union). `Event`, or no parameter, always compiles. The check compares the parameter itself, because TypeScript compares method types bivariantly and would let a parameter narrower than the event pass. A third-party element's events get their types when its package adds them to `HTMLElementEventMap` (or `GlobalEventHandlersEventMap`). The second parameter, `hit`, is not checked.
+  A parameter that does not accept that event, such as `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error at `define()` that names the method and the event type it receives (`wrongHandlerParameters: { onSaved: CustomEvent<{ id: number }> }`), and `ts-dom check` reports it as `handler-event-type` at the `data-on-*` attribute. A handler bound to several events or tags must accept all of them (their union). `Event`, or no parameter, always compiles. The check compares the parameter itself, because TypeScript compares method types bivariantly and would let a parameter narrower than the event pass. A third-party element's events are typed as in [Custom elements from other libraries](#custom-elements-from-other-libraries). The second parameter, `hit`, is not checked.
 - Event names must be lowercase (HTML attributes are case-insensitive); for mixed-case events such as `DOMContentLoaded`, use `this.on()` instead.
 
 ## Composition: Using Multiple Components Together
@@ -262,11 +262,44 @@ onName(e: EmitEvent<FormField, "field-input">) {   // event up: sent only to the
 
 Composition needs three things, and ts-dom handles all of them:
 
-- **Child components are loaded automatically**: for a tag used in a template (its name contains a hyphen), if there is a `define("tag", Class)` in the scanned directories, `ts-dom gen` automatically adds `import "./child.js"` to the generated `x.html.ts`. HTML is the single source of dependencies, and you do not need to `import` child components yourself (referencing a type with only `import type` does not register the element, which is an easy trap to fall into). Components outside the directories, or third-party ones, still need to be imported by you.
-- **Child component types**: `ts-dom gen` scans `define("tag", Class)` (the class must be `export`ed) and generates `ts-dom-tags.ts`, which registers the components in `HTMLElementTagNameMap`. As a result, for `<form-field data-ref="name">` in a template, `refs.name` is `FormField`: prop names and types, and methods, are all checked by tsc. Like `.html.ts`, it is generated by `gen`: add both `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.
+- **Child components are loaded automatically**: for a tag used in a template (its name contains a hyphen), if there is a `define("tag", Class)` in the scanned directories, `ts-dom gen` automatically adds `import "./child.js"` to the generated `x.html.ts`. HTML is the single source of dependencies, and you do not need to `import` child components yourself (referencing a type with only `import type` does not register the element, which is an easy trap to fall into). Components outside the directories, or [from other libraries](#custom-elements-from-other-libraries), still need to be imported by you.
+- **Child component types**: `ts-dom gen` scans `define("tag", Class)` (the class must be `export`ed) and generates `ts-dom-tags.ts`, which registers the components in `HTMLElementTagNameMap`. As a result, for `<form-field data-ref="name">` in a template, `refs.name` is `FormField`: prop names and types, and methods, are all checked by tsc. Like `.html.ts`, it is generated by `gen` and not committed (see [Setup](tooling.md#installation-and-setup)).
 - **Slots can cross layers**: for content the parent puts into a child component's slot, its `{{ }}` belongs to the parent and is updated by the parent; `data-on-*` is also handled by the parent, and the child does not catch it by mistake.
 
 "Template fragment include" is not provided: it would become a template-language feature. To share a piece of structure, make it a component.
+
+### Custom elements from other libraries
+
+A template can use a custom element from another library (a date picker, a chart) like any other tag. The tools know only what its package declares:
+
+| | A Nativele component in the scanned folders | A custom element from another library |
+|---|---|---|
+| Registering | `ts-dom gen` imports its module from the generated `x.html.ts` | Not imported: import the library once, before the element is used (in the app's entry, or in the module of the component that uses it) |
+| `refs` | Typed as its class, through `ts-dom-tags.ts` | Typed by its entry in `HTMLElementTagNameMap`; a tag the map does not list is `HTMLElement` |
+| `data-on-<event>` | Its `emits` type the handler: `EmitEvent<Child, "event">` | Write the event name the element dispatches (lowercase; a mixed-case name goes through `this.on()`, see [Events](#events-data-on-)). The handler receives the type `HTMLElementEventMap` lists for that name, otherwise `Event` |
+| Attributes and events in lint | `unknown-prop`, `invalid-prop-value` and `unknown-event` check them | Not checked: lint does not know the element's props or events, so a misspelled attribute or event name is not reported |
+
+When the package does not declare its tag and events, declare them in any module of your program:
+
+```ts
+interface VendorPicker extends HTMLElement {
+  value: string;
+  open(): void;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "vendor-picker": VendorPicker;
+  }
+  interface GlobalEventHandlersEventMap {
+    "vendor-change": CustomEvent<{ value: string }>;
+  }
+}
+
+export {};
+```
+
+Then `<vendor-picker data-ref="picker" data-on-vendor-change="onPick">` gives `this.refs.picker` the type `VendorPicker`, and `define()` checks that `onPick` accepts `CustomEvent<{ value: string }>`. Like a Nativele component tag, the element is not one of the typed controls of a form's `elements` ([Reading a form](#reading-a-form)), and the accessibility check treats it as a generic element, so `data-on-click` on it is reported as `click-semantics`.
 
 ## Data Flow: props Down, Events Up
 
@@ -381,7 +414,7 @@ save(e: SubmitEvent) {
 | Several (a radio group, repeated checkboxes) | `RadioNodeList` (`.value` is the checked radio's value; iterate it for the checkboxes) |
 | Inside a `data-if` element or `<slot>` fallback, so possibly not in the document | The type above, or `undefined` |
 
-The rest of `HTMLFormElement` is unchanged (`elements.length`, `namedItem()`, iteration, `reset()`, `requestSubmit()`). The type only describes what the browser already returns; nothing changes at runtime. Codegen only sees the form's own template, so these controls are not typed: those inside a child component's tag or a `data-each` item (they come from another template or exist once per item), `<input type="image">` (the browser leaves it out of `elements`), a name the collection hides behind its own members (`length`, `item`, `namedItem`, `toString`, ...), a control inside the form whose `form` attribute names another form, and a control outside the form that joins it with `form="id"`. Read those through their own `data-ref`, or with `elements.namedItem("name")`.
+The rest of `HTMLFormElement` is unchanged (`elements.length`, `namedItem()`, iteration, `reset()`, `requestSubmit()`). The type only describes what the browser already returns; nothing changes at runtime. Codegen only sees the form's own template, so these controls are not typed: a custom element (a [form control of your own](recipes.md#a-form-control-of-your-own) included), those inside a child component's tag or a `data-each` item (they come from another template or exist once per item), `<input type="image">` (the browser leaves it out of `elements`), a name the collection hides behind its own members (`length`, `item`, `namedItem`, `toString`, ...), a control inside the form whose `form` attribute names another form, and a control outside the form that joins it with `form="id"`. Read those through their own `data-ref`, or with `elements.namedItem("name")`.
 
 ### A Small Reminder About Form Inputs
 

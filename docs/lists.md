@@ -126,7 +126,7 @@ render(view, changed) {
 
 A prop setter does nothing when the new value is the same as the current one (`Object.is`), so when the selection moves only the row that loses it and the row that gains it render again. Do not map the items to new objects that carry the extra field (`items.map((v) => ({ ...v, selected: v.id === selectedId }))`): every object is new, so every row receives a new `variant` and renders again on each change of the selection.
 
-Inside a `<ul>` or `<ol>` the item component needs `role="listitem"`, because a custom element is not an `<li>`; the accessibility check (`list-structure`) asks for it. `data-each` cannot be nested, on purpose: an item is one component, so a list inside an item is that component's own `data-each`. Every template then holds one level, with its own `refs`, `text` and event handling.
+Inside a `<ul>` or `<ol>` the item component needs `role="listitem"`, because a custom element is not an `<li>`; the accessibility check (`list-structure`) asks for it.
 
 ### Items as plain elements: `replace()`
 
@@ -172,7 +172,7 @@ Notes:
 
 - In a browser with `moveBefore`, a moved item stays connected: neither `disconnected()` nor `connected()` runs, and its focus, scroll position and subscriptions are untouched.
 - Without it (older browsers, and DOM implementations for tests such as happy-dom and jsdom), a moved item is removed and inserted again: `disconnected()` runs and releases everything registered with `bind`, `on` and `onCleanup`, then `connected()` runs again, and a focused input in it loses focus. Its element, props and state stay the same.
-- So subscribe in `connected()` (`this.bind(store, ...)`, `this.on(...)`), not in the constructor or a field initializer: then the subscription is made again after a move in every browser. A subscription made in the constructor is released by the first move and never comes back.
+- So subscribe in `connected()` (`this.bind(store, ...)`, `this.on(...)`, `this.onCleanup(...)`), as [Stores](components.md#state-store-when-not-using-state) requires, not in the constructor or a field initializer: then the subscription is made again after a move in every browser. A subscription made in the constructor is released by the first move and never comes back.
 - Data that every item needs (a theme, the current user, a registry) belongs in a `createStore` that the item component binds in `connected()`, not copied into every item object.
 
 ### Order of list updates
