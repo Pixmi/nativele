@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
-import { A11Y_RULES, checkA11y } from "./lib/a11y.ts";
+import { A11Y_RULES } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, listHtml, listTs, scanDefines, watchAll } from "./lib/codegen.ts";
-import { contractsAt, contractsFor, DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
-import type { LintIssue } from "./lib/lint.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, scanDefines, watchAll } from "./lib/codegen.ts";
+import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, runLint } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]
 
@@ -201,17 +200,7 @@ try {
     if (issues.some((i) => i.severity === "error" || (flags.has("--strict") && i.severity === "warning"))) process.exitCode = 1;
     if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
-    const files = dirs.flatMap(listTs);
-    const found: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
-    if (flags.has("--a11y")) {
-      const contracts = contractsFor(dirs);
-      for (const dir of dirs) {
-        for (const f of listHtml(dir)) {
-          for (const d of checkA11y(readFileSync(f, "utf8"), [], contractsAt(contracts, f))) found.push({ file: relative(process.cwd(), f), ...d });
-        }
-      }
-    }
-    const issues = kept(found).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
+    const issues = kept(runLint(dirs, { a11y: flags.has("--a11y") })).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
     else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
     const errors = issues.filter((i) => i.severity === "error").length;

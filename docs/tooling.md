@@ -223,6 +223,8 @@ plugins: [tsDom({ a11y: true })]            // or { a11y: { ignore: ["img-alt"] 
 npx ts-dom lint --a11y [--strict]
 ```
 
+All three read the components defined in the scanned folders, so `click-semantics` on a component's tag gives the same result everywhere. The Vite plugin and the oxlint rule report per template, so `unchecked-custom-elements`, which is reported once per run, comes only from `ts-dom lint` and `ts-dom check`.
+
 `ignore` takes rule ids and can turn off individual checks:
 
 | Id | Check |

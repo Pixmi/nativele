@@ -6,6 +6,7 @@ import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
 import { contractsAt, contractsFor } from "../src/lib/lint.ts";
 
 const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
+const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
 
 describe("a11y should warn", () => {
   it("img without alt", () => expect(rules(`<img src="a.png">`)).toEqual(["img-alt"]));
@@ -101,7 +102,6 @@ describe("click-semantics", () => {
     expect(rules(`<form data-on-submit="go"></form><input data-on-input="go" aria-label="x">`)).toEqual([]);
   });
 
-  const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
   function scanned(files: Record<string, string>, page: string) {
     const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
     for (const [name, text] of Object.entries(files)) {
@@ -268,6 +268,21 @@ describe("Vite plugin", () => {
     u.plugin.buildStart.call(u.ctx);
     expect(u.warns.length).toBe(1);
     expect(u.warns[0]).toMatch(/control-name/);
+  });
+  it("a11y checks data-on-click on a scanned component against its template, as lint does", async () => {
+    const t = await setup(
+      {
+        "x-card.ts": component("Card", "x-card"),
+        "x-card.html": `<div class="card"><span>{{ title }}</span></div>`,
+        "x-action.ts": component("Action", "x-action"),
+        "x-action.html": `<button type="button">{{ label }}</button>`,
+        "page.html": `<x-card data-on-click="go"></x-card><x-action data-on-click="go"></x-action>`,
+      },
+      { a11y: true },
+    );
+    t.plugin.buildStart.call(t.ctx);
+    expect(t.warns).toHaveLength(1);
+    expect(t.warns[0]).toMatch(/page\.html:1:1 warning \[click-semantics\] data-on-click is on <x-card>, and its template/);
   });
   it("a template error aborts the build; full-page documents are skipped", async () => {
     const bad = await setup({ "x.html": `<a data-ref="d"></a><b data-ref="d"></b>` });

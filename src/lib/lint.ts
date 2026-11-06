@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { analyze, listHtml, scanDefines } from "./codegen.ts";
-import type { Analysis, Diagnostic } from "./codegen.ts";
+import { checkA11y } from "./a11y.ts";
+import { analyze, listHtml, listTs, scanDefines } from "./codegen.ts";
+import type { Analysis, DefineDef, Diagnostic } from "./codegen.ts";
 
 export type { Diagnostic };
 
@@ -88,8 +89,40 @@ export function templateCode(code: string, htmlSpec: string): string {
   return /Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code;
 }
 
-export function importsHtml(src: string, htmlName: string): boolean {
-  return new RegExp(`from\\s+["']\\./${esc(htmlName)}\\.js["']`).test(src);
+/** A template as one lint run reads it: its text and analysis, shared by every check. */
+export interface LintTemplate {
+  dir: string;
+  file: string;
+  text: string;
+  analysis: Analysis;
+}
+
+/** Read and analyze every template under `dirs` once. */
+export function readTemplates(dirs: readonly string[]): LintTemplate[] {
+  return dirs.flatMap((dir) =>
+    listHtml(dir).map((file) => {
+      const text = readFileSync(file, "utf8");
+      return { dir, file, text, analysis: analyze(text) };
+    }),
+  );
+}
+
+/** The TypeScript sources by folder, each file read once. */
+function sourcesByDir(tsFiles: readonly string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const f of tsFiles) {
+    const src = readFileSync(f, "utf8");
+    const here = out.get(dirname(f));
+    if (here) here.push(src);
+    else out.set(dirname(f), [src]);
+  }
+  return out;
+}
+
+/** The sources next to the template `html` that import it. */
+function importersOf(sources: ReadonlyMap<string, string[]>, html: string): string[] {
+  const re = new RegExp(`from\\s+["']\\./${esc(basename(html))}\\.js["']`);
+  return (sources.get(dirname(html)) ?? []).filter((src) => re.test(src));
 }
 
 // ---------------------------------------------------------------------------
@@ -108,11 +141,10 @@ export const UNUSED_MARKUP_RULES = {
 
 const at = (a: Analysis, key: string) => a.locs.get(key) ?? { line: 1, col: 1 };
 
-/** Markup that the HTML declares but `code` (the component class text) does not use. */
-export function unusedMarkup(html: string, code: string): Diagnostic[] {
+/** Markup that the HTML declares but `code` (the component class text) does not use. `a` is the template's analysis when the caller already has it. */
+export function unusedMarkup(html: string, code: string, a: Analysis = analyze(html)): Diagnostic[] {
   const used = (re: string) => new RegExp(re).test(code);
   const out: Diagnostic[] = [];
-  const a = analyze(html);
   const add = (rule: keyof typeof UNUSED_MARKUP_RULES, message: string, key: string) =>
     out.push({ rule, severity: "error", message, ...at(a, key) });
   // Dynamic access (refs[k], text[k], lists[k]) or an alias (const r = this.refs) hides which names are used: treat everything as used.
@@ -177,27 +209,28 @@ export function unusedMarkup(html: string, code: string): Diagnostic[] {
 
 /** Check every HTML template under `dirs` against the TypeScript files that import it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
+  return usage(readTemplates(dirs), sourcesByDir(tsFiles), cwd);
+}
+
+function usage(templates: readonly LintTemplate[], sources: ReadonlyMap<string, string[]>, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
-  for (const dir of dirs) {
-    for (const html of listHtml(dir)) {
-      const name = basename(html);
-      const importers = [...sources].filter(([f, src]) => dirname(f) === dirname(html) && importsHtml(src, name));
-      const file = relative(cwd, html);
-      if (!importers.length) {
-        issues.push({
-          file,
-          rule: "no-importer",
-          severity: "error",
-          line: 1,
-          col: 1,
-          message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
-        });
-        continue;
-      }
-      const code = importers.map(([, s]) => templateCode(s, `./${name}.js`)).join("\n");
-      for (const d of unusedMarkup(readFileSync(html, "utf8"), code)) issues.push({ file, ...d });
+  for (const { file: html, text, analysis } of templates) {
+    const name = basename(html);
+    const importers = importersOf(sources, html);
+    const file = relative(cwd, html);
+    if (!importers.length) {
+      issues.push({
+        file,
+        rule: "no-importer",
+        severity: "error",
+        line: 1,
+        col: 1,
+        message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
+      });
+      continue;
     }
+    const code = importers.map((s) => templateCode(s, `./${name}.js`)).join("\n");
+    for (const d of unusedMarkup(text, code, analysis)) issues.push({ file, ...d });
   }
   return issues;
 }
@@ -321,21 +354,32 @@ function kindOf(valueText: string): PropKind {
 /** Every definition of each tag found by contractsFor, with the folder of the package that defines it. */
 export type Contracts = Map<string, { pkg: string; contract: Contract }[]>;
 
-/** The nearest folder at or above `file` that holds a package.json, or "" when there is none. */
-function packageOf(file: string): string {
-  for (let dir = dirname(resolve(file)); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, "package.json"))) return dir;
-    if (dirname(dir) === dir) return "";
+/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; `folders` keeps the answer for every folder on the way. */
+function packageOf(dir: string, folders: Map<string, string>): string {
+  let pkg = folders.get(dir);
+  if (pkg === undefined) {
+    pkg = existsSync(join(dir, "package.json")) ? dir : dirname(dir) === dir ? "" : packageOf(dirname(dir), folders);
+    folders.set(dir, pkg);
   }
+  return pkg;
+}
+
+/** What contractsAt has worked out for one Contracts object: the package of each folder, and the contracts of each package. */
+const lookups = new WeakMap<Contracts, { folders: Map<string, string>; byPackage: Map<string, ReadonlyMap<string, Contract>> }>();
+function lookupOf(all: Contracts) {
+  let l = lookups.get(all);
+  if (!l) lookups.set(all, (l = { folders: new Map(), byPackage: new Map() }));
+  return l;
 }
 
 /**
  * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[], cwd = process.cwd()): Contracts {
+export function contractsFor(dirs: string[], cwd = process.cwd(), defs: readonly DefineDef[] = scanDefines(dirs)): Contracts {
   const out: Contracts = new Map();
-  for (const def of scanDefines(dirs)) {
+  const { folders } = lookupOf(out);
+  for (const def of defs) {
     const code = readFileSync(def.file, "utf8");
     const m = new RegExp(`class\\s+${esc(def.className)}\\s+extends\\s+Component\\s*\\(`).exec(code);
     if (!m) continue;
@@ -348,7 +392,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd()): Contracts {
     const spec = tpl && new RegExp(`import\\s+${esc(tpl)}\\s+from\\s+["'](\\.{1,2}/[^"']+\\.html)\\.js["']`).exec(code)?.[1];
     const html = spec && resolve(dirname(def.file), spec);
     if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(def.file), contract }]);
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract }]);
   }
   return out;
 }
@@ -358,12 +402,17 @@ export function contractsFor(dirs: string[], cwd = process.cwd()): Contracts {
  * (separate apps or packages in one folder) uses the one in the same package as `file`, and is left out when that is not
  * exactly one, so a template is never checked against a component it does not use.
  */
-export function contractsAt(all: Contracts, file: string): Map<string, Contract> {
-  const pkg = packageOf(file);
-  const out = new Map<string, Contract>();
-  for (const [tag, defs] of all) {
-    const own = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
-    if (own.length === 1) out.set(tag, own[0]!.contract);
+export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, Contract> {
+  const { folders, byPackage } = lookupOf(all);
+  const pkg = packageOf(dirname(resolve(file)), folders);
+  let out = byPackage.get(pkg);
+  if (!out) {
+    const own = new Map<string, Contract>();
+    for (const [tag, defs] of all) {
+      const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
+      if (here.length === 1) own.set(tag, here[0]!.contract);
+    }
+    byPackage.set(pkg, (out = own));
   }
   return out;
 }
@@ -404,10 +453,10 @@ export function dataFlow(
   classes: ComponentClass[],
   ignore: readonly string[] = [],
   contracts: ReadonlyMap<string, Contract> = new Map(),
+  a: Analysis = analyze(html),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const skip = new Set(ignore);
-  const a = analyze(html);
   const report = (rule: keyof typeof DATA_FLOW_RULES, message: string, key?: string, loc?: { line: number; col: number }) => {
     if (!skip.has(rule)) out.push({ rule, severity: "warning", message, ...(loc ?? (key ? at(a, key) : { line: 1, col: 1 })) });
   };
@@ -538,28 +587,23 @@ export function dataFlow(
 
 /** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
-  const contracts = contractsFor(dirs, cwd);
+  return flow(readTemplates(dirs), sourcesByDir(tsFiles), contractsFor(dirs, cwd), cwd);
+}
+
+function flow(templates: readonly LintTemplate[], sources: ReadonlyMap<string, string[]>, contracts: Contracts, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
-  for (const dir of dirs) {
-    for (const html of listHtml(dir)) {
-      const name = basename(html);
-      const spec = `./${name}.js`;
-      const file = relative(cwd, html);
-      let classes: ComponentClass[] = [];
-      for (const [f, src] of sources) {
-        if (dirname(f) === dirname(html) && importsHtml(src, name)) classes = classes.concat(componentClasses(src, spec));
-      }
-      const text = readFileSync(html, "utf8");
-      const here = contractsAt(contracts, html);
-      for (const d of dataFlow(text, classes, [], here)) issues.push({ file, ...d });
-      for (const use of analyze(text).customUses) {
-        if (here.has(use.tag) || unchecked.has(use.tag)) continue;
-        const defs = contracts.get(use.tag);
-        const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-        unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
-      }
+  for (const { file: html, text, analysis } of templates) {
+    const spec = `./${basename(html)}.js`;
+    const file = relative(cwd, html);
+    const classes = importersOf(sources, html).flatMap((src) => componentClasses(src, spec));
+    const here = contractsAt(contracts, html);
+    for (const d of dataFlow(text, classes, [], here, analysis)) issues.push({ file, ...d });
+    for (const use of analysis.customUses) {
+      if (here.has(use.tag) || unchecked.has(use.tag)) continue;
+      const defs = contracts.get(use.tag);
+      const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
+      unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
     }
   }
   const missing = [...unchecked].filter(([, u]) => !u.packages);
@@ -576,6 +620,26 @@ export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cw
     });
   }
   return issues;
+}
+
+export interface LintOptions {
+  /** Also run the accessibility checks. */
+  a11y?: boolean;
+  /** The folder issue paths are relative to. Default: the working directory. */
+  cwd?: string;
+  /** The templates under `dirs`, when the caller has already read them (see readTemplates). */
+  templates?: readonly LintTemplate[];
+}
+
+/**
+ * The whole lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks.
+ * Each template is parsed once, and the TypeScript sources and child definitions are read once, for all of them.
+ */
+export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), templates = readTemplates(dirs) }: LintOptions = {}): LintIssue[] {
+  const sources = sourcesByDir(dirs.flatMap(listTs));
+  const contracts = contractsFor(dirs, cwd);
+  const checks = a11y ? templates.flatMap((t) => checkA11y(t.text, [], contractsAt(contracts, t.file), t.analysis.root).map((d) => ({ file: relative(cwd, t.file), ...d }))) : [];
+  return [...usage(templates, sources, cwd), ...flow(templates, sources, contracts, cwd), ...checks];
 }
 
 /** `file:line:col severity [rule] message` for a lint issue. */
