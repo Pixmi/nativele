@@ -39,7 +39,7 @@ function groupDiagnostics(group: Group, html: string, code: string, spec: string
   if (!hit || hit.code !== code || hit.html !== html) cache.set(key, (hit = { code, html, analysis: analyze(html), diags: {} }));
   const a = hit.analysis;
   return (hit.diags[group] ??=
-    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename), a));
+    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), contractsAt(getContracts(), filename), a));
 }
 
 function readTemplate(filename: string, html: string): string | null {

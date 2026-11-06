@@ -129,8 +129,7 @@ describe("reading component classes", () => {
 
 describe("data-flow checks", () => {
   const parentHtml = `<x-kid data-ref="kid" data-on-saved="onSaved"></x-kid><x-kid2 data-on-done="relay"></x-kid2>`;
-  const flow = (code: string, html = parentHtml, ignore: string[] = []) =>
-    dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"), ignore);
+  const flow = (code: string, html = parentHtml) => dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"));
 
   it("prop-forwarding: passes its own prop unchanged to a child component", () => {
     const code = `class P extends Component(t, { props: { name: "", count: 0 }, state: { s: 1 } }) {
@@ -174,10 +173,6 @@ describe("data-flow checks", () => {
   it("custom-event-on-native: a custom event written on a native element", () => {
     expect(dataFlow(`<div data-on-value-change="x"></div>`, []).some((d) => d.rule === "custom-event-on-native")).toBe(true);
     expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [])).toEqual([]);
-  });
-  it("ignore turns off individual checks", () => {
-    const code = `class P extends Component(t, { props: { name: "" } }) { render(v) { this.refs.kid.name = v.name; } }`;
-    expect(flow(code, parentHtml, ["prop-forwarding"])).toEqual([]);
   });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
@@ -244,7 +239,7 @@ export class Kid extends Component(tpl, {
 define("x-kid", Kid);`;
   const dir = setup({ "kid.ts": child, "bare.ts": `export class Bare extends Component(tpl) {}\ndefine("x-bare", Bare);` });
   const contracts = contractsAt(contractsFor([dir]), join(dir, "p.html"));
-  const run = (html: string, ignore: string[] = [], c: ReadonlyMap<string, Contract> = contracts) => dataFlow(html, [], ignore, c);
+  const run = (html: string, c: ReadonlyMap<string, Contract> = contracts) => dataFlow(html, [], c);
 
   it("contractsFor reads props (with kinds) and emits from the child's source", () => {
     const k = contracts.get("x-kid");
@@ -313,17 +308,8 @@ define("x-kid", Kid);`;
   });
   it("a hand-built contract works too", () => {
     const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]) }]]);
-    expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, [], hand)).toEqual([]);
-    expect(run(`<x-hand sise="1"></x-hand>`, [], hand)[0]?.message).toContain(`Did you mean "size"?`);
-  });
-  it("ignore silences each of the new rules independently", () => {
-    const html = `<x-kid labl="a" items="x" data-on-savd="s"></x-kid>`;
-    const rules = (ignore: string[]) => run(html, ignore).map((d) => d.rule).sort();
-    expect(rules([])).toEqual(["invalid-prop-value", "unknown-event", "unknown-prop"]);
-    expect(rules(["unknown-prop"])).toEqual(["invalid-prop-value", "unknown-event"]);
-    expect(rules(["invalid-prop-value"])).toEqual(["unknown-event", "unknown-prop"]);
-    expect(rules(["unknown-event"])).toEqual(["invalid-prop-value", "unknown-prop"]);
-    expect(rules(["unknown-prop", "invalid-prop-value", "unknown-event"])).toEqual([]);
+    expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, hand)).toEqual([]);
+    expect(run(`<x-hand sise="1"></x-hand>`, hand)[0]?.message).toContain(`Did you mean "size"?`);
   });
   it("lintDataFlow applies contracts found under the scanned directories", () => {
     const d = setup({
@@ -371,7 +357,7 @@ describe("a tag defined more than once under the scanned folders", () => {
   it("an event is reported only when the own package's child does not emit it", () => {
     const root = twoApps();
     const all = contractsFor([root]);
-    const flow = (dir: string) => dataFlow(board, [], [], contractsAt(all, join(root, dir, "board.html"))).map((d) => d.rule);
+    const flow = (dir: string) => dataFlow(board, [], contractsAt(all, join(root, dir, "board.html"))).map((d) => d.rule);
     expect(flow("app")).toEqual([]);
     expect(flow("other")).toEqual(["unknown-event"]);
   });

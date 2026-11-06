@@ -7,10 +7,6 @@ type Element = DefaultTreeAdapterMap["element"];
 type Template = DefaultTreeAdapterMap["template"];
 type Fragment = DefaultTreeAdapterMap["documentFragment"];
 
-export interface A11yDiagnostic extends Diagnostic {
-  rule: string;
-}
-
 /** A component the template can use, by tag: its template file and text when they could be read (see `contractsFor`). */
 export type A11yChildren = ReadonlyMap<string, { template?: { file: string; html: string } }>;
 
@@ -127,8 +123,8 @@ const named = (el: Element) =>
  * one of them is checked against its template, and data-on-click on any other custom element is not checked.
  * `root` is the template already parsed with source locations (`analyze(html).root`), so a run that has it does not parse again.
  */
-export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): A11yDiagnostic[] {
-  const out: A11yDiagnostic[] = [];
+export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): Diagnostic[] {
+  const out: Diagnostic[] = [];
   const skip = new Set(ignore);
 
   // Collect ids and label[for] first

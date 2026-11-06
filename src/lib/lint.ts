@@ -21,7 +21,7 @@ const STATEFUL_MARK = "/*ts-dom:stateful*/";
 // ---------------------------------------------------------------------------
 
 /** Find the local name of `import X from "<spec>"`. */
-export function defaultImportName(code: string, spec: string): string | null {
+function defaultImportName(code: string, spec: string): string | null {
   return templateImports(code).find((i) => i.spec === spec && i.local)?.local ?? null;
 }
 
@@ -284,8 +284,6 @@ function topLevelEntries(obj: string): Entry[] {
   return out;
 }
 
-const topLevelKeys = (obj: string): string[] => topLevelEntries(obj).map((e) => e.key);
-
 /** Entries of the `name: { ... }` option inside a `Component(tpl, { ... })` call. */
 function optionEntries(call: string, name: string): Entry[] {
   const m = new RegExp(`\\b${name}\\s*:\\s*\\{`).exec(call);
@@ -426,14 +424,12 @@ const suggest = (name: string, options: string[]): string => {
 export function dataFlow(
   html: string,
   classes: ComponentClass[],
-  ignore: readonly string[] = [],
   contracts: ReadonlyMap<string, Contract> = new Map(),
   a: Analysis = analyze(html),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const skip = new Set(ignore);
   const report = (rule: keyof typeof DATA_FLOW_RULES, message: string, key?: string, loc?: { line: number; col: number }) => {
-    if (!skip.has(rule)) out.push({ rule, severity: "warning", message, ...(loc ?? (key ? at(a, key) : { line: 1, col: 1 })) });
+    out.push({ rule, severity: "warning", message, ...(loc ?? (key ? at(a, key) : { line: 1, col: 1 })) });
   };
 
   for (const site of a.eventSites) {
@@ -572,7 +568,7 @@ function flow(templates: readonly LintTemplate[], importers: ReadonlyMap<string,
     const file = relative(cwd, html);
     const classes = (importers.get(resolve(html)) ?? []).flatMap((i) => componentClasses(i.code, i.spec));
     const here = contractsAt(contracts, html);
-    for (const d of dataFlow(text, classes, [], here, analysis)) issues.push({ file, ...d });
+    for (const d of dataFlow(text, classes, here, analysis)) issues.push({ file, ...d });
     for (const use of analysis.customUses) {
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
       const defs = contracts.get(use.tag);
@@ -620,5 +616,3 @@ export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), tem
 export function formatIssue(i: LintIssue): string {
   return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
 }
-
-export { topLevelKeys };
