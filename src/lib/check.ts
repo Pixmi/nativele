@@ -6,7 +6,7 @@ import { checkA11y } from "./a11y.ts";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, listHtml, listTs, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
-import { lintDataFlow, lintUsage } from "./lint.ts";
+import { contractsAt, contractsFor, lintDataFlow, lintUsage } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
 
 export const CHECK_RULES = {
@@ -333,14 +333,15 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   }
 
   const tsFiles = dirs.flatMap(listTs);
-  const lint = [...lintUsage(dirs, tsFiles), ...lintDataFlow(dirs, tsFiles)].map((i) => ({ ...i, file: rel(resolve(cwd, i.file)) }));
+  const lint = [...lintUsage(dirs, tsFiles, cwd), ...lintDataFlow(dirs, tsFiles, cwd)];
   for (const i of lint) {
     if (i.rule === "missing-handler" && issues.some((x) => x.rule === "missing-handler" && x.file === i.file && x.line === i.line && x.col === i.col)) continue;
     issues.push(i);
   }
   if (options.a11y) {
+    const contracts = contractsFor(dirs, cwd);
     for (const dir of dirs) {
-      for (const f of listHtml(dir)) for (const d of checkA11y(readFileSync(f, "utf8"))) issues.push({ file: rel(f), ...d });
+      for (const f of listHtml(dir)) for (const d of checkA11y(readFileSync(f, "utf8"), [], contractsAt(contracts, f))) issues.push({ file: rel(f), ...d });
     }
   }
   const seen = new Set<string>();

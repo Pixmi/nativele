@@ -1,5 +1,9 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
+import { contractsAt, contractsFor } from "../src/lib/lint.ts";
 
 const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
 
@@ -95,6 +99,52 @@ describe("click-semantics", () => {
   });
   it("other events are not checked", () => {
     expect(rules(`<form data-on-submit="go"></form><input data-on-input="go" aria-label="x">`)).toEqual([]);
+  });
+
+  const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
+  function scanned(files: Record<string, string>, page: string) {
+    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    return { root, check: (html: string) => checkA11y(html, [], contractsAt(contractsFor([root]), join(root, page))) };
+  }
+  const children = scanned(
+    {
+      "x-action.ts": component("Action", "x-action"),
+      "x-action.html": `<div class="row"><template data-if="open"><button type="button">{{ label }}</button></template></div>`,
+      "x-edit.ts": component("Edit", "x-edit"),
+      "x-edit.html": `<p contenteditable="true">{{ text }}</p>`,
+      "x-wrap.ts": component("Wrap", "x-wrap"),
+      "x-wrap.html": `<div><wa-button>{{ label }}</wa-button></div>`,
+      "x-card.ts": component("Card", "x-card"),
+      "x-card.html": `<div class="card"><span>{{ title }}</span></div>`,
+    },
+    "page.html",
+  );
+  it("a custom element with no definition lint can read is not checked", () => {
+    expect(rules(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
+    expect(children.check(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
+  });
+  it("a scanned component whose template has an operable element (or an unreadable custom element) does not warn", () => {
+    expect(children.check(`<x-action data-on-click="go"></x-action><x-edit data-on-click="go"></x-edit><x-wrap data-on-click="go"></x-wrap>`)).toEqual([]);
+  });
+  it("a scanned component whose template has no operable element warns and names the template", () => {
+    const [d, ...rest] = children.check(`<div><x-card data-on-click="go"></x-card></div>`);
+    expect(rest).toEqual([]);
+    expect(d?.rule).toBe("click-semantics");
+    expect(d?.message).toContain(`<x-card>, and its template (${relative(process.cwd(), join(children.root, "x-card.html"))}) has no operable element`);
+    expect(d?.message).toContain("Fix: ");
+    expect([d?.line, d?.col]).toEqual([1, 6]);
+  });
+  it("the component tag with an interactive role plus tabindex does not warn", () => {
+    expect(children.check(`<x-card role="button" tabindex="0" data-on-click="go"></x-card>`)).toEqual([]);
+  });
+  it("a tag defined in several packages, none of them the template's, is not checked", () => {
+    const card = `<div><span>{{ title }}</span></div>`;
+    const multi = scanned({ "a/package.json": "{}", "a/x-card.ts": component("Card", "x-card"), "a/x-card.html": card, "b/package.json": "{}", "b/x-card.ts": component("Card", "x-card"), "b/x-card.html": card }, "page.html");
+    expect(multi.check(`<x-card data-on-click="go"></x-card>`)).toEqual([]);
   });
 });
 

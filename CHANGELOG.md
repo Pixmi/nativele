@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.5 (not published)
+
+### Fixes
+
+- `click-semantics` no longer reports `data-on-click` on a custom element whose definition lint cannot read (an element from another library such as `<wa-button>`, a component outside the scanned folders, or a tag defined in several packages), since it may handle the keyboard itself. On a Nativele component in the scanned folders it is reported only when the component's template has no operable element a click could come from and the tag has no interactive role plus `tabindex`, and the message names that template. `ts-dom lint --a11y`, `ts-dom check --a11y` and the oxlint plugin read the child templates; the Vite plugin's `a11y` option has no definitions to read and skips every custom element.
+
+### Features
+
+- New warning `unchecked-custom-elements`, reported once per run by `ts-dom lint` and `ts-dom check` (not by the oxlint plugin): it lists the custom element tags in the templates that lint has no single definition of (no `define()` in the scanned folders, or defined in several packages), whose attributes, events and `data-on-click` are therefore not checked. A `--strict` run that uses another library's elements now fails on it until it is ignored.
+- `ts-dom lint` and `ts-dom check` take `--ignore=<rule-id>` (repeatable) to leave out the warnings with that id; errors are always reported.
+
 ## 0.6.4 (not published)
 
 ### Documentation

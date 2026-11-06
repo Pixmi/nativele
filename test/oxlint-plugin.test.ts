@@ -62,6 +62,33 @@ describe("the lint plugin in oxlint", () => {
     expect(out.diagnostics.map((d) => /does not emit "([^"]+)"/.exec(d.message)?.[1])).toEqual(["row-open"]);
   }, 30_000);
 
+  it("click-semantics checks a child component against its template and leaves other custom elements alone", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
+    const child = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
+    const files: Record<string, string> = {
+      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/click-semantics": "warn", "ts-dom/data-flow": "warn" } }),
+      "x-action.ts": child("Action", "x-action"),
+      "x-action.html": `<button type="button">{{ label }}</button>\n`,
+      "x-card.ts": child("Card", "x-card"),
+      "x-card.html": `<div><span>{{ title }}</span></div>\n`,
+      "page.html": `<div data-on-click="go">x</div>\n<wa-button data-on-click="go">Save</wa-button>\n<x-action data-on-click="go"></x-action>\n<x-card data-on-click="go"></x-card>\n<x-card role="button" tabindex="0" data-on-click="go"></x-card>\n`,
+      "page.ts": `import { Component } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+    };
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+    const out = JSON.parse(run(dir, "page.ts")) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.filter((d) => d.message.includes("unchecked-custom-elements"))).toEqual([]);
+    expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf(",")))).toEqual([
+      "./page.html.js:1:1 [click-semantics] data-on-click is on <div>",
+      "./page.html.js:4:1 [click-semantics] data-on-click is on <x-card>",
+    ]);
+    expect(out.diagnostics[1]?.message).toContain("its template (x-card.html) has no operable element");
+  }, 30_000);
+
+  it("has no rule unchecked-custom-elements, which only ts-dom lint and ts-dom check report once per run", async () => {
+    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
+    expect("unchecked-custom-elements" in plugin.rules).toBe(false);
+  });
+
   it("--fix-suggestions adds the missing handler to the component class", () => {
     const dir = project({ "ts-dom/missing-handler": "error" });
     run(dir, "--fix-suggestions");

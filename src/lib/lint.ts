@@ -176,14 +176,14 @@ export function unusedMarkup(html: string, code: string): Diagnostic[] {
 }
 
 /** Check every HTML template under `dirs` against the TypeScript files that import it. */
-export function lintUsage(dirs: string[], tsFiles: string[]): LintIssue[] {
+export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
   const issues: LintIssue[] = [];
   for (const dir of dirs) {
     for (const html of listHtml(dir)) {
       const name = basename(html);
       const importers = [...sources].filter(([f, src]) => dirname(f) === dirname(html) && importsHtml(src, name));
-      const file = relative(process.cwd(), html);
+      const file = relative(cwd, html);
       if (!importers.length) {
         issues.push({
           file,
@@ -215,6 +215,7 @@ export const DATA_FLOW_RULES = {
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
   "unknown-event": "the child component does not emit this event",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
+  "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
 /** Common native events. A data-on-* on a native element whose event is not listed here is treated as a custom event. */
@@ -305,6 +306,8 @@ export type PropKind = "string" | "number" | "boolean" | "other";
 export interface Contract {
   props: Map<string, PropKind>;
   emits: Set<string>;
+  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and text. */
+  template?: { file: string; html: string };
 }
 
 function kindOf(valueText: string): PropKind {
@@ -327,10 +330,10 @@ function packageOf(file: string): string {
 }
 
 /**
- * Read the declared props and emitted events of every component defined (via define("tag", Class)) under `dirs`.
+ * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[]): Contracts {
+export function contractsFor(dirs: string[], cwd = process.cwd()): Contracts {
   const out: Contracts = new Map();
   for (const def of scanDefines(dirs)) {
     const code = readFileSync(def.file, "utf8");
@@ -340,7 +343,11 @@ export function contractsFor(dirs: string[]): Contracts {
     const close = matchClose(code, open, "(", ")");
     if (close < 0) continue;
     const call = code.slice(open, close + 1);
-    const contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
+    const contract: Contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
+    const tpl = /^\(\s*([A-Za-z_$][\w$]*)/.exec(call)?.[1];
+    const spec = tpl && new RegExp(`import\\s+${esc(tpl)}\\s+from\\s+["'](\\.{1,2}/[^"']+\\.html)\\.js["']`).exec(code)?.[1];
+    const html = spec && resolve(dirname(def.file), spec);
+    if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(def.file), contract }]);
   }
   return out;
@@ -530,21 +537,43 @@ export function dataFlow(
 }
 
 /** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
-export function lintDataFlow(dirs: string[], tsFiles: string[]): LintIssue[] {
+export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const sources = new Map(tsFiles.map((f) => [f, readFileSync(f, "utf8")]));
-  const contracts = contractsFor(dirs);
+  const contracts = contractsFor(dirs, cwd);
   const issues: LintIssue[] = [];
+  const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
   for (const dir of dirs) {
     for (const html of listHtml(dir)) {
       const name = basename(html);
       const spec = `./${name}.js`;
-      const file = relative(process.cwd(), html);
+      const file = relative(cwd, html);
       let classes: ComponentClass[] = [];
       for (const [f, src] of sources) {
         if (dirname(f) === dirname(html) && importsHtml(src, name)) classes = classes.concat(componentClasses(src, spec));
       }
-      for (const d of dataFlow(readFileSync(html, "utf8"), classes, [], contractsAt(contracts, html))) issues.push({ file, ...d });
+      const text = readFileSync(html, "utf8");
+      const here = contractsAt(contracts, html);
+      for (const d of dataFlow(text, classes, [], here)) issues.push({ file, ...d });
+      for (const use of analyze(text).customUses) {
+        if (here.has(use.tag) || unchecked.has(use.tag)) continue;
+        const defs = contracts.get(use.tag);
+        const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
+        unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
+      }
     }
+  }
+  const missing = [...unchecked].filter(([, u]) => !u.packages);
+  const ambiguous = [...unchecked].filter(([, u]) => u.packages);
+  const head = [...missing, ...ambiguous][0]?.[1].first;
+  if (head) {
+    const groups = [
+      ...(missing.length ? [`No define() in the scanned folders: ${missing.map(([tag]) => `<${tag}>`).join(", ")}`] : []),
+      ...(ambiguous.length ? [`Defined in several packages, and not exactly once in the template's package: ${ambiguous.map(([tag, u]) => `<${tag}> (${u.packages?.join(", ")})`).join(", ")}`] : []),
+    ];
+    issues.push({
+      ...head,
+      message: `Lint has no single definition to read for ${unchecked.size === 1 ? "one custom element" : `${unchecked.size} custom elements`} used in the templates, so their attributes and events (unknown-prop, invalid-prop-value, unknown-event) and data-on-click on them (click-semantics) are not checked. ${groups.join(". ")}. This is reported once per run, at the first use of the first tag. Fix: nothing needs to change for elements from another library (pass --ignore=unchecked-custom-elements to silence this); for the project's own components, add their folders to the scanned folders, and keep one definition of a tag per package.`,
+    });
   }
   return issues;
 }

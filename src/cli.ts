@@ -7,7 +7,7 @@ import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
 import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, listHtml, listTs, scanDefines, watchAll } from "./lib/codegen.ts";
-import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
+import { contractsAt, contractsFor, DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, lintDataFlow, lintUsage } from "./lib/lint.ts";
 import type { LintIssue } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]
@@ -23,6 +23,7 @@ Commands
                                 last written with is kept (gen, gen --check, check and doctor all follow it)
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
+        --ignore=<id>     leave out the warnings with this rule id (repeatable; errors are always reported)
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text (also for gen --check)
   check [dirs...]   One pass for agents and CI: template diagnostics, generated files, tsc errors mapped back
@@ -32,6 +33,7 @@ Commands
         --project=<path>  tsconfig for tsc (default: tsc's own lookup)
         --include=<glob>, --exclude=<glob>, --whitespace=collapse|preserve   as for gen
         --a11y            also check ARIA / accessibility (warnings)
+        --ignore=<id>     as for lint
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text
   doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
@@ -63,7 +65,7 @@ function ruleGroups(): [string, string, Record<string, string>][] {
     ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state)", CHECK_RULES],
     ["doctor", "reported by `ts-dom doctor` (project set-up)", DOCTOR_RULES],
     ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup (or ts-dom/<id>); no-importer only from `ts-dom lint`, as the oxlint plugin sees one file at a time and cannot tell that no file imports a template", UNUSED_MARKUP_RULES],
-    ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow (or ts-dom/<id>)", DATA_FLOW_RULES],
+    ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow (or ts-dom/<id>); unchecked-custom-elements only from `ts-dom lint` and `ts-dom check`, as it is reported once per run over every scanned template", DATA_FLOW_RULES],
     ["lint: a11y", "warnings from `ts-dom lint --a11y` / oxlint rule ts-dom/a11y (or ts-dom/<id>)", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))],
   ];
 }
@@ -147,6 +149,8 @@ const flags = new Set(args.filter((a) => a.startsWith("--")));
 const globs = (name: string) => args.filter((a) => a.startsWith(`--${name}=`)).map((a) => a.slice(name.length + 3));
 const whitespace = flags.has("--whitespace=collapse") ? ("collapse" as const) : flags.has("--whitespace=preserve") ? ("preserve" as const) : undefined;
 const generate = { include: globs("include"), exclude: globs("exclude"), ...(whitespace ? { whitespace } : {}) };
+const ignored = new Set(globs("ignore"));
+const kept = <T extends { rule: string; severity: string }>(issues: T[]) => issues.filter((i) => i.severity === "error" || !ignored.has(i.rule));
 const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
 
@@ -183,7 +187,7 @@ try {
     }
   } else if (cmd === "check") {
     const project = args.find((a) => a.startsWith("--project="))?.slice("--project=".length);
-    const issues = runCheck({ dirs, generate, write: !flags.has("--no-write"), a11y: flags.has("--a11y"), ...(project ? { project } : {}) });
+    const issues = kept(runCheck({ dirs, generate, write: !flags.has("--no-write"), a11y: flags.has("--a11y"), ...(project ? { project } : {}) }));
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
     else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
     const errors = issues.filter((i) => i.severity === "error").length;
@@ -198,15 +202,16 @@ try {
     if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
     const files = dirs.flatMap(listTs);
-    const issues: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
+    const found: LintIssue[] = [...lintUsage(dirs, files), ...lintDataFlow(dirs, files)];
     if (flags.has("--a11y")) {
+      const contracts = contractsFor(dirs);
       for (const dir of dirs) {
         for (const f of listHtml(dir)) {
-          for (const d of checkA11y(readFileSync(f, "utf8"))) issues.push({ file: relative(process.cwd(), f), ...d });
+          for (const d of checkA11y(readFileSync(f, "utf8"), [], contractsAt(contracts, f))) found.push({ file: relative(process.cwd(), f), ...d });
         }
       }
     }
-    issues.sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
+    const issues = kept(found).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
     else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
     const errors = issues.filter((i) => i.severity === "error").length;

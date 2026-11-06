@@ -10,6 +10,9 @@ export interface A11yDiagnostic extends Diagnostic {
   rule: string;
 }
 
+/** A component the template can use, by tag: its template file and text when they could be read (see `contractsFor`). */
+export type A11yChildren = ReadonlyMap<string, { template?: { file: string; html: string } }>;
+
 /** Every check, by rule id (usable in `ignore`). The text is the default message: what is wrong and how to fix it. */
 export const A11Y_RULES = {
   "img-alt": "<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt=\"description\", or alt=\"\" if the image is purely decorative.",
@@ -32,7 +35,7 @@ export const A11Y_RULES = {
   "list-structure": "Invalid list structure. Fix: <ul>/<ol> may only contain <li> (or a custom element with role=\"listitem\"), and <li> must be inside <ul>, <ol> or <menu>.",
   "landmark-label": "There are several landmarks of the same kind. Fix: give each <nav> / <aside> a distinct aria-label.",
   "redundant-role": "The role repeats the element's native role. Fix: remove the role attribute.",
-  "click-semantics": "data-on-click is on an element that is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
+  "click-semantics": "data-on-click is on an element that is not natively operable, or on a component whose template has no operable element, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
 } as const;
 export type A11yRule = keyof typeof A11Y_RULES;
 
@@ -72,6 +75,29 @@ function focusable(el: Element): boolean {
   return false;
 }
 
+const roleOf = (el: Element) => attr(el, "role")?.trim().split(/\s+/)[0];
+
+/** Whether a user can operate the element with the keyboard: natively, through an interactive role plus tabindex, or as editable content. */
+function operable(el: Element): boolean {
+  const role = roleOf(el);
+  const editable = attr(el, "contenteditable");
+  return focusable(el) || (!!role && INTERACTIVE_ROLES.has(role) && has(el, "tabindex")) || (editable !== undefined && editable.toLowerCase() !== "false");
+}
+
+const descendants = (nodes: Node[]): Element[] => nodes.flatMap((c) => (isEl(c) ? [c, ...descendants(kids(c))] : []));
+
+/**
+ * Whether a click on the component `tag` can come from an operable element inside its template. A component whose
+ * template cannot be read, like any other custom element, may handle the keyboard itself, so it counts as operable.
+ */
+function clickableInside(tag: string, children: A11yChildren, seen: Set<string>): boolean {
+  const html = children.get(tag)?.template?.html;
+  if (html === undefined) return true;
+  if (seen.has(tag)) return false;
+  seen.add(tag);
+  return descendants(parseFragment(html).childNodes).some((el) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, seen)));
+}
+
 /** Whether an element may contain readable content: text, holes, slots, TypeScript-managed elements, named descendants. */
 function hasContent(el: Element): boolean {
   for (const c of kids(el)) {
@@ -91,8 +117,12 @@ function hasContent(el: Element): boolean {
 const named = (el: Element) =>
   nonEmpty(attr(el, "aria-label")) || nonEmpty(attr(el, "aria-labelledby")) || nonEmpty(attr(el, "title"));
 
-/** Check a template for ARIA and basic accessibility problems. Returns warnings and never throws. */
-export function checkA11y(html: string, ignore: readonly string[] = []): A11yDiagnostic[] {
+/**
+ * Check a template for ARIA and basic accessibility problems. Returns warnings and never throws.
+ * `children` are the components whose templates can be read (see `contractsFor` and `contractsAt`): data-on-click on
+ * one of them is checked against its template, and data-on-click on any other custom element is not checked.
+ */
+export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map()): A11yDiagnostic[] {
   const root = parseFragment(html, { sourceCodeLocationInfo: true });
   const out: A11yDiagnostic[] = [];
   const skip = new Set(ignore);
@@ -129,12 +159,10 @@ export function checkA11y(html: string, ignore: readonly string[] = []): A11yDia
 
   let lastHeading = 0;
   const landmarks = all.filter((x) => (x.el.tagName === "nav" || x.el.tagName === "aside") && attr(x.el, "role") !== "presentation");
-  const descendants = (el: Element): Element[] =>
-    kids(el).flatMap((c) => (isEl(c) ? [c, ...descendants(c)] : []));
   for (const { el, parent, inList, inLabel } of all) {
     const tag = el.tagName;
     const managed = has(el, "data-ref"); // managed by TypeScript: the name may be set there, so skip the "missing name" checks
-    const role = attr(el, "role")?.trim().split(/\s+/)[0];
+    const role = roleOf(el);
 
     if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el);
 
@@ -171,7 +199,11 @@ export function checkA11y(html: string, ignore: readonly string[] = []): A11yDia
     if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el);
 
     if (has(el, "data-on-click") && !focusable(el) && tag !== "label" && !(role && INTERACTIVE_ROLES.has(role) && tabindex !== undefined)) {
-      report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
+      if (!tag.includes("-")) {
+        report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
+      } else if (!clickableInside(tag, children, new Set())) {
+        report("click-semantics", el, `data-on-click is on <${tag}>, and its template (${children.get(tag)?.template?.file}) has no operable element a click could come from, so keyboard and assistive technology users cannot use it. Fix: put a <button> or <a href> in that template, or add an interactive role plus tabindex to <${tag}> here and handle keyboard events.`);
+      }
     }
 
     // Semantic checks
@@ -180,7 +212,7 @@ export function checkA11y(html: string, ignore: readonly string[] = []): A11yDia
       if (lastHeading && level > lastHeading + 1) report("heading-order", el, `<${tag}> skips a heading level (the previous heading is h${lastHeading}). Fix: use h${lastHeading + 1} here, or restructure the headings.`);
       lastHeading = level;
     }
-    if (tag === "table" && !managed && role !== "presentation" && role !== "none" && !descendants(el).some((d) => d.tagName === "th")) {
+    if (tag === "table" && !managed && role !== "presentation" && role !== "none" && !descendants(kids(el)).some((d) => d.tagName === "th")) {
       report("table-header", el);
     }
     if (tag === "ul" || tag === "ol" || tag === "menu") {

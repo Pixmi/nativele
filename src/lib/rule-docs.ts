@@ -318,6 +318,14 @@ override render(view: { name: string }) {
   if (this.refs.name.value !== view.name) this.refs.name.value = view.name;
 }`,
   },
+  "unchecked-custom-elements": {
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of (an element from another library, a component outside the scanned folders, or a tag defined in several packages and not exactly once in the template's package) those checks are skipped, and this one warning per run lists the tags so the gap is visible. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    bad: `# the app's own components live in src/ui, which is not scanned
+npx ts-dom lint src/pages`,
+    good: `npx ts-dom lint src/pages src/ui
+# only elements from another library are left: nothing to change
+npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
+  },
   "custom-event-on-native": {
     why: "A child's custom event does not bubble, so a handler on a native element would never receive it. Events are handled on the tag of the component that emits them.",
     bad: `<div data-on-quantity-change="update">
@@ -467,9 +475,14 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button>save</button>`,
   },
   "click-semantics": {
-    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable.",
-    bad: `<div data-on-click="open">open</div>`,
-    good: `<button data-on-click="open">open</button>`,
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
+    bad: `<div data-on-click="open">open</div>
+<!-- x-card.html: <div class="card"><span>{{ title }}</span></div> -->
+<x-card data-on-click="open"></x-card>`,
+    good: `<button data-on-click="open">open</button>
+<!-- x-card.html: <div class="card"><button type="button">{{ title }}</button></div> -->
+<x-card data-on-click="open"></x-card>
+<wa-button data-on-click="open">open</wa-button>`,
   },
 
   // CHECK_RULES

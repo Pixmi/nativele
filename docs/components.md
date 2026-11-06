@@ -278,6 +278,7 @@ A template can use a custom element from another library (a date picker, a chart
 | `refs` | Typed as its class, through `ts-dom-tags.ts` | Typed by its entry in `HTMLElementTagNameMap`; a tag the map does not list is `HTMLElement` |
 | `data-on-<event>` | Its `emits` type the handler: `EmitEvent<Child, "event">` | Write the event name the element dispatches (lowercase; a mixed-case name goes through `this.on()`, see [Events](#events-data-on-)). The handler receives the type `HTMLElementEventMap` lists for that name, otherwise `Event` |
 | Attributes and events in lint | `unknown-prop`, `invalid-prop-value` and `unknown-event` check them | Not checked: lint does not know the element's props or events, so a misspelled attribute or event name is not reported |
+| `data-on-click` in the accessibility check | `click-semantics` reports it when the component's template has no operable element (`<button>`, `<a href>`, a form control, `<summary>`, `contenteditable`, an interactive role plus `tabindex`) a click could come from, unless the tag itself has an interactive role plus `tabindex` | Not checked: the element may handle the keyboard itself |
 
 When the package does not declare its tag and events, declare them in any module of your program:
 
@@ -299,7 +300,7 @@ declare global {
 export {};
 ```
 
-Then `<vendor-picker data-ref="picker" data-on-vendor-change="onPick">` gives `this.refs.picker` the type `VendorPicker`, and `define()` checks that `onPick` accepts `CustomEvent<{ value: string }>`. Like a Nativele component tag, the element is not one of the typed controls of a form's `elements` ([Reading a form](#reading-a-form)), and the accessibility check treats it as a generic element, so `data-on-click` on it is reported as `click-semantics`.
+Then `<vendor-picker data-ref="picker" data-on-vendor-change="onPick">` gives `this.refs.picker` the type `VendorPicker`, and `define()` checks that `onPick` accepts `CustomEvent<{ value: string }>`. Like a Nativele component tag, the element is not one of the typed controls of a form's `elements` ([Reading a form](#reading-a-form)). `ts-dom lint` and `ts-dom check` list such tags once per run in the warning `unchecked-custom-elements`, which says that their attributes, events and `data-on-click` are not checked; a project that only uses another library's elements there can pass `--ignore=unchecked-custom-elements`.
 
 ## Data Flow: props Down, Events Up
 
@@ -364,8 +365,9 @@ A common problem in Vue is re-emitting layer by layer and passing props down lay
 | `unknown-prop` | An attribute written on a child component's tag is not a prop it declares (hints "Did you mean …") |
 | `invalid-prop-value` | The attribute cannot set that prop: the prop is not string / number / boolean (it can only be passed through JS properties) |
 | `unknown-event` | `data-on-xxx` is written on a child component's tag, but the child does not declare (`emits`) this event and it is not a native event either |
+| `unchecked-custom-elements` | Once per run of `ts-dom lint` or `ts-dom check`: the custom element tags the three rules above cannot check, because lint has no single definition of them |
 
-The last three are **HTML-level props / emit checks**: `tsc` checks `refs.child.prop` and `emit()` in TypeScript, while these three rules check the child component attributes and events written in the **parent's HTML**. They read the child components from `define("tag", Class)` in the directories and extract the declarations from `Component(tpl, { props, emits })`; when no child component definition is found (for example a third-party component), nothing is checked. When several folders define the same tag (separate apps or packages), the definition in the same package as the template (the nearest folder with a `package.json`) is used; when that still leaves none or more than one, the tag is not checked.
+`unknown-prop`, `invalid-prop-value` and `unknown-event` are **HTML-level props / emit checks**: `tsc` checks `refs.child.prop` and `emit()` in TypeScript, while these three rules check the child component attributes and events written in the **parent's HTML**. They read the child components from `define("tag", Class)` in the directories and extract the declarations from `Component(tpl, { props, emits })`; when no child component definition is found (for example a third-party component), nothing is checked. When several folders define the same tag (separate apps or packages), the definition in the same package as the template (the nearest folder with a `package.json`) is used; when that still leaves none or more than one, the tag is not checked. `ts-dom lint` and `ts-dom check` (not the oxlint plugin, which would repeat it in every file) report the tags left unchecked once per run as `unchecked-custom-elements`: the tags with no `define()` in the scanned folders and the tags defined in several packages, at the first use of the first one. For another library's elements nothing needs to change, and `--ignore=unchecked-custom-elements` silences the warning (for example in a `--strict` run); for the project's own components, scan their folders too, or keep one definition of a tag per package.
 
 
 Recommended practices:

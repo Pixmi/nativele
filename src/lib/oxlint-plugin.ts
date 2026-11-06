@@ -43,7 +43,7 @@ function groupDiagnostics(group: Group, html: string, code: string, spec: string
   const key = `${group}\0${filename}\0${spec}`;
   const hit = cache.get(key);
   if (hit && hit.code === code && hit.html === html) return hit.diags;
-  const diags = group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec)) : group === "a11y" ? checkA11y(html) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename));
+  const diags = group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec)) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename)) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename));
   cache.set(key, { code, html, diags });
   return diags;
 }
@@ -96,6 +96,7 @@ function templateRule(group: Group, description: string, only?: string) {
 
 const perRule = (group: Group, rules: Record<string, string>) => Object.fromEntries(Object.entries(rules).map(([id, description]) => [id, templateRule(group, description, id)]));
 const { "no-importer": _noImporter, ...unusedMarkupRules } = UNUSED_MARKUP_RULES;
+const { "unchecked-custom-elements": _unchecked, ...dataFlowRules } = DATA_FLOW_RULES;
 
 export default {
   meta: { name: "ts-dom" },
@@ -108,7 +109,7 @@ export default {
     "data-flow": templateRule("data-flow", "Keep props flowing down and events flowing up one level at a time, and check child component attributes and events"),
     // One rule per rule id, so a project can give each its own severity (for example "ts-dom/unused-ref": "warn").
     ...perRule("unused-markup", unusedMarkupRules),
-    ...perRule("data-flow", DATA_FLOW_RULES),
+    ...perRule("data-flow", dataFlowRules),
     ...perRule("a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))),
   },
 };
