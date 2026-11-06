@@ -3,7 +3,8 @@ import { dirname, resolve } from "node:path";
 import { A11Y_RULES, checkA11y } from "./a11y.ts";
 import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
 import type { Contracts } from "./lint.ts";
-import type { Diagnostic } from "./codegen.ts";
+import { analyze } from "./codegen.ts";
+import type { Analysis, Diagnostic } from "./codegen.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
@@ -37,15 +38,15 @@ const ignoreSchema = [
 let contracts: Contracts | null = null;
 const getContracts = () => (contracts ??= contractsFor([process.cwd()]));
 
-// Each template is analyzed once per group for a given file text and template text, however many rules ask for it.
-const cache = new Map<string, { code: string; html: string; diags: Diagnostic[] }>();
+// Each template is analyzed once for a given file text and template text, and each group runs once on it, however many rules ask for it.
+const cache = new Map<string, { code: string; html: string; analysis: Analysis; diags: Partial<Record<Group, Diagnostic[]>> }>();
 function groupDiagnostics(group: Group, html: string, code: string, spec: string, filename: string): Diagnostic[] {
-  const key = `${group}\0${filename}\0${spec}`;
-  const hit = cache.get(key);
-  if (hit && hit.code === code && hit.html === html) return hit.diags;
-  const diags = group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec)) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename)) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename));
-  cache.set(key, { code, html, diags });
-  return diags;
+  const key = `${filename}\0${spec}`;
+  let hit = cache.get(key);
+  if (!hit || hit.code !== code || hit.html !== html) cache.set(key, (hit = { code, html, analysis: analyze(html), diags: {} }));
+  const a = hit.analysis;
+  return (hit.diags[group] ??=
+    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename), a));
 }
 
 function readTemplate(filename: string, spec: string): string | null {

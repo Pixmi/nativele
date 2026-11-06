@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.6 (not published)
+
+### Changed
+
+- `ts-dom lint`, `ts-dom check` and the oxlint plugin parse each template once per run and read the TypeScript sources and child definitions once, instead of once per check, and look up a template's importers and package by folder, so large projects lint faster. The reported issues are unchanged.
+
+### Fixes
+
+- The Vite plugin's `a11y` option reads the components defined in its `dirs`, so `click-semantics` on a component's tag gives the same result as `ts-dom lint --a11y`: it is reported when the component's template has no operable element, instead of every custom element being skipped.
+
 ## 0.6.5 (not published)
 
 ### Fixes

@@ -3,6 +3,7 @@ import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
 import type { DefineDef } from "./codegen.ts";
 import { checkA11y } from "./a11y.ts";
+import { contractsAt, contractsFor } from "./lint.ts";
 
 export interface TsDomPluginOptions {
   /** Directories to scan for .html files and generate .html.ts into, relative to Vite's root. Default: ["src"] */
@@ -54,13 +55,15 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
 
+  // Read again for every check, so that a click-semantics warning follows the child templates as they are saved.
+  const children = () => contractsFor(existing(), process.cwd(), allDefs());
   const warnA11y = (warn: (m: string) => void) => {
     if (!a11y) return;
-    for (const d of dirs) {
-      if (!existsSync(d)) continue;
+    const contracts = children();
+    for (const d of existing()) {
       for (const f of listHtml(d)) {
         if (!isSelected(d, f, generate)) continue;
-        for (const diag of checkA11y(readFileSync(f, "utf8"), a11y.ignore)) warn(formatDiagnostics(f, [diag]));
+        for (const diag of checkA11y(readFileSync(f, "utf8"), a11y.ignore, contractsAt(contracts, f))) warn(formatDiagnostics(f, [diag]));
       }
     }
   };
@@ -80,7 +83,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       else throw e;
       return false;
     }
-    if (a11y) for (const diag of checkA11y(html, a11y.ignore)) logger.warn(formatDiagnostics(file, [diag]));
+    if (a11y) for (const diag of checkA11y(html, a11y.ignore, contractsAt(children(), file))) logger.warn(formatDiagnostics(file, [diag]));
     return read(out) !== before;
   };
 

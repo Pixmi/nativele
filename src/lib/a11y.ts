@@ -5,6 +5,7 @@ import type { Diagnostic } from "./codegen.ts";
 type Node = DefaultTreeAdapterMap["node"];
 type Element = DefaultTreeAdapterMap["element"];
 type Template = DefaultTreeAdapterMap["template"];
+type Fragment = DefaultTreeAdapterMap["documentFragment"];
 
 export interface A11yDiagnostic extends Diagnostic {
   rule: string;
@@ -85,17 +86,20 @@ function operable(el: Element): boolean {
 }
 
 const descendants = (nodes: Node[]): Element[] => nodes.flatMap((c) => (isEl(c) ? [c, ...descendants(kids(c))] : []));
+const childElements = new WeakMap<{ html: string }, Element[]>();
 
 /**
  * Whether a click on the component `tag` can come from an operable element inside its template. A component whose
  * template cannot be read, like any other custom element, may handle the keyboard itself, so it counts as operable.
  */
 function clickableInside(tag: string, children: A11yChildren, seen: Set<string>): boolean {
-  const html = children.get(tag)?.template?.html;
-  if (html === undefined) return true;
+  const template = children.get(tag)?.template;
+  if (template === undefined) return true;
   if (seen.has(tag)) return false;
   seen.add(tag);
-  return descendants(parseFragment(html).childNodes).some((el) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, seen)));
+  let elements = childElements.get(template);
+  if (!elements) childElements.set(template, (elements = descendants(parseFragment(template.html).childNodes)));
+  return elements.some((el) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, seen)));
 }
 
 /** Whether an element may contain readable content: text, holes, slots, TypeScript-managed elements, named descendants. */
@@ -121,9 +125,9 @@ const named = (el: Element) =>
  * Check a template for ARIA and basic accessibility problems. Returns warnings and never throws.
  * `children` are the components whose templates can be read (see `contractsFor` and `contractsAt`): data-on-click on
  * one of them is checked against its template, and data-on-click on any other custom element is not checked.
+ * `root` is the template already parsed with source locations (`analyze(html).root`), so a run that has it does not parse again.
  */
-export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map()): A11yDiagnostic[] {
-  const root = parseFragment(html, { sourceCodeLocationInfo: true });
+export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): A11yDiagnostic[] {
   const out: A11yDiagnostic[] = [];
   const skip = new Set(ignore);
 
