@@ -32,12 +32,16 @@ const run = (dir: string, ...args: string[]) => {
 describe("the lint plugin in oxlint", () => {
   it("one rule per rule id, each with its own severity, reported on the template's import line", () => {
     // JSON, because oxlint picks its text format from the environment (GitHub annotations in GitHub Actions).
-    const out = JSON.parse(run(project({ "ts-dom/missing-handler": "error", "ts-dom/unused-ref": "warn" }))) as { diagnostics: { code: string; severity: string; message: string }[] };
+    const out = JSON.parse(run(project({ "ts-dom/unused-ref": "warn", "ts-dom/unused-text": "error" }))) as { diagnostics: { code: string; severity: string; message: string }[] };
     const found = out.diagnostics.map((d) => [d.code, d.severity, d.message.slice(0, d.message.indexOf("]") + 1)]).sort();
-    expect(found).toEqual([
-      ["ts-dom(missing-handler)", "error", "./panel.html.js:1:1 [missing-handler]"],
-      ["ts-dom(unused-ref)", "warning", "./panel.html.js:2:1 [unused-ref]"],
-    ]);
+    expect(found).toEqual([["ts-dom(unused-ref)", "warning", "./panel.html.js:2:1 [unused-ref]"]]);
+  }, 30_000);
+
+  it("leaves a missing data-on-* method to tsc, which reports it through define()", async () => {
+    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
+    expect("missing-handler" in plugin.rules).toBe(false);
+    const out = JSON.parse(run(project({ "ts-dom/unused-markup": "error" }))) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["./panel.html.js:2:1 [unused-ref]"]);
   }, 30_000);
 
   it("checks a child tag against the definition in the linted file's package when another package defines the same tag", () => {
@@ -89,14 +93,8 @@ describe("the lint plugin in oxlint", () => {
     expect("unchecked-custom-elements" in plugin.rules).toBe(false);
   });
 
-  it("--fix-suggestions adds the missing handler to the component class", () => {
-    const dir = project({ "ts-dom/missing-handler": "error" });
-    run(dir, "--fix-suggestions");
-    expect(readFileSync(join(dir, "panel.ts"), "utf8")).toContain("export class Panel extends Component(tpl) {\n  save(_e: Event): void {}\n}");
-  }, 30_000);
-
-  it("the language server (what the editor extension runs) offers the same quick fix", async () => {
-    const dir = project({ "ts-dom/missing-handler": "error" });
+  it("the language server (what the editor extension runs) reports the findings on the import line", async () => {
+    const dir = project({ "ts-dom/unused-ref": "error" });
     const server = spawn(process.execPath, [oxlint, "--lsp"], { cwd: dir, env });
     let buffer = Buffer.alloc(0);
     let nextId = 0;
@@ -127,15 +125,13 @@ describe("the lint plugin in oxlint", () => {
     });
     try {
       const uri = `file://${dir}/panel.ts`;
-      await request("initialize", { processId: process.pid, rootUri: `file://${dir}`, capabilities: { textDocument: { codeAction: { codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } } } } }, workspaceFolders: [{ uri: `file://${dir}`, name: "t" }] });
+      await request("initialize", { processId: process.pid, rootUri: `file://${dir}`, capabilities: {}, workspaceFolders: [{ uri: `file://${dir}`, name: "t" }] });
       const diagnostics = new Promise<{ code: string; range: unknown }[]>((resolve) => (onDiagnostics = resolve));
       send({ method: "initialized", params: {} });
       send({ method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "typescript", version: 1, text: code } } });
-      const [missing] = (await diagnostics).filter((d) => String(d.code).includes("missing-handler"));
-      expect(missing).toBeDefined();
-      const actions = (await request("textDocument/codeAction", { textDocument: { uri }, range: missing?.range, context: { diagnostics: [missing] } })) as { title: string; edit?: { changes?: Record<string, { newText: string }[]> } }[];
-      const fix = actions.find((a) => a.title === "Add a method save() to the component class");
-      expect(fix?.edit?.changes?.[uri]?.[0]?.newText).toBe("\n  save(_e: Event): void {}\n");
+      const found = await diagnostics;
+      expect(found.map((d) => String(d.code))).toEqual(["ts-dom(unused-ref)"]);
+      expect(found[0]?.range).toMatchObject({ start: { line: 1 } });
     } finally {
       server.kill();
     }

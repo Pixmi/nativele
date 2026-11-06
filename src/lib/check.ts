@@ -14,6 +14,7 @@ export const CHECK_RULES = {
   "conflicting-keys": "the same name is declared in more than one of state, props and derive (found by tsc)",
   "reserved-prop": "a prop is named like a member of HTMLElement or ts-dom (found by tsc)",
   "native-event-name": "an emitted event is named like a native DOM event (found by tsc)",
+  "missing-handler": "a data-on-* names a method the component class does not define (found by tsc through define())",
   "handler-event-type": "the first parameter of a data-on-* handler does not accept the event the template binds it to (found by tsc)",
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
@@ -327,10 +328,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     issues.push(...mapTscErrors(parsed, cwd));
   }
 
-  for (const i of runLint(dirs, { a11y: !!options.a11y, cwd, templates })) {
-    if (i.rule === "missing-handler" && issues.some((x) => x.rule === "missing-handler" && x.file === i.file && x.line === i.line && x.col === i.col)) continue;
-    issues.push(i);
-  }
+  issues.push(...runLint(dirs, { a11y: !!options.a11y, cwd, templates }));
   const seen = new Set<string>();
   return issues
     .filter((i) => {

@@ -104,9 +104,9 @@ lint: {
 
 The same module is an ESLint plugin for flat config (verified with ESLint 9 and 10, with typescript-eslint's parser for `.ts` files): `import tsDom from "@nativele/ts-dom/oxlint"` and a config object `{ plugins: { "ts-dom": tsDom }, rules: { "ts-dom/unused-markup": "error" } }`. ESLint does not read `.gitignore`, so add the generated files to its ignores: `globalIgnores(["**/*.html.ts", "**/ts-dom-tags.ts"])` from `eslint/config`.
 
-Each rule id is also a rule of its own, so a project can enable rules one by one and give each its own severity, for example `"ts-dom/unused-ref": "warn"` or `"ts-dom/missing-handler": "error"` instead of the whole `ts-dom/unused-markup` group. `ts-dom rules` lists the ids. The exception is `no-importer`, which only `ts-dom lint` reports: the oxlint plugin sees one file at a time and cannot tell that no file imports a template.
+Each rule id is also a rule of its own, so a project can enable rules one by one and give each its own severity, for example `"ts-dom/unused-ref": "warn"` or `"ts-dom/unused-text": "error"` instead of the whole `ts-dom/unused-markup` group. `ts-dom rules` lists the ids. The exception is `no-importer`, which only `ts-dom lint` reports: the oxlint plugin sees one file at a time and cannot tell that no file imports a template.
 
-**In the editor.** Install the Oxc extension for VS Code (it runs `oxlint --lsp`) and keep the plugin in your oxlint config: the findings show on the template's import line as you type, and `missing-handler` offers a quick fix that adds the method to the component class. From the command line, `oxlint --fix-suggestions` applies the same fix. A fix can only change the file being linted, so problems that live in the HTML (an unused `data-ref`, broken markup) are reported but not fixed there; for markup structure and layout use a formatter such as oxfmt.
+**In the editor.** Install the Oxc extension for VS Code (it runs `oxlint --lsp`) and keep the plugin in your oxlint config: the findings show on the template's import line as you type. The plugin offers no fixes: a fix can only change the file being linted, and the problems it reports live in the HTML (an unused `data-ref`, a missing `alt`); for markup structure and layout use a formatter such as oxfmt. A `data-on-*` method that the class does not define is not a lint finding: tsc reports it at the `define()` call, and `ts-dom check` points it at the template as `missing-handler`.
 
 Without oxlint, the same checks are available through the CLI:
 
@@ -178,10 +178,9 @@ Rules of `unused-markup`:
 | `unused-text` | A `{{ hole }}` is never filled and displays blank |
 | `unused-list` | A `data-each` is never rendered, so the list is always empty |
 | `unused-item-name` | A name inside a list item is never referenced |
-| `missing-handler` | A method referenced by `data-on-*` is not defined by the class |
 | `no-importer` | No TypeScript file imports this template |
 
-lint compares per **class body** of `class X extends Component(tpl)`. When the `state` / `props` / `derive` options are used, `{{ }}` and `data-if` are handled by automatic binding and are not required to appear in the code, but the methods referenced by `data-on-*` must exist (if the code uses dynamic access such as `refs[k]`, `text[k]`, or `lists[k]`, it cannot tell which names are used, so it conservatively treats all of them as used). Hence importing multiple templates in the same file does not make them overwrite each other:
+lint compares per **class body** of `class X extends Component(tpl)`. When the `state` / `props` / `derive` options are used, `{{ }}` and `data-if` are handled by automatic binding and are not required to appear in the code (if the code uses dynamic access such as `refs[k]`, `text[k]`, or `lists[k]`, it cannot tell which names are used, so it conservatively treats all of them as used). Hence importing multiple templates in the same file does not make them overwrite each other:
 
 ```ts
 import listTpl from "./list.html.js";   // data-ref="title"

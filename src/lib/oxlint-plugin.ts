@@ -10,18 +10,11 @@ interface ImportNode {
   type: "ImportDeclaration";
   source: { value: string };
 }
-interface Fixer {
-  insertTextBeforeRange(range: [number, number], text: string): unknown;
-}
-interface Suggestion {
-  desc: string;
-  fix(fixer: Fixer): unknown;
-}
 interface Context {
   options?: [{ ignore?: string[] }?];
   filename: string;
   sourceCode: { text: string };
-  report(d: { message: string; node: unknown; suggest?: Suggestion[] }): void;
+  report(d: { message: string; node: unknown }): void;
 }
 
 type Group = "unused-markup" | "data-flow" | "a11y";
@@ -57,15 +50,6 @@ function readTemplate(filename: string, spec: string): string | null {
   }
 }
 
-/** A missing handler can be added to the class that uses the template: offered as a suggestion, since the method body is the developer's to write. */
-function suggestionsFor(d: Diagnostic, code: string, spec: string): Suggestion[] | undefined {
-  if (d.rule !== "missing-handler") return undefined;
-  const name = /="([^"]+)"/.exec(d.message)?.[1];
-  const target = componentClasses(code, spec)[0];
-  if (!name || !target) return undefined;
-  return [{ desc: `Add a method ${name}() to the component class`, fix: (fixer) => fixer.insertTextBeforeRange([target.end, target.end], `\n  ${name}(_e: Event): void {}\n`) }];
-}
-
 /**
  * Build an oxlint rule that checks every `import x from "./name.html.js"` and reports the findings
  * on the import line (an oxlint plugin can only report inside the file being linted).
@@ -74,7 +58,7 @@ function suggestionsFor(d: Diagnostic, code: string, spec: string): Suggestion[]
  */
 function templateRule(group: Group, description: string, only?: string) {
   return {
-    meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema, hasSuggestions: true },
+    meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema },
     create(context: Context) {
       return {
         ImportDeclaration(node: ImportNode) {
@@ -86,8 +70,7 @@ function templateRule(group: Group, description: string, only?: string) {
           const ignore = context.options?.[0]?.ignore ?? [];
           for (const d of groupDiagnostics(group, html, code, spec, context.filename)) {
             if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
-            const suggest = suggestionsFor(d, code, spec);
-            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node, ...(suggest ? { suggest } : {}) });
+            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
           }
         },
       };

@@ -51,8 +51,6 @@ export interface ComponentClass {
   call: string;
   /** Text of the class body, braces included. */
   body: string;
-  /** Offset of the class body's closing brace in the code. */
-  end: number;
 }
 
 /** Find every `class X extends Component(<tpl> ...)` and return its call and class body. Empty when none is found. */
@@ -68,7 +66,7 @@ export function componentClasses(code: string, htmlSpec: string): ComponentClass
     const bodyStart = code.indexOf("{", callEnd);
     if (bodyStart < 0) continue;
     const bodyEnd = matchClose(code, bodyStart, "{", "}");
-    if (bodyEnd > 0) out.push({ call: code.slice(call, callEnd + 1), body: code.slice(bodyStart, bodyEnd + 1), end: bodyEnd });
+    if (bodyEnd > 0) out.push({ call: code.slice(call, callEnd + 1), body: code.slice(bodyStart, bodyEnd + 1) });
   }
   return out;
 }
@@ -135,7 +133,6 @@ export const UNUSED_MARKUP_RULES = {
   "unused-text": "{{ hole }} is never filled",
   "unused-list": "data-each is never rendered",
   "unused-item-name": "a name inside a data-each template is never referenced",
-  "missing-handler": "data-on-* refers to a method the class does not define",
   "no-importer": "no TypeScript file imports this template",
 } as const;
 
@@ -156,17 +153,6 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   // so they do not have to appear in the code.
   const stateful = code.includes(STATEFUL_MARK);
 
-  const eventOf = new Map(a.eventSites.map((s) => [s.method, s.event]));
-  for (const m of a.events) {
-    const def = new RegExp(`(?:^|[\\s;{}])(?:(?:public|override|async|static|readonly)\\s+)*${esc(m)}\\s*[(<=]`, "m");
-    if (!def.test(code)) {
-      add(
-        "missing-handler",
-        `data-on-${eventOf.get(m)}="${m}" refers to a method the component class does not define. Fix: add a public method \`${m}(e: Event, hit: EventHit)\` to the class (it must be public so that define() can verify it).`,
-        `event:${m}`,
-      );
-    }
-  }
   for (const n of dynRefs ? [] : a.scope.refs.keys()) {
     if (!used(`refs\\.${esc(n)}\\b|refs\\[\\s*["']${esc(n)}["']|\\b${esc(n)}\\b\\s*[,}][^;]*=\\s*this\\.refs`)) {
       add("unused-ref", `data-ref="${n}" is never used by the component class. Fix: use this.refs.${n}, or remove the attribute if the element needs no TypeScript access.`, `ref:${n}`);

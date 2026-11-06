@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.7 (not published)
+
+### Changed
+
+- `ts-dom lint` alone no longer reports a `data-on-*` method that the class does not define: `tsc` reports it at the `define()` call, and `ts-dom check` reports it once, at the template, as `missing-handler` (a check rule now). While the class has a contract error such as `missing-binding`, tsc reports the missing handler only after that error is fixed.
+
+### Removed
+
+- The lint rule `missing-handler` (`ts-dom/missing-handler` in the oxlint plugin, and its id in `ts-dom/unused-markup`), and the oxlint suggestion that added an empty method for it. The rule id stays, for the error `ts-dom check` maps from tsc. A linter config that turns on `ts-dom/missing-handler` must drop it, since the plugin no longer has that rule.
+
 ## 0.6.6 (not published)
 
 ### Changed

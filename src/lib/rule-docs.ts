@@ -269,14 +269,6 @@ this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.labe
 // card.ts
 this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
   },
-  "missing-handler": {
-    why: "data-on-* names a method, and a missing method means the event does nothing. The same check runs in tsc through the generated types and in lint on the class text.",
-    bad: `<button data-on-click="save">save</button>
-// card.ts defines no save()`,
-    good: `<button data-on-click="save">save</button>
-// card.ts
-save() { /* ... */ }`,
-  },
   "no-importer": {
     why: "A template that no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten.",
     bad: `// card.html exists, but no .ts file contains
@@ -533,6 +525,14 @@ onPicked(e: MouseEvent) { /* ... */ }`,
 <item-picker data-on-item-picked="onPicked"></item-picker>
 // list.ts
 onPicked(e: EmitEvent<ItemPicker, "item-picked">) { this.set({ picked: e.detail.id }); }`,
+  },
+  "missing-handler": {
+    why: "data-on-* names a method, and a missing method means the event does nothing. define() checks it in tsc through the generated types, ts-dom check points the error at the data-on-* attribute, and the component throws when it connects without the method.",
+    bad: `<button data-on-click="save">save</button>
+// card.ts defines no save()`,
+    good: `<button data-on-click="save">save</button>
+// card.ts
+save() { /* ... */ }`,
   },
   "item-prop-missing": {
     why: "A list with data-prop assigns each item to that property of the item component. If the component does not declare it, the items go nowhere.",

@@ -27,7 +27,7 @@ describe("ts-dom check: tsc output", () => {
 });
 
 describe("ts-dom check on a project", () => {
-  it("points a missing binding and a missing handler at the template, without follow-up errors", () => {
+  it("points a missing binding at the template, without follow-up errors (a missing handler waits until the class type checks)", () => {
     const dir = join(process.cwd(), "check-fixture-tmp");
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir);
@@ -47,9 +47,33 @@ describe("ts-dom check on a project", () => {
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string }[] }).issues;
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([
         ["check-fixture-tmp/broken.html", 1, 4, "missing-binding"],
-        ["check-fixture-tmp/broken.html", 2, 1, "missing-handler"],
         ["check-fixture-tmp/broken.ts", 6, 20, "tsc"],
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe("ts-dom check: missing-handler", () => {
+  it("is reported once, by tsc through define(), when define() is in another file", () => {
+    const dir = join(process.cwd(), "check-handler-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "panel.html"), `<button type="button" data-on-click="save">Save</button>\n`);
+      writeFileSync(join(dir, "panel.ts"), `import { Component } from "@nativele/ts-dom";\nimport tpl from "./panel.html.js";\nexport class Panel extends Component(tpl) {}\n`);
+      writeFileSync(join(dir, "register.ts"), `import { define } from "@nativele/ts-dom";\nimport { Panel } from "./panel.ts";\ndefine("x-panel", Panel);\n`);
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-handler-tmp", "--project=check-handler-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/register.ts", 3, 19, "missing-handler"]]);
+      expect(issues[0]?.message).toContain(`"save"`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

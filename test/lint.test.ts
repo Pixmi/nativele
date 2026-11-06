@@ -53,15 +53,8 @@ describe("state and data-on-*", () => {
     const rules = unusedMarkup(html, templateCode(code, "./a.html.js")).map((d) => d.rule);
     expect(rules).toEqual(expect.arrayContaining(["unused-text", "unused-if"]));
   });
-  it("reports a data-on-* method that does not exist, and stays quiet when it does", () => {
-    const missing = unusedMarkup(html, `class A { render() {} }`).filter((d) => d.rule === "missing-handler");
-    expect(missing.length).toBe(1);
-    expect(missing[0]?.message).toContain("inc");
-    for (const def of [`inc() {}`, `inc = () => {}`, `override inc(): void {}`, `async inc() {}`, `public inc(e: Event) {}`]) {
-      expect(unusedMarkup(html, `class A { ${def} /*ts-dom:stateful*/ }`)).toEqual([]);
-    }
-    // A mere call (this.inc()) is not a definition
-    expect(unusedMarkup(html, `class A { x() { this.inc(); } /*ts-dom:stateful*/ }`).length).toBe(1);
+  it("leaves a data-on-* method that does not exist to tsc", () => {
+    expect(unusedMarkup(html, `class A { render() {} /*ts-dom:stateful*/ }`)).toEqual([]);
   });
 });
 
@@ -185,10 +178,9 @@ describe("unusedMarkup locations and messages", () => {
     expect(byRule("unused-if")).toMatchObject({ line: 3, col: 3 });
     expect(byRule("unused-text")?.line).toBe(4);
     expect(byRule("unused-list")).toMatchObject({ line: 5, col: 3 });
-    expect(byRule("missing-handler")).toMatchObject({ line: 6, col: 3 });
   });
   it("uses severity error, names the marker and contains a Fix hint", () => {
-    expect(found.map((d) => d.rule).sort()).toEqual(["missing-handler", "unused-if", "unused-list", "unused-ref", "unused-text"]);
+    expect(found.map((d) => d.rule).sort()).toEqual(["unused-if", "unused-list", "unused-ref", "unused-text"]);
     for (const d of found) {
       expect(d.severity).toBe("error");
       expect(d.message).toContain("Fix:");
@@ -197,7 +189,6 @@ describe("unusedMarkup locations and messages", () => {
     expect(byRule("unused-if")?.message).toContain(`data-if="open"`);
     expect(byRule("unused-text")?.message).toContain("{{ t }}");
     expect(byRule("unused-list")?.message).toContain(`data-each="items"`);
-    expect(byRule("missing-handler")?.message).toContain(`"go"`);
   });
   it("reports unused-item-name for names inside a list item", () => {
     const d = unusedMarkup(`<template data-each="l">\n  <li data-ref="zzz"></li>\n</template>`, `this.lists.l.replace()`);
