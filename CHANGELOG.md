@@ -11,6 +11,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.7 (not published)
+
+### Changed
+
+- `ts-dom lint` alone no longer reports a `data-on-*` method that the class does not define: `tsc` reports it at the `define()` call, and `ts-dom check` reports it once, at the template, as `missing-handler` (a check rule now). While the class has a contract error such as `missing-binding`, tsc reports the missing handler only after that error is fixed.
+- `<div role="button" data-on-click>` without `tabindex` gets one warning, `click-semantics`, instead of that and `role-tabindex` with the same fix: `role-tabindex` leaves an element that `click-semantics` reports to it, so the warning stays when `role-tabindex` is ignored or the element has a `data-ref`. `click-semantics` uses the same definition of an operable element as the check of a child template, so `data-on-click` on `contenteditable` content is no longer reported, and on a `<label>` it is reported unless the label wraps an operable element or a component whose template has one (a click on that control, by keyboard too, reaches the label; a bare label or a `<label for>` is pointer-only).
+- The a11y rules are described in `ts-dom rules` and in the oxlint rule metadata by a short description, as the other groups are, instead of the first sentence of a default message that had drifted from the messages printed. The messages are unchanged.
+
+### Removed
+
+- The lint rule `missing-handler` (`ts-dom/missing-handler` in the oxlint plugin, and its id in `ts-dom/unused-markup`), and the oxlint suggestion that added an empty method for it. The rule id stays, for the error `ts-dom check` maps from tsc. A linter config that turns on `ts-dom/missing-handler` must drop it, since the plugin no longer has that rule.
+
+### Fixes
+
+- `ts-dom lint` and `ts-dom check` find the module that imports a template in any folder, by the relative path it imports (`../views/card.html.js`, `./parts/row.html.js`), as the oxlint plugin already did, instead of reporting `no-importer` and skipping the checks of that template. Lint, check, doctor and the oxlint plugin now recognize the same template imports: a relative path to the `.html` file, with `.js` or without it. An import inside a string or a comment is not one.
+- A template imported without `.js` (`import tpl from "./x.html"`) is no longer reported by lint as `no-importer` with a message that says nothing imports it: `ts-dom doctor` (`template-import-without-js`) and tsc report that mistake, and `ts-dom lint`, `ts-dom check` and the oxlint plugin check the template against the class that imports it (the plugin skipped such an import before).
+- A generic component class (`class List<T> extends Component(tpl, ...)`) has its props, events and template read for the checks of the parent templates, and `ts-dom check` finds its body when it has a contract error.
+
 ## 0.6.6 (not published)
 
 ### Changed

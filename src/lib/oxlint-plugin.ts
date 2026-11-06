@@ -3,25 +3,18 @@ import { dirname, resolve } from "node:path";
 import { A11Y_RULES, checkA11y } from "./a11y.ts";
 import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
 import type { Contracts } from "./lint.ts";
-import { analyze } from "./codegen.ts";
+import { analyze, TEMPLATE_SPEC } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
   source: { value: string };
 }
-interface Fixer {
-  insertTextBeforeRange(range: [number, number], text: string): unknown;
-}
-interface Suggestion {
-  desc: string;
-  fix(fixer: Fixer): unknown;
-}
 interface Context {
   options?: [{ ignore?: string[] }?];
   filename: string;
   sourceCode: { text: string };
-  report(d: { message: string; node: unknown; suggest?: Suggestion[] }): void;
+  report(d: { message: string; node: unknown }): void;
 }
 
 type Group = "unused-markup" | "data-flow" | "a11y";
@@ -46,24 +39,15 @@ function groupDiagnostics(group: Group, html: string, code: string, spec: string
   if (!hit || hit.code !== code || hit.html !== html) cache.set(key, (hit = { code, html, analysis: analyze(html), diags: {} }));
   const a = hit.analysis;
   return (hit.diags[group] ??=
-    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), [], contractsAt(getContracts(), filename), a));
+    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), contractsAt(getContracts(), filename), a));
 }
 
-function readTemplate(filename: string, spec: string): string | null {
+function readTemplate(filename: string, html: string): string | null {
   try {
-    return readFileSync(resolve(dirname(filename), spec.slice(0, -3)), "utf8");
+    return readFileSync(resolve(dirname(filename), html), "utf8");
   } catch {
     return null; // a missing file is reported by tsc / the bundler
   }
-}
-
-/** A missing handler can be added to the class that uses the template: offered as a suggestion, since the method body is the developer's to write. */
-function suggestionsFor(d: Diagnostic, code: string, spec: string): Suggestion[] | undefined {
-  if (d.rule !== "missing-handler") return undefined;
-  const name = /="([^"]+)"/.exec(d.message)?.[1];
-  const target = componentClasses(code, spec)[0];
-  if (!name || !target) return undefined;
-  return [{ desc: `Add a method ${name}() to the component class`, fix: (fixer) => fixer.insertTextBeforeRange([target.end, target.end], `\n  ${name}(_e: Event): void {}\n`) }];
 }
 
 /**
@@ -74,20 +58,20 @@ function suggestionsFor(d: Diagnostic, code: string, spec: string): Suggestion[]
  */
 function templateRule(group: Group, description: string, only?: string) {
   return {
-    meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema, hasSuggestions: true },
+    meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema },
     create(context: Context) {
       return {
         ImportDeclaration(node: ImportNode) {
           const spec = node.source.value;
-          if (!spec.endsWith(".html.js")) return;
-          const html = readTemplate(context.filename, spec);
+          const path = TEMPLATE_SPEC.exec(spec)?.[1];
+          if (!path) return;
+          const html = readTemplate(context.filename, path);
           if (html === null) return;
           const code = context.sourceCode.text;
           const ignore = context.options?.[0]?.ignore ?? [];
           for (const d of groupDiagnostics(group, html, code, spec, context.filename)) {
             if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
-            const suggest = suggestionsFor(d, code, spec);
-            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node, ...(suggest ? { suggest } : {}) });
+            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
           }
         },
       };
@@ -111,6 +95,6 @@ export default {
     // One rule per rule id, so a project can give each its own severity (for example "ts-dom/unused-ref": "warn").
     ...perRule("unused-markup", unusedMarkupRules),
     ...perRule("data-flow", dataFlowRules),
-    ...perRule("a11y", Object.fromEntries(Object.entries(A11Y_RULES).map(([k, v]) => [k, v.split(". Fix:")[0] as string]))),
+    ...perRule("a11y", A11Y_RULES),
   },
 };

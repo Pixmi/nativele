@@ -2,10 +2,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, scanDefines, staleGenerated } from "./codegen.ts";
+import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, scanDefines, staleGenerated, templateImports } from "./codegen.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
-import { readTemplates, runLint } from "./lint.ts";
+import { classSpan, componentClassHeads, readTemplates, runLint } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
 
 export const CHECK_RULES = {
@@ -14,6 +14,7 @@ export const CHECK_RULES = {
   "conflicting-keys": "the same name is declared in more than one of state, props and derive (found by tsc)",
   "reserved-prop": "a prop is named like a member of HTMLElement or ts-dom (found by tsc)",
   "native-event-name": "an emitted event is named like a native DOM event (found by tsc)",
+  "missing-handler": "a data-on-* names a method the component class does not define (found by tsc through define())",
   "handler-event-type": "the first parameter of a data-on-* handler does not accept the event the template binds it to (found by tsc)",
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
@@ -92,8 +93,7 @@ const membersAfter = (message: string, key: string): [string, string][] => {
 
 const templatesOf = (tsFile: string): string[] => {
   if (!existsSync(tsFile)) return [];
-  const code = readFileSync(tsFile, "utf8");
-  return [...code.matchAll(/from\s+["'](\.{1,2}\/[^"']+\.html)\.js["']/g)].map((m) => resolve(dirname(tsFile), m[1] as string)).filter((f) => existsSync(f));
+  return templateImports(readFileSync(tsFile, "utf8")).map((i) => resolve(dirname(tsFile), i.html)).filter((f) => existsSync(f));
 };
 
 /**
@@ -127,12 +127,11 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames/.test(e.message)) continue;
     const text = readFileSync(resolve(cwd, e.file), "utf8");
     const lines = text.split("\n");
-    const m = /class\s+([A-Za-z_$][\w$]*)\s+extends\s+Component\s*\(/.exec(lines[e.line - 1] ?? "");
-    if (!m?.[1]) continue;
-    if (!brokenClasses.has(m[1])) brokenClasses.set(m[1], e);
-    const start = lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + m.index + m[0].length - 1;
-    const end = classBodyEnd(text, start);
-    if (end !== -1) brokenBodies.push({ file: rel(resolve(cwd, e.file)), from: e.line, to: text.slice(0, end).split("\n").length });
+    const head = componentClassHeads(lines[e.line - 1] ?? "")[0];
+    if (!head?.name) continue;
+    if (!brokenClasses.has(head.name)) brokenClasses.set(head.name, e);
+    const span = classSpan(text, lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + head.open);
+    if (span) brokenBodies.push({ file: rel(resolve(cwd, e.file)), from: e.line, to: text.slice(0, span.bodyEnd).split("\n").length });
   }
   const firstIssueOf = new Map<TscError, LintIssue>();
   for (const e of errors) {
@@ -222,27 +221,6 @@ function topLevelMembers(type: string): string[] {
   return out.map((t) => t.trim());
 }
 
-/** The offset of the `}` that closes a class body, given the offset of the `(` of its `extends Component(`; -1 when it cannot be found. Strings and comments are skipped. */
-function classBodyEnd(text: string, open: number): number {
-  let depth = 0;
-  let inBody = false;
-  for (let i = open; i < text.length; i++) {
-    const c = text[i] as string;
-    if (c === '"' || c === "'" || c === "`") {
-      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
-    } else if (c === "/" && text[i + 1] === "/") i = text.indexOf("\n", i) === -1 ? text.length : text.indexOf("\n", i);
-    else if (c === "/" && text[i + 1] === "*") i = text.indexOf("*/", i) === -1 ? text.length : text.indexOf("*/", i) + 1;
-    else if ("([{".includes(c)) {
-      if (c === "{" && depth === 0) inBody = true;
-      depth++;
-    } else if (")]}".includes(c)) {
-      depth--;
-      if (depth === 0 && inBody) return i;
-    }
-  }
-  return -1;
-}
-
 // vue-tsc takes tsc's arguments and prints tsc's output, and it also understands the .vue files a Vue project imports.
 // It is used only when this project lists it: in a monorepo it can be hoisted for a sibling package.
 function findTsc(cwd: string): { name: string; bin: string } | null {
@@ -327,10 +305,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     issues.push(...mapTscErrors(parsed, cwd));
   }
 
-  for (const i of runLint(dirs, { a11y: !!options.a11y, cwd, templates })) {
-    if (i.rule === "missing-handler" && issues.some((x) => x.rule === "missing-handler" && x.file === i.file && x.line === i.line && x.col === i.col)) continue;
-    issues.push(i);
-  }
+  issues.push(...runLint(dirs, { a11y: !!options.a11y, cwd, templates }));
   const seen = new Set<string>();
   return issues
     .filter((i) => {

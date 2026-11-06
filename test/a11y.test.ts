@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -93,10 +94,23 @@ describe("click-semantics", () => {
     expect(rules(`<div data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
     expect(rules(`<template data-each="l"><li data-on-click="go">{{ a }}</li></template>`)).toEqual(["click-semantics"]);
   });
-  it("button, a[href], label and elements with a role and tabindex do not warn", () => {
-    expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><label data-on-click="go">x</label>`)).toEqual([]);
+  it("button, a[href], editable content and elements with a role and tabindex do not warn", () => {
+    expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><p contenteditable data-on-click="go">x</p>`)).toEqual([]);
     expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
-    expect(rules(`<div role="button" data-on-click="go">x</div>`).sort()).toEqual(["click-semantics", "role-tabindex"]);
+  });
+  it("data-on-click on an interactive role without tabindex gets one warning, click-semantics, whatever the other rule's setting", () => {
+    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual(["click-semantics"]);
+    expect(rules(`<div role="button">x</div>`)).toEqual(["role-tabindex"]);
+  });
+  it("role-tabindex still reports a custom element whose click click-semantics accepts", () => {
+    expect(rules(`<x-card role="button" data-on-click="go"></x-card>`)).toEqual(["role-tabindex"]);
+  });
+  it("a label warns unless it wraps a control, whose click, by keyboard too, reaches the label", () => {
+    expect(rules(`<label data-on-click="go"><input type="checkbox"> x</label>`)).toEqual([]);
+    expect(rules(`<label data-on-click="go">x</label>`)).toEqual(["click-semantics"]);
+    expect(rules(`<label for="a" data-on-click="go">x</label><input id="a" type="checkbox">`)).toEqual(["click-semantics"]);
   });
   it("other events are not checked", () => {
     expect(rules(`<form data-on-submit="go"></form><input data-on-input="go" aria-label="x">`)).toEqual([]);
@@ -140,6 +154,10 @@ describe("click-semantics", () => {
   });
   it("the component tag with an interactive role plus tabindex does not warn", () => {
     expect(children.check(`<x-card role="button" tabindex="0" data-on-click="go"></x-card>`)).toEqual([]);
+  });
+  it("a label wrapping a component counts the component's template, and an unreadable custom element as operable", () => {
+    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label><label data-on-click="go"><wa-switch></wa-switch> b</label>`)).toEqual([]);
+    expect(children.check(`<label data-on-click="go"><x-card></x-card> a</label>`).map((d) => d.rule)).toEqual(["click-semantics"]);
   });
   it("a tag defined in several packages, none of them the template's, is not checked", () => {
     const card = `<div><span>{{ title }}</span></div>`;
@@ -204,12 +222,18 @@ describe("rule coverage and messages", () => {
     }
     for (const rule of Object.keys(INPUTS)) expect(A11Y_RULES, rule).toHaveProperty(rule);
   });
-  it("every default message contains a Fix: hint", () => {
-    for (const [rule, msg] of Object.entries(A11Y_RULES)) {
-      expect(msg, rule).toContain("Fix:");
-      expect(msg, rule).not.toMatch(/^\[/);
-    }
+  it("every rule has a short description, without the Fix: hint that each message carries", () => {
+    for (const [rule, description] of Object.entries(A11Y_RULES)) expect(description, rule).not.toMatch(/Fix:|\.$/);
   });
+  it("ts-dom rules and the oxlint rules describe each rule with its A11Y_RULES text", async () => {
+    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
+    const described = plugin.rules as Record<string, { meta: { docs: { description: string } } }>;
+    const listed = (JSON.parse(execFileSync(process.execPath, ["src/cli.ts", "rules", "--json"], { encoding: "utf8" })) as { rules: { id: string; group: string; description: string }[] }).rules;
+    for (const [rule, description] of Object.entries(A11Y_RULES)) {
+      expect(described[rule]?.meta.docs.description, rule).toBe(description);
+      expect(listed.find((r) => r.group === "lint: a11y" && r.id === rule)?.description, rule).toBe(description);
+    }
+  }, 30_000);
   it("every produced diagnostic is a warning with a position and a Fix: hint", () => {
     for (const [rule, html] of Object.entries(INPUTS)) {
       const ds = checkA11y(html).filter((d) => d.rule === rule);

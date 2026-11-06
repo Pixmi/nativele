@@ -7,36 +7,32 @@ type Element = DefaultTreeAdapterMap["element"];
 type Template = DefaultTreeAdapterMap["template"];
 type Fragment = DefaultTreeAdapterMap["documentFragment"];
 
-export interface A11yDiagnostic extends Diagnostic {
-  rule: string;
-}
-
 /** A component the template can use, by tag: its template file and text when they could be read (see `contractsFor`). */
 export type A11yChildren = ReadonlyMap<string, { template?: { file: string; html: string } }>;
 
-/** Every check, by rule id (usable in `ignore`). The text is the default message: what is wrong and how to fix it. */
+/** Every check, by rule id (usable in `ignore`), with a short description. */
 export const A11Y_RULES = {
-  "img-alt": "<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt=\"description\", or alt=\"\" if the image is purely decorative.",
-  "control-name": "This control has no accessible name. Fix: add text, a {{ hole }}, a <slot>, aria-label or aria-labelledby.",
-  "form-label": "This form control has no label. Fix: wrap it in a <label>, add <label for=\"id\">, or add aria-label.",
-  "iframe-title": "<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content.",
-  "dialog-name": "<dialog> has no accessible name. Fix: add aria-label or aria-labelledby.",
-  "heading-empty": "This heading is empty. Fix: add text or a {{ hole }}, or remove the heading element.",
-  "aria-role": "This role is not a valid ARIA role. Fix: use a role from the WAI-ARIA specification (check the spelling).",
-  "aria-attr": "This is not a valid ARIA attribute. Fix: check the spelling against the WAI-ARIA attribute list.",
-  "role-tabindex": "An element with an interactive role must be focusable. Fix: add tabindex=\"0\" (and handle keyboard events), or use a native element such as <button>.",
-  "tabindex-positive": "A positive tabindex disturbs the natural focus order. Fix: use tabindex=\"0\" or \"-1\".",
-  "hidden-focusable": "A focusable element has aria-hidden=\"true\", so keyboard users can reach something screen readers cannot see. Fix: remove aria-hidden, or make the element non-focusable.",
-  "label-for": "<label for> points to an id that does not exist in this template. Fix: add the matching id to the control, or wrap the control in the label instead.",
-  "id-in-list": "An id inside a data-each template is repeated for every item. Fix: use data-ref or a class instead of an id.",
-  "duplicate-id": "This id is used more than once in the template. Fix: make every id unique.",
-  "aria-idref": "This ARIA attribute refers to an id that does not exist in this template. Fix: add the id, or ignore this rule if it refers to an element outside the component.",
-  "heading-order": "Heading levels are skipped. Fix: do not jump levels (for example h1 straight to h3); use the next level down.",
-  "table-header": "<table> has no <th> header cells. Fix: add <th> cells, or set role=\"presentation\" if the table is only used for layout.",
-  "list-structure": "Invalid list structure. Fix: <ul>/<ol> may only contain <li> (or a custom element with role=\"listitem\"), and <li> must be inside <ul>, <ol> or <menu>.",
-  "landmark-label": "There are several landmarks of the same kind. Fix: give each <nav> / <aside> a distinct aria-label.",
-  "redundant-role": "The role repeats the element's native role. Fix: remove the role attribute.",
-  "click-semantics": "data-on-click is on an element that is not natively operable, or on a component whose template has no operable element, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.",
+  "img-alt": "<img> has no alt attribute, so screen readers cannot describe it",
+  "control-name": "a button, <summary> or link has no accessible name",
+  "form-label": "a form control has no label",
+  "iframe-title": "<iframe> has no title",
+  "dialog-name": "<dialog> has no accessible name",
+  "heading-empty": "a heading is empty",
+  "aria-role": "a role is not a valid ARIA role",
+  "aria-attr": "an aria-* attribute is not a valid ARIA attribute",
+  "role-tabindex": "an element with an interactive role is not focusable",
+  "tabindex-positive": "a positive tabindex disturbs the natural focus order",
+  "hidden-focusable": "a focusable element has aria-hidden=\"true\"",
+  "label-for": "<label for> points to an id that does not exist in the template",
+  "id-in-list": "an id inside a data-each template repeats for every item",
+  "duplicate-id": "an id is used more than once in the template",
+  "aria-idref": "an ARIA attribute refers to an id that does not exist in the template",
+  "heading-order": "heading levels are skipped",
+  "table-header": "<table> has no <th> header cells",
+  "list-structure": "a list holds something other than list items, or a list item is outside a list",
+  "landmark-label": "several landmarks of the same kind are not told apart by aria-label",
+  "redundant-role": "the role repeats the element's native role",
+  "click-semantics": "data-on-click is on an element that keyboard and assistive technology users cannot operate",
 } as const;
 export type A11yRule = keyof typeof A11Y_RULES;
 
@@ -127,8 +123,8 @@ const named = (el: Element) =>
  * one of them is checked against its template, and data-on-click on any other custom element is not checked.
  * `root` is the template already parsed with source locations (`analyze(html).root`), so a run that has it does not parse again.
  */
-export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): A11yDiagnostic[] {
-  const out: A11yDiagnostic[] = [];
+export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): Diagnostic[] {
+  const out: Diagnostic[] = [];
   const skip = new Set(ignore);
 
   // Collect ids and label[for] first
@@ -149,17 +145,19 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
   })(root, null, false, false);
 
-  const report = (rule: A11yRule, el: Element, detail?: string) => {
+  const report = (rule: A11yRule, el: Element, message: string) => {
     if (skip.has(rule)) return;
     const loc = el.sourceCodeLocation;
     out.push({
       rule,
       severity: "warning",
-      message: detail ?? A11Y_RULES[rule],
+      message,
       line: loc?.startLine ?? 1,
       col: loc?.startCol ?? 1,
     });
   };
+
+  const clickable = (el: Element) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, new Set()));
 
   let lastHeading = 0;
   const landmarks = all.filter((x) => (x.el.tagName === "nav" || x.el.tagName === "aside") && attr(x.el, "role") !== "presentation");
@@ -168,7 +166,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     const managed = has(el, "data-ref"); // managed by TypeScript: the name may be set there, so skip the "missing name" checks
     const role = roleOf(el);
 
-    if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el);
+    if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el, `<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt="description", or alt="" if the image is purely decorative.`);
 
     if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && !hasContent(el)) {
       report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, a <slot>, aria-label or aria-labelledby.`);
@@ -184,8 +182,8 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       }
     }
 
-    if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el);
-    if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el);
+    if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el, "<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content.");
+    if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el, "<dialog> has no accessible name. Fix: add aria-label or aria-labelledby.");
     if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && !hasContent(el)) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
 
     if (role !== undefined && !ROLES.has(role) && !role.startsWith("doc-") && !role.startsWith("graphics-")) {
@@ -196,16 +194,19 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     const tabindex = attr(el, "tabindex");
-    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed) {
+    // A control inside a label, clicked or activated by keyboard, reaches the label's handler.
+    const unoperableClick = has(el, "data-on-click") && !clickable(el) && !(tag === "label" && descendants(kids(el)).some(clickable));
+    // role-tabindex has the same fix as click-semantics, so an element click-semantics reports is not reported twice.
+    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed && !unoperableClick) {
       report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);
-    if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el);
+    if (attr(el, "aria-hidden") === "true" && (focusable(el) || (tabindex !== undefined && Number(tabindex) >= 0))) report("hidden-focusable", el, `A focusable element has aria-hidden="true", so keyboard users can reach something screen readers cannot see. Fix: remove aria-hidden, or make the element non-focusable.`);
 
-    if (has(el, "data-on-click") && !focusable(el) && tag !== "label" && !(role && INTERACTIVE_ROLES.has(role) && tabindex !== undefined)) {
+    if (unoperableClick) {
       if (!tag.includes("-")) {
         report("click-semantics", el, `data-on-click is on <${tag}>, which is not natively operable, so keyboard and assistive technology users cannot use it. Fix: use <button> or <a href>, or add an interactive role plus tabindex and keyboard handling.`);
-      } else if (!clickableInside(tag, children, new Set())) {
+      } else {
         report("click-semantics", el, `data-on-click is on <${tag}>, and its template (${children.get(tag)?.template?.file}) has no operable element a click could come from, so keyboard and assistive technology users cannot use it. Fix: put a <button> or <a href> in that template, or add an interactive role plus tabindex to <${tag}> here and handle keyboard events.`);
       }
     }
@@ -217,7 +218,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       lastHeading = level;
     }
     if (tag === "table" && !managed && role !== "presentation" && role !== "none" && !descendants(kids(el)).some((d) => d.tagName === "th")) {
-      report("table-header", el);
+      report("table-header", el, `<table> has no <th> header cells. Fix: add <th> cells, or set role="presentation" if the table is only used for layout.`);
     }
     if (tag === "ul" || tag === "ol" || tag === "menu") {
       for (const c of kids(el)) {

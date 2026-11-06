@@ -582,26 +582,73 @@ export interface DefineDef {
   col?: number;
 }
 
+/** The offset just past the string literal, template literal or comment that starts at `i` (the end of `code` when it is not closed), or `i` when none starts there. */
+function skipNonCode(code: string, i: number): number {
+  const c = code[i];
+  if (c === '"' || c === "'" || c === "`") {
+    let j = i + 1;
+    for (; j < code.length && code[j] !== c; j++) if (code[j] === "\\") j++;
+    return Math.min(j + 1, code.length);
+  }
+  if (c === "/" && code[i + 1] === "/") {
+    const end = code.indexOf("\n", i);
+    return end < 0 ? code.length : end;
+  }
+  if (c === "/" && code[i + 1] === "*") {
+    const end = code.indexOf("*/", i + 2);
+    return end < 0 ? code.length : end + 2;
+  }
+  return i;
+}
+
 /** Ranges [start, end) of the string literals, template literals and comments of a piece of TypeScript source. */
 function nonCodeRanges(code: string): [number, number][] {
   const out: [number, number][] = [];
   for (let i = 0; i < code.length; i++) {
-    const c = code[i] as string;
-    if (c === '"' || c === "'" || c === "`") {
-      const start = i;
-      for (i++; i < code.length && code[i] !== c; i++) if (code[i] === "\\") i++;
-      out.push([start, i + 1]);
-    } else if (c === "/" && code[i + 1] === "/") {
-      const end = code.indexOf("\n", i);
-      out.push([i, end < 0 ? code.length : end]);
-      i = end < 0 ? code.length : end;
-    } else if (c === "/" && code[i + 1] === "*") {
-      const end = code.indexOf("*/", i + 2);
-      out.push([i, end < 0 ? code.length : end + 2]);
-      i = end < 0 ? code.length : end + 1;
+    const end = skipNonCode(code, i);
+    if (end > i) {
+      out.push([i, end]);
+      i = end - 1;
     }
   }
   return out;
+}
+
+/** From `start`, find the position that closes `open` (skipping strings and comments); -1 when it is not closed. */
+export function matchClose(code: string, start: number, open: string, close: string): number {
+  let depth = 0;
+  for (let i = start; i < code.length; i++) {
+    const end = skipNonCode(code, i);
+    if (end > i) i = end - 1;
+    else if (code[i] === open) depth++;
+    // The > of an arrow in a type parameter list closes nothing.
+    else if (code[i] === close && !(close === ">" && code[i - 1] === "=") && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
+const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
+export const TEMPLATE_SPEC = new RegExp(`^${TEMPLATE_PATH}$`);
+const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_PATH}["']`, "g");
+
+export interface TemplateImport {
+  /** The local name of the default import, when the template is imported as one. */
+  local?: string;
+  spec: string;
+  /** The template's path relative to the importing module: the specifier without `.js`. */
+  html: string;
+  js: boolean;
+}
+
+/** Every `import x from "./x.html.js"` (or other `from` clause naming a template by a relative path) in `code`, outside strings and comments. */
+export function templateImports(code: string): TemplateImport[] {
+  const found = [...code.matchAll(TEMPLATE_IMPORT)];
+  const skip = found.length ? nonCodeRanges(code) : [];
+  return found.filter((m) => !skip.some(([a, b]) => m.index >= a && m.index < b)).map((m) => {
+    const html = m[2] as string;
+    return { ...(m[1] ? { local: m[1] } : {}), spec: html + (m[3] ?? ""), html, js: m[3] !== undefined };
+  });
 }
 
 /**

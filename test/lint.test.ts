@@ -53,15 +53,8 @@ describe("state and data-on-*", () => {
     const rules = unusedMarkup(html, templateCode(code, "./a.html.js")).map((d) => d.rule);
     expect(rules).toEqual(expect.arrayContaining(["unused-text", "unused-if"]));
   });
-  it("reports a data-on-* method that does not exist, and stays quiet when it does", () => {
-    const missing = unusedMarkup(html, `class A { render() {} }`).filter((d) => d.rule === "missing-handler");
-    expect(missing.length).toBe(1);
-    expect(missing[0]?.message).toContain("inc");
-    for (const def of [`inc() {}`, `inc = () => {}`, `override inc(): void {}`, `async inc() {}`, `public inc(e: Event) {}`]) {
-      expect(unusedMarkup(html, `class A { ${def} /*ts-dom:stateful*/ }`)).toEqual([]);
-    }
-    // A mere call (this.inc()) is not a definition
-    expect(unusedMarkup(html, `class A { x() { this.inc(); } /*ts-dom:stateful*/ }`).length).toBe(1);
+  it("leaves a data-on-* method that does not exist to tsc", () => {
+    expect(unusedMarkup(html, `class A { render() {} /*ts-dom:stateful*/ }`)).toEqual([]);
   });
 });
 
@@ -101,12 +94,52 @@ describe("lintUsage", () => {
     expect(issue?.rule).toBe("no-importer");
     expect(issue?.message).toContain("Fix:");
   });
+  it("finds the importer in another folder or a subfolder and checks the template against its class", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    mkdirSync(join(d, "views/parts"), { recursive: true });
+    mkdirSync(join(d, "app"));
+    writeFileSync(join(d, "views/card.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
+    writeFileSync(join(d, "views/parts/row.html"), `<b data-ref="used"></b>`);
+    writeFileSync(join(d, "app/card.ts"), `import t from "../views/card.html.js";\nclass Card extends Component(t) { x() { this.refs.used; } }`);
+    writeFileSync(join(d, "views/row.ts"), `import t from "./parts/row.html.js";\nclass Row extends Component(t) { x() { this.refs.used; } }`);
+    const issues = lintUsage([d], [join(d, "app/card.ts"), join(d, "views/row.ts")]);
+    expect(issues.map((i) => [i.file.endsWith("card.html"), i.rule])).toEqual([[true, "unused-ref"]]);
+    expect(issues[0]?.message).toContain(`data-ref="dead"`);
+  });
+  it("counts an import without .js as the importer, leaving that mistake to ts-dom doctor and tsc", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "a.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
+    writeFileSync(join(d, "a.ts"), `import t from "./a.html";\nclass A extends Component(t) { x() { this.refs.used; } }`);
+    expect(lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule)).toEqual(["unused-ref"]);
+  });
+});
+
+describe("reading component classes", () => {
+  it("finds a class without a name and a generic class", () => {
+    const code = `import t from "./a.html.js";\nexport default class extends Component(t) { a() {} }\nclass B<T extends Map<string, number>> extends Component(t) { b() {} }`;
+    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+  });
+  it("reads type parameters with a default object type or a function type", () => {
+    const code = `import t from "./a.html.js";\nclass A<T = {}> extends Component(t, {}) { a() {} }\nclass B<T extends (x: number) => void> extends Component(t) { b() {} }`;
+    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+  });
+  it("does not count an import inside a string or a comment as the template's importer", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "a.html"), `<p></p>`);
+    writeFileSync(join(d, "doc.ts"), `export const sample = 'import tpl from "./a.html.js";';\n// import tpl from "./a.html.js";\n/* import tpl from "./a.html.js"; */\n`);
+    expect(lintUsage([d], [join(d, "doc.ts")]).map((i) => i.rule)).toEqual(["no-importer"]);
+  });
+  it("reads the contract of a generic component", () => {
+    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+    writeFileSync(join(d, "kid.html"), `<p></p>`);
+    writeFileSync(join(d, "kid.ts"), `import tpl from "./kid.html.js";\nexport class Kid<T> extends Component(tpl, { props: { label: "" } }) {}\ndefine("x-kid", Kid);`);
+    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract.props.keys() ?? [])]).toEqual(["label"]);
+  });
 });
 
 describe("data-flow checks", () => {
   const parentHtml = `<x-kid data-ref="kid" data-on-saved="onSaved"></x-kid><x-kid2 data-on-done="relay"></x-kid2>`;
-  const flow = (code: string, html = parentHtml, ignore: string[] = []) =>
-    dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"), ignore);
+  const flow = (code: string, html = parentHtml) => dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"));
 
   it("prop-forwarding: passes its own prop unchanged to a child component", () => {
     const code = `class P extends Component(t, { props: { name: "", count: 0 }, state: { s: 1 } }) {
@@ -151,10 +184,6 @@ describe("data-flow checks", () => {
     expect(dataFlow(`<div data-on-value-change="x"></div>`, []).some((d) => d.rule === "custom-event-on-native")).toBe(true);
     expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [])).toEqual([]);
   });
-  it("ignore turns off individual checks", () => {
-    const code = `class P extends Component(t, { props: { name: "" } }) { render(v) { this.refs.kid.name = v.name; } }`;
-    expect(flow(code, parentHtml, ["prop-forwarding"])).toEqual([]);
-  });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
     const r = flow(code).filter((d) => d.rule === "prop-forwarding");
@@ -185,10 +214,9 @@ describe("unusedMarkup locations and messages", () => {
     expect(byRule("unused-if")).toMatchObject({ line: 3, col: 3 });
     expect(byRule("unused-text")?.line).toBe(4);
     expect(byRule("unused-list")).toMatchObject({ line: 5, col: 3 });
-    expect(byRule("missing-handler")).toMatchObject({ line: 6, col: 3 });
   });
   it("uses severity error, names the marker and contains a Fix hint", () => {
-    expect(found.map((d) => d.rule).sort()).toEqual(["missing-handler", "unused-if", "unused-list", "unused-ref", "unused-text"]);
+    expect(found.map((d) => d.rule).sort()).toEqual(["unused-if", "unused-list", "unused-ref", "unused-text"]);
     for (const d of found) {
       expect(d.severity).toBe("error");
       expect(d.message).toContain("Fix:");
@@ -197,7 +225,6 @@ describe("unusedMarkup locations and messages", () => {
     expect(byRule("unused-if")?.message).toContain(`data-if="open"`);
     expect(byRule("unused-text")?.message).toContain("{{ t }}");
     expect(byRule("unused-list")?.message).toContain(`data-each="items"`);
-    expect(byRule("missing-handler")?.message).toContain(`"go"`);
   });
   it("reports unused-item-name for names inside a list item", () => {
     const d = unusedMarkup(`<template data-each="l">\n  <li data-ref="zzz"></li>\n</template>`, `this.lists.l.replace()`);
@@ -222,7 +249,7 @@ export class Kid extends Component(tpl, {
 define("x-kid", Kid);`;
   const dir = setup({ "kid.ts": child, "bare.ts": `export class Bare extends Component(tpl) {}\ndefine("x-bare", Bare);` });
   const contracts = contractsAt(contractsFor([dir]), join(dir, "p.html"));
-  const run = (html: string, ignore: string[] = [], c: ReadonlyMap<string, Contract> = contracts) => dataFlow(html, [], ignore, c);
+  const run = (html: string, c: ReadonlyMap<string, Contract> = contracts) => dataFlow(html, [], c);
 
   it("contractsFor reads props (with kinds) and emits from the child's source", () => {
     const k = contracts.get("x-kid");
@@ -291,17 +318,8 @@ define("x-kid", Kid);`;
   });
   it("a hand-built contract works too", () => {
     const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]) }]]);
-    expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, [], hand)).toEqual([]);
-    expect(run(`<x-hand sise="1"></x-hand>`, [], hand)[0]?.message).toContain(`Did you mean "size"?`);
-  });
-  it("ignore silences each of the new rules independently", () => {
-    const html = `<x-kid labl="a" items="x" data-on-savd="s"></x-kid>`;
-    const rules = (ignore: string[]) => run(html, ignore).map((d) => d.rule).sort();
-    expect(rules([])).toEqual(["invalid-prop-value", "unknown-event", "unknown-prop"]);
-    expect(rules(["unknown-prop"])).toEqual(["invalid-prop-value", "unknown-event"]);
-    expect(rules(["invalid-prop-value"])).toEqual(["unknown-event", "unknown-prop"]);
-    expect(rules(["unknown-event"])).toEqual(["invalid-prop-value", "unknown-prop"]);
-    expect(rules(["unknown-prop", "invalid-prop-value", "unknown-event"])).toEqual([]);
+    expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, hand)).toEqual([]);
+    expect(run(`<x-hand sise="1"></x-hand>`, hand)[0]?.message).toContain(`Did you mean "size"?`);
   });
   it("lintDataFlow applies contracts found under the scanned directories", () => {
     const d = setup({
@@ -349,7 +367,7 @@ describe("a tag defined more than once under the scanned folders", () => {
   it("an event is reported only when the own package's child does not emit it", () => {
     const root = twoApps();
     const all = contractsFor([root]);
-    const flow = (dir: string) => dataFlow(board, [], [], contractsAt(all, join(root, dir, "board.html"))).map((d) => d.rule);
+    const flow = (dir: string) => dataFlow(board, [], contractsAt(all, join(root, dir, "board.html"))).map((d) => d.rule);
     expect(flow("app")).toEqual([]);
     expect(flow("other")).toEqual(["unknown-event"]);
   });
