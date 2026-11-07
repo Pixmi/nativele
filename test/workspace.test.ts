@@ -205,13 +205,13 @@ describe("a long-lived Vite plugin (the dev server)", () => {
     hook(join(dir, "style.css"));
     expect(save("c1.html", `<button type="button">C1 again</button>\n`).parses).toBe(alone);
   });
-  it("on a save of a file with a define() that changes no tag, lists each folder once for each kind of file it looks for (modules, templates, generated files) and parses only the template the file imports", () => {
+  it("on a save of a file with a define() that changes no tag, reads each folder once for all the kinds of file it looks for (modules, templates, generated files) and parses only the template the file imports", () => {
     const { hook, dir } = dev(4);
     const file = join(dir, "src/c1.ts");
     writeFileSync(file, `${readFileSync(file, "utf8")}// saved\n`);
     const before = listings.n;
     expect(parsed(() => hook(file))).toBe(1);
-    expect(listings.n - before).toBe(3);
+    expect(listings.n - before).toBe(1);
   });
   it("on a save that changes a define(), regenerates only the templates that use the tag", () => {
     const { hook, dir } = dev(4);

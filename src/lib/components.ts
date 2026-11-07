@@ -5,14 +5,12 @@ export const TAGS_FILE = "ts-dom-tags.ts";
 
 export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
 
-export function listTs(dir: string): string[] {
+export function listTs(dir: string, ws = new Workspace()): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const name = entry.name;
+  for (const { name, folder } of ws.entries(dir)) {
     if (name === "node_modules" || name === "dist") continue;
-    const full = join(dir, name);
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...listTs(full));
-    else if (isTs(name)) out.push(full);
+    if (folder) out.push(...listTs(join(dir, name), ws));
+    else if (isTs(name)) out.push(join(dir, name));
   }
   return out;
 }
@@ -277,6 +275,7 @@ export class Memo {
 export class Workspace implements Sources {
   readonly memo: Memo;
   readonly #files = new Map<string, string | null>();
+  readonly #entries = new Map<string, { name: string; folder: boolean }[]>();
   readonly #listings = new Map<(dir: string, ws: Workspace) => string[], Map<string, string[]>>();
   readonly #indexes = new Map<string, ComponentIndex>();
   #base: Workspace | undefined;
@@ -307,6 +306,13 @@ export class Workspace implements Sources {
     view.#files.set(file, text);
     this.memo.see(file);
     return view;
+  }
+  /** The entries of the folder `dir`, read once in the run; a symbolic link to a folder is a folder. */
+  entries(dir: string): { name: string; folder: boolean }[] {
+    if (this.#base) return this.#base.entries(dir);
+    let found = this.#entries.get(dir);
+    if (!found) this.#entries.set(dir, (found = readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: e.isDirectory() || (e.isSymbolicLink() && statSync(join(dir, e.name)).isDirectory()) }))));
+    return found;
   }
   /** The files `find` lists under `dir`, listed once in the run. */
   list(dir: string, find: (dir: string, ws: Workspace) => string[]): string[] {
