@@ -1,9 +1,10 @@
 import { dirname, relative, resolve, sep } from "node:path";
 import { A11Y_RULES } from "./a11y.ts";
-import { DATA_FLOW_RULES, indexBehind, lintProject, lintTemplate, UNUSED_MARKUP_RULES } from "./lint.ts";
+import { analyze } from "./codegen.ts";
+import type { Analysis, Diagnostic } from "./codegen.ts";
+import { Memo, TEMPLATE_SPEC, Workspace } from "./components.ts";
+import { DATA_FLOW_RULES, lintProject, lintTemplate, UNUSED_MARKUP_RULES } from "./lint.ts";
 import type { Group, LintProject, TemplateFindings } from "./lint.ts";
-import type { Diagnostic } from "./codegen.ts";
-import { TEMPLATE_SPEC, Workspace } from "./components.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
@@ -24,46 +25,38 @@ const ignoreSchema = [
   },
 ];
 
-const GROUPS: readonly Group[] = ["unused-markup", "data-flow", "a11y"];
-// The language server keeps the plugin loaded while the files change: a call reuses what it read while the files keep their content, and lists the folders again at most once a second.
-const ws = new Workspace();
-const LISTING_AGE = 1000;
-const project = (): LintProject => lintProject(ws, [process.cwd()], process.cwd(), LISTING_AGE);
+const memo = new Memo();
 
-type Found = { label: string; findings: TemplateFindings }[];
+/**
+ * The lints oxlint makes in one turn of the event loop (in the editor, those that one change starts; on the command line, a batch of files) are one run: they read each file once, and the projects they need are built once from it.
+ * The linted file is read as oxlint gives it, which in the editor can be an unsaved buffer.
+ */
+let run: { ws: Workspace; projects: Map<string, LintProject>; nodes: WeakMap<object, Through> } | undefined;
 
-/** The groups of the rules that are on for the file being linted: oxlint calls the create() of each of them for a file before it visits the file's nodes. */
-let enabled = new Set<Group>();
-let enabledFor: string | undefined;
-let visiting = false;
-function enable(group: Group, file: string): void {
-  if (visiting || file !== enabledFor) {
-    enabled = new Set();
-    enabledFor = file;
-    visiting = false;
-  }
-  enabled.add(group);
+interface Through {
+  file: string;
+  p: LintProject;
+  templates: { html: string; label: string }[];
+  parse: (text: string) => Analysis;
 }
 
-/** The findings of the templates the import `node` brings into `file`, with `text` as the file's content. The rules of one lint of the file visit the same node, so they share the answer. */
-const answered = new WeakMap<object, Found>();
-function findingsThrough(node: ImportNode, file: string, text: string): Found {
-  visiting = true;
-  const known = answered.get(node);
-  if (known) return known;
-  const groups = GROUPS.filter((g) => enabled.has(g));
-  const spec = node.source.value;
-  ws.overlay(file, text);
-  ws.rev(file);
-  try {
-    let p = project();
-    if (templatesThrough(p, file, spec).some(({ html }) => indexBehind(p, html, groups))) p = lintProject(ws, [process.cwd()], process.cwd());
-    const found = templatesThrough(p, file, spec).map(({ html, label }) => ({ label, findings: lintTemplate(p, html, groups).value }));
-    answered.set(node, found);
-    return found;
-  } finally {
-    ws.overlay(file, undefined);
+/** The templates the import `node` brings into `file`, with `text` as the file's content, and the project they are linted in. The rules of one lint of the file visit the same node, so they share it, and parse each template at most once. */
+function through(node: ImportNode, file: string, text: string): Through {
+  if (!run) {
+    run = { ws: new Workspace(memo), projects: new Map(), nodes: new WeakMap() };
+    setImmediate(() => (run = undefined));
   }
+  const known = run.nodes.get(node);
+  if (known?.file === file) return known;
+  const ws = run.ws.with(file, text);
+  const key = ws === run.ws ? process.cwd() : `${process.cwd()}\0${file}\0${text}`;
+  let p = run.projects.get(key);
+  if (!p) run.projects.set(key, (p = lintProject(ws, [process.cwd()], process.cwd())));
+  const parsed = new Map<string, Analysis>();
+  const parse = (t: string) => parsed.get(t) ?? (parsed.set(t, analyze(t)).get(t) as Analysis);
+  const found = { file, p, templates: templatesThrough(p, file, node.source.value), parse };
+  run.nodes.set(node, found);
+  return found;
 }
 
 const ofGroup = (r: TemplateFindings, group: Group): Diagnostic[] => (group === "unused-markup" ? (r.usage ?? []) : group === "a11y" ? r.a11y : r.flow);
@@ -97,12 +90,12 @@ function templateRule(group: Group, description: string, only?: string) {
   return {
     meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema },
     create(context: Context) {
-      enable(group, context.filename);
       return {
         ImportDeclaration(node: ImportNode) {
           const ignore = context.options?.[0]?.ignore ?? [];
-          for (const { label, findings } of findingsThrough(node, resolve(context.filename), context.sourceCode.text)) {
-            for (const d of ofGroup(findings, group)) {
+          const { p, templates, parse } = through(node, resolve(context.filename), context.sourceCode.text);
+          for (const { html, label } of templates) {
+            for (const d of ofGroup(lintTemplate(p, html, [group], parse), group)) {
               if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
               context.report({ message: `${label}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
             }

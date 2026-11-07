@@ -5,7 +5,7 @@ import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
-import type { ComponentIndex, Sources } from "./components.ts";
+import type { ComponentIndex } from "./components.ts";
 import { NOT_DEFINED, UNREAD, detailOf, unreadFixes } from "./unread.ts";
 import type { Unread } from "./unread.ts";
 
@@ -112,14 +112,6 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const ws = new Workspace();
   return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
-}
-
-/** The unused-markup findings of one template, or null when no class or module uses it. */
-export function templateUsage(html: string, text: string, analysis: Analysis, index: ComponentIndex, sources: Sources): Diagnostic[] | null {
-  const classes = index.byTemplate.get(resolve(html)) ?? [];
-  const importers = index.importers.get(resolve(html)) ?? [];
-  if (!classes.length && !importers.length) return null;
-  return unusedMarkup(text, ownerCode(classes, importers.map((i) => sources.text(i.file) ?? "")), analysis);
 }
 
 const noImporter = (file: string, html: string): LintIssue => ({
@@ -249,7 +241,7 @@ export interface Contract {
   emits: Set<string>;
   /** The emitted events declared with `bubbles: true`. */
   bubbles: Set<string>;
-  /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists now (a check that asks depends on that): path relative to the `cwd` given to contractsFor, and its current text. */
+  /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists: path relative to the `cwd` given to contractsFor, and its current text. */
   readonly template?: { file: string; readonly html: string };
   /** Why there is no `template`, when there is none. */
   readonly unread?: Unread;
@@ -263,14 +255,11 @@ function kindOf(valueText: string): PropKind {
   return "other";
 }
 
-/**
- * Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to.
- * `files` are the define() file, the class file and the template, and `template` the template (absolute), which the checks of a parent template read.
- */
-export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]> {
+/** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
+export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
   /** What contractsAt and childrenAt have worked out for each package. */
   readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren }>();
-  /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the index the contracts were read from finds it. */
+  /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
   readonly packageOf: (dir: string) => string;
   /** The folder the paths in messages are relative to. */
   readonly cwd: string;
@@ -281,9 +270,9 @@ export class Contracts extends Map<string, { pkg: string; contract: Contract | n
   }
 }
 
-/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; kept with the index. */
-function packageOf(ws: Workspace, index: ComponentIndex, dir: string): string {
-  return ws.derived(index, `package\0${dir}`, () => (ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, index, dirname(dir))));
+/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none. */
+function packageOf(ws: Workspace, dir: string): string {
+  return ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, dirname(dir));
 }
 
 /**
@@ -291,7 +280,7 @@ function packageOf(ws: Workspace, index: ComponentIndex, dir: string): string {
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
-  const pkgOf = (dir: string) => packageOf(ws, index, dir);
+  const pkgOf = (dir: string) => packageOf(ws, dir);
   const out = new Contracts(pkgOf, cwd);
   for (const def of index.defines) {
     const c = def.component;
@@ -314,8 +303,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
         },
       };
     }
-    const files = [resolve(def.file), ...(def.class ? [def.class.file] : []), ...(template ? [template] : [])];
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}` }]);
   }
   return out;
 }
@@ -547,32 +535,9 @@ export interface LintProject {
   cwd: string;
 }
 
-/** The project of the TypeScript files under `dirs`; its index is the workspace's (see Workspace.index for `maxAge`), and its contracts are kept with the index. */
-export function lintProject(ws: Workspace, dirs: readonly string[], cwd = process.cwd(), maxAge = 0, index = ws.index(dirs, maxAge)): LintProject {
-  return { ws, index, contracts: ws.derived(index, `contracts\0${cwd}`, () => contractsFor([...dirs], cwd, ws, index)), cwd };
-}
-
-/**
- * What the index says about the things a template's findings were computed from: the classes and modules that use the template, and the definitions of the tags in `tags` that were looked up,
- * with the revision of each TypeScript file as the index read it. The files that were read, the template and the templates of the components in it, are compared by Workspace.result.
- */
-function indexSig(p: LintProject, file: string, tags: readonly string[]): string {
-  const at = (f: string) => `${f}@${p.index.revs?.get(f) ?? ""}`;
-  const owners = (p.index.byTemplate.get(file) ?? []).map((o) => `${at(o.file)}:${o.line}`);
-  const importers = (p.index.importers.get(file) ?? []).map((i) => `<${at(i.file)}`);
-  const defs = tags.map((tag) => `${tag}=${(p.contracts.get(tag) ?? []).map((d) => `${d.at}:${d.pkg}:${d.template ?? ""}:${d.files.map(at).join(",")}`).join(";")}`);
-  return [p.cwd, ...owners, ...importers, ...defs].join("\n");
-}
-
-const keyOf = (groups: readonly Group[], file: string) => `${groups.join(",")}\0${file}`;
-
-/** Whether a TypeScript file that the last findings of `html` were computed from through the index (a class that uses it, the definition of a tag in it) changed since the index read it. */
-export function indexBehind(p: LintProject, html: string, groups: readonly Group[]): boolean {
-  const file = resolve(html);
-  const uses = p.ws.uses(keyOf(groups, file));
-  if (!uses) return false;
-  const files = [...(p.index.byTemplate.get(file) ?? []).map((o) => o.file), ...(p.index.importers.get(file) ?? []).map((i) => i.file), ...uses.flatMap((tag) => (p.contracts.get(tag) ?? []).flatMap((d) => d.files))];
-  return files.some((f) => p.index.revs?.has(f) && p.ws.rev(f) !== p.index.revs.get(f));
+/** The project of the TypeScript files under `dirs`, as the run of `ws` reads it. */
+export function lintProject(ws: Workspace, dirs: readonly string[], cwd = process.cwd(), index = ws.index(dirs)): LintProject {
+  return { ws, index, contracts: contractsFor([...dirs], cwd, ws, index), cwd };
 }
 
 /** A view of `map` that adds each key it is asked about to `uses`. */
@@ -595,23 +560,37 @@ function recording<V>(map: ReadonlyMap<string, V>, uses: Set<string>): ReadonlyM
   };
 }
 
-/** The findings of one template for `groups`, computed again only when something it was computed from changed (`computed` says whether it was). */
-export function lintTemplate(p: LintProject, html: string, groups: readonly Group[]): { value: TemplateFindings; computed: boolean } {
+const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknown) => (v instanceof Map || v instanceof Set ? [...v] : v));
+
+/**
+ * The findings of one template for `groups`. They depend only on the template's text, the code of the classes and modules that use it, and the definitions of the tags they look up,
+ * so they are kept in the workspace's memo by all of these: by the text of the first two, and by what the definitions of the tags that were looked up hold, compared again on each look.
+ * `parse` is how the template is analyzed when the memo does not have its findings.
+ */
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
   const file = resolve(html);
-  return p.ws.result(keyOf(groups, file), file, (tags) => indexSig(p, file, tags), (tags) => {
-    const text = p.ws.text(file) ?? "";
-    const analysis = analyze(text);
-    const here = recording(contractsAt(p.contracts, file), tags);
-    const uses = new Map<string, { tag: string; line: number; col: number }>();
-    for (const u of analysis.customUses) if (!uses.has(u.tag)) uses.set(u.tag, { tag: u.tag, line: u.line, col: u.col });
-    return {
-      diagnostics: analysis.diagnostics,
-      usage: groups.includes("unused-markup") ? templateUsage(file, text, analysis, p.index, p.ws) : [],
-      flow: groups.includes("data-flow") ? dataFlow(text, p.index.byTemplate.get(file) ?? [], here, analysis) : [],
-      a11y: groups.includes("a11y") ? checkA11y(text, [], recording(childrenAt(p.contracts, file), tags), analysis.root) : [],
-      uses: [...uses.values()],
-    };
-  });
+  const text = p.ws.text(file) ?? "";
+  const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
+  const importers = (p.index.importers.get(file) ?? []).map((i) => p.ws.text(i.file) ?? "");
+  const contracts = contractsAt(p.contracts, file);
+  const children = childrenAt(p.contracts, file);
+  const definitions = (tags: readonly string[]) => contents(tags.map((tag) => [tag, contracts.get(tag), children.get(tag)]));
+  const key = contents([groups, text, classes, importers]);
+  const kept = p.ws.memo.get("findings", key) as { tags: string[]; definitions: string; value: TemplateFindings } | undefined;
+  if (kept && definitions(kept.tags) === kept.definitions) return kept.value;
+  const tags = new Set<string>();
+  const analysis = parse(text);
+  const uses = new Map<string, { tag: string; line: number; col: number }>();
+  for (const u of analysis.customUses) if (!uses.has(u.tag)) uses.set(u.tag, { tag: u.tag, line: u.line, col: u.col });
+  const value: TemplateFindings = {
+    diagnostics: analysis.diagnostics,
+    usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
+    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis) : [],
+    a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
+    uses: [...uses.values()],
+  };
+  p.ws.memo.set("findings", key, { tags: [...tags], definitions: definitions([...tags]), value });
+  return value;
 }
 
 /** `unchecked-custom-elements`: the tags the templates use that `contracts` has no contract of, reported once at the first use. */
@@ -646,7 +625,7 @@ export interface LintOptions {
   a11y?: boolean;
   /** The folder issue paths are relative to. Default: the working directory. */
   cwd?: string;
-  /** The files, kept between runs. Default: an empty workspace. */
+  /** The files of this run. Default: a new workspace. */
   ws?: Workspace;
   /** The groups to run instead of those `a11y` selects. */
   groups?: readonly Group[];
@@ -656,11 +635,11 @@ export interface LintOptions {
 
 /**
  * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
- * Each template is parsed once for all of them; with a workspace that has run before, only the templates whose files changed are.
+ * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
 export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
   const index = given.index ?? ws.index(dirs);
-  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, 0, index);
+  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, index);
   const usage: LintIssue[] = [];
   const flow: LintIssue[] = [];
   const checks: LintIssue[] = [];
@@ -669,7 +648,7 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
   for (const dir of dirs) {
     for (const html of listHtml(dir, ws)) {
       const file = relative(cwd, html);
-      const r = lintTemplate(p, html, groups).value;
+      const r = lintTemplate(p, html, groups);
       templates.push({ dir, file: html, diagnostics: r.diagnostics });
       if (r.usage === null) usage.push(noImporter(file, html));
       else for (const d of r.usage) usage.push({ file, ...d });

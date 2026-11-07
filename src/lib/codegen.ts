@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, watch, wri
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
-import { scanDefines, TAGS_FILE, Workspace } from "./components.ts";
+import { Memo, scanDefines, TAGS_FILE, Workspace } from "./components.ts";
 import type { DefineDef } from "./components.ts";
 import { HOLE_ANY, holeName, IDENT } from "./holes.ts";
 import { RESERVED_NAMES } from "./reserved.ts";
@@ -743,8 +743,9 @@ export function generateDirs(dirs: readonly string[], options: GenerateOptions =
   return written;
 }
 
-/** Watch .html (and define() calls in .ts) under the directories and regenerate; returns a stop function. Errors go to onError and never stop the watcher. */
-export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: (file: string) => void; onError?: (message: string) => void } = {}, ws = new Workspace()): () => void {
+/** Watch .html (and define() calls in .ts) under the directories and regenerate, each time reading the files again; returns a stop function. Errors go to onError and never stop the watcher. */
+export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: (file: string) => void; onError?: (message: string) => void } = {}): () => void {
+  const memo = new Memo();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const watchers = dirs.map((dir) =>
     watch(dir, { recursive: true }, (_event, name) => {
@@ -753,7 +754,7 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         clearTimeout(timers.get("tags"));
         timers.set("tags", setTimeout(() => {
           try {
-            for (const f of generateDirs(dirs, opts, ws)) opts.onGenerate?.(f);
+            for (const f of generateDirs(dirs, opts, new Workspace(memo))) opts.onGenerate?.(f);
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;
@@ -768,6 +769,7 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         file,
         setTimeout(() => {
           try {
+            const ws = new Workspace(memo);
             const html = ws.text(resolve(file));
             if (html === null || !isSelected(dir, file, opts) || isFullPage(html)) return;
             opts.onGenerate?.(generateFile(file, opts, scanDefines(dirs, ws), dir, ws));

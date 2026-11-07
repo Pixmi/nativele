@@ -221,199 +221,75 @@ export interface Sources {
   facts?(file: string): ModuleFacts | undefined;
 }
 
-interface FileEntry {
-  text: string;
-  /** Changes with the content, so a result can tell whether a file it read is still the same. */
-  rev: number;
-  facts?: ModuleFacts;
-  /** The size, times and inode of the file as it was read; none for an overlay. */
-  stamp?: string;
-  /** The file had not changed for longer than TIMESTAMP_GRANULARITY when it was read, so a later rewrite changes `stamp`. */
-  settled?: boolean;
-}
-
-// FAT keeps modification times in 2 s steps, and a rewrite within one step keeps the size and the times.
-const TIMESTAMP_GRANULARITY = 2000;
-
-function readText(file: string): string | undefined {
+function readText(file: string): string | null {
   try {
     return readFileSync(file, "utf8");
   } catch {
-    return undefined;
+    return null;
   }
 }
-
-function statOf(file: string) {
-  try {
-    return statSync(file, { throwIfNoEntry: false });
-  } catch {
-    return undefined;
-  }
-}
-
-/** The revision of each file something was computed from as it read it, 0 for a file that did not exist. */
-type Deps = Map<string, number>;
 
 /**
- * The source files that runs read, and what is derived from them. A look at a file reads it again unless it has the size, times and inode it had when it was read
- * and had not changed for longer than the timestamp granularity then (git's racy timestamp check), since a rewrite of the same size soon after a read can keep the times;
- * its revision changes only when its content does. A computation that looks at a file again is given the content it read first.
- * A derived result (see `result`) and an index record the revision of each file they read, also of one that did not exist, and are computed again when one of them changes.
- * It keeps texts, module facts and results such as diagnostics, never parse trees, and forgets a file that no longer exists.
- * A command line run starts with an empty one; the Vite and oxlint plugins keep theirs while they run.
+ * Values that depend only on the content they are computed from, such as the module facts of a text, kept between the runs of a host.
+ * A value is found by that content, so it never goes stale; the values the last run did not use are dropped when a run starts.
+ */
+export class Memo {
+  #now = new Map<string, Map<string, unknown>>();
+  #last = new Map<string, Map<string, unknown>>();
+  next(): void {
+    this.#last = this.#now;
+    this.#now = new Map();
+  }
+  /** The value of the function `kind` for `key`, the content it is computed from. */
+  get(kind: string, key: string): unknown {
+    const now = this.#now.get(kind);
+    if (now?.has(key)) return now.get(key);
+    const value = this.#last.get(kind)?.get(key);
+    if (value !== undefined) this.set(kind, key, value);
+    return value;
+  }
+  set<T>(kind: string, key: string, value: T): T {
+    let now = this.#now.get(kind);
+    if (!now) this.#now.set(kind, (now = new Map()));
+    now.set(key, value);
+    return value;
+  }
+}
+
+/**
+ * The files of one run: each is read from disk the first time the run asks for it, so every computation in the run sees the same content.
+ * Nothing but `memo` outlives the run: a host that runs again (the Vite and oxlint plugins, ts-dom gen --watch) starts each run with a new Workspace on the same memo.
  */
 export class Workspace implements Sources {
-  readonly #files = new Map<string, FileEntry>();
-  readonly #overlay = new Map<string, string>();
-  readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: Deps; value: unknown }>();
-  #reading: Deps | null = null;
-  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean; derived: Map<string, { value: unknown; deps: Deps }> }>();
-  #rev = 0;
+  readonly memo: Memo;
+  readonly #files: Map<string, string | null>;
+  readonly #indexes = new Map<string, ComponentIndex>();
 
-  #entry(file: string): FileEntry | undefined {
-    const known = this.#files.get(file);
-    if (this.#reading?.has(file)) return known;
-    let text = this.#overlay.get(file);
-    let stamp: string | undefined;
-    let settled = false;
-    if (text === undefined) {
-      const readAt = Date.now();
-      const st = statOf(file);
-      if (st?.isFile()) {
-        stamp = `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
-        if (known?.settled && known.stamp === stamp) return known;
-        text = readText(file);
-        settled = readAt - Math.max(st.mtimeMs, st.ctimeMs) > TIMESTAMP_GRANULARITY;
-      }
-    }
-    if (known?.text === text) {
-      if (known && stamp !== undefined) Object.assign(known, { stamp, settled });
-      return known;
-    }
-    for (const i of this.#indexes.values()) if (i.deps.has(file)) i.stale = true;
-    if (text === undefined) {
-      this.#files.delete(file);
-      return undefined;
-    }
-    const entry: FileEntry = { text, rev: ++this.#rev, stamp, settled };
-    this.#files.set(file, entry);
-    return entry;
-  }
-
-  #read(file: string): FileEntry | undefined {
-    const e = this.#entry(file);
-    if (this.#reading && !this.#reading.has(file)) this.#reading.set(file, e?.rev ?? 0);
-    return e;
-  }
-  /** Add `deps` to what the result being computed read. */
-  #reuse(deps: Deps): void {
-    if (this.#reading) for (const [f, rev] of deps) if (!this.#reading.has(f)) this.#reading.set(f, rev);
-  }
-  #current(deps: Deps): boolean {
-    for (const [f, rev] of deps) if (this.rev(f) !== rev) return false;
-    return true;
-  }
-  #recording<T>(compute: () => T): { value: T; deps: Deps } {
-    const outer = this.#reading;
-    const deps: Deps = (this.#reading = new Map());
-    try {
-      return { value: compute(), deps };
-    } finally {
-      this.#reading = outer;
-      this.#reuse(deps);
-    }
+  constructor(memo = new Memo(), files?: ReadonlyMap<string, string | null>) {
+    this.memo = memo;
+    this.#files = new Map(files);
+    if (!files) memo.next();
   }
 
   text(file: string): string | null {
-    return this.#read(file)?.text ?? null;
+    if (!this.#files.has(file)) this.#files.set(file, readText(file));
+    return this.#files.get(file) ?? null;
   }
   facts(file: string): ModuleFacts | undefined {
-    const e = this.#read(file);
-    return e && (e.facts ??= moduleFacts(e.text));
+    const text = this.text(file);
+    if (text === null) return undefined;
+    return (this.memo.get("facts", text) as ModuleFacts | undefined) ?? this.memo.set("facts", text, moduleFacts(text));
   }
-  /** A number that changes when the file's content does; 0 when it does not exist. */
-  rev(file: string): number {
-    return this.#entry(file)?.rev ?? 0;
+  /** This run with `file` read as `text` (an editor's unsaved buffer). */
+  with(file: string, text: string): Workspace {
+    return this.text(file) === text ? this : new Workspace(this.memo, new Map(this.#files).set(file, text));
   }
-  /** Read `file` as `text` instead of from disk (an editor's unsaved buffer), or from disk again with undefined. */
-  overlay(file: string, text: string | undefined): void {
-    if (text === undefined) this.#overlay.delete(file);
-    else this.#overlay.set(file, text);
-  }
-
-  /**
-   * The index of the TypeScript files under `dirs`. It is built again when the listing or a file it read changed;
-   * within `maxAge` milliseconds of the last look, the folders are not listed again unless a change to a file it read was seen.
-   */
-  index(dirs: readonly string[], maxAge = 0): ComponentIndex {
+  /** The index of the TypeScript files under `dirs`. */
+  index(dirs: readonly string[]): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
-    const last = this.#indexes.get(key);
-    if (last && !last.stale && Date.now() - last.at < maxAge) {
-      this.#reuse(last.deps);
-      return last.index;
-    }
-    const files = dirs.flatMap(listTs);
-    const listing = files.join("\0");
-    if (last && last.listing === listing && this.#current(last.deps)) {
-      last.at = Date.now();
-      last.stale = false;
-      this.#reuse(last.deps);
-      return last.index;
-    }
-    for (const f of this.#files.keys()) this.#entry(f);
-    for (const [k, r] of this.#results) if (!this.#files.has(r.file)) this.#results.delete(k);
-    const { value: index, deps } = this.#recording(() => componentIndex(files, this));
-    index.revs = deps;
-    this.#indexes.set(key, { listing, at: Date.now(), index, deps, stale: false, derived: new Map() });
+    let index = this.#indexes.get(key);
+    if (!index) this.#indexes.set(key, (index = componentIndex(dirs.flatMap(listTs), this)));
     return index;
-  }
-
-  /**
-   * `compute()`, kept with `index` for `key`: the files it reads, also one that does not exist, become files the index read, so the index and what is kept with it are built again when one changes.
-   * Not kept for an index this workspace did not build.
-   */
-  derived<T>(index: ComponentIndex, key: string, compute: () => T): T {
-    const entry = [...this.#indexes.values()].find((i) => i.index === index);
-    if (!entry) return compute();
-    const kept = entry.derived.get(key);
-    if (kept) {
-      this.#reuse(kept.deps);
-      return kept.value as T;
-    }
-    const { value, deps } = this.#recording(compute);
-    for (const [f, rev] of deps) if (!entry.deps.has(f)) entry.deps.set(f, rev);
-    entry.derived.set(key, { value, deps });
-    return value;
-  }
-
-  /**
-   * `compute(uses)`, or what it returned last time for `key` while none of the files it read changed and `sigOf` gives the same for what it added to `uses`
-   * (the names it looked up in something other than a file, such as the definitions of tags in the index). `file` is the file the result is about: the result is forgotten with it.
-   */
-  result<T>(key: string, file: string, sigOf: (uses: readonly string[]) => string, compute: (uses: Set<string>) => T): { value: T; computed: boolean } {
-    const last = this.#results.get(key);
-    if (last && this.#current(last.deps) && sigOf(last.uses) === last.sig) {
-      this.#reuse(last.deps);
-      return { value: last.value as T, computed: false };
-    }
-    const uses = new Set<string>();
-    const { value, deps } = this.#recording(() => compute(uses));
-    this.#results.set(key, { file, sig: sigOf([...uses]), uses: [...uses], deps, value });
-    return { value, computed: true };
-  }
-
-  /** What the last result for `key` added to `uses`. */
-  uses(key: string): readonly string[] | undefined {
-    return this.#results.get(key)?.uses;
-  }
-
-  /** The files of the results that read `file`. */
-  dependents(file: string): string[] {
-    return [...new Set([...this.#results.values()].filter((r) => r.deps.has(file)).map((r) => r.file))];
-  }
-
-  get size(): { files: number; results: number; values: unknown[] } {
-    return { files: this.#files.size, results: this.#results.size, values: [...this.#results.values()].map((r) => r.value) };
   }
 }
 
@@ -463,8 +339,6 @@ export interface ComponentIndex {
   modules: Map<string, ModuleFacts>;
   /** What the name `id` in `file` refers to: a class declaration or a template. */
   resolve(file: string, id: string): Target | undefined;
-  /** For an index a Workspace built: the revision of each file as the index read it, 0 for one that did not exist. */
-  revs?: ReadonlyMap<string, number>;
 }
 
 type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string } | { kind: "namespace"; file: string };
@@ -566,7 +440,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   }
   const byTag = new Map<string, DefineSite[]>();
   for (const d of defines) {
-    const c = d.class && components.find((r) => r.file === d.class?.file && r.name === d.class?.name);
+    const c = d.class && byFile.get(d.class.file)?.find((r) => r.name === d.class?.name);
     if (c) {
       d.component = c;
       c.defines.push(d);

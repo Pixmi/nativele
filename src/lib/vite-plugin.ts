@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
-import { defineDefs, Workspace } from "./components.ts";
+import { defineDefs, Memo, Workspace } from "./components.ts";
 import { lintProject, lintTemplate } from "./lint.ts";
 
 export interface TsDomPluginOptions {
@@ -46,7 +46,9 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
   // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
   const shown = new Map<string, string>();
-  const ws = new Workspace();
+  // Each hook is one run: it starts a workspace, which reads the files again, on the memo the plugin keeps.
+  const memo = new Memo();
+  let ws = new Workspace(memo);
   const existing = () => dirs.filter((d) => existsSync(d));
   const defs = () => defineDefs(ws.index(existing()));
   // The files with a define() call or the class it registers, as of the last generation: a change to one of them, also one that removes the define(), regenerates the tag maps.
@@ -57,22 +59,19 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
   const templates = () => existing().flatMap((d) => listHtml(d, ws).filter((f) => isSelected(d, f, generate)).map((f) => resolve(f)));
 
-  const warnA11y = (warn: (m: string) => void, files: Iterable<string>, changed?: string) => {
+  // The a11y warnings last printed for each template.
+  const printed = new Map<string, string>();
+  /** Print the a11y warnings of every template, or, after a save, those of the saved file and those that changed. */
+  const warnA11y = (warn: (m: string) => void, saved?: string) => {
     if (!a11y) return;
     const p = lintProject(ws, existing(), process.cwd());
-    for (const f of files) {
-      const r = lintTemplate(p, f, ["a11y"]);
-      if (changed !== undefined && !r.computed && f !== changed) continue;
-      for (const diag of r.value.a11y) if (!a11y.ignore?.includes(diag.rule)) warn(formatDiagnostics(f, [diag]));
+    for (const f of templates()) {
+      const lines = lintTemplate(p, f, ["a11y"]).a11y.filter((d) => !a11y.ignore?.includes(d.rule)).map((d) => formatDiagnostics(f, [d]));
+      if (saved === undefined || f === saved || printed.get(f) !== lines.join("\n")) for (const line of lines) warn(line);
+      printed.set(f, lines.join("\n"));
     }
   };
-  /** Check a saved file's template again, and the templates whose findings were computed from it; after a TypeScript change, also those whose child definitions changed. */
-  const recheck = (file: string, logger: Logger) => {
-    if (!a11y) return;
-    const all = new Set(templates());
-    const files = new Set([...(file.endsWith(".html") ? [file] : []), ...ws.dependents(file), ...(isSourceTs(file) ? all : [])]);
-    warnA11y((m) => logger.warn(m), [...files].filter((f) => all.has(f)), file);
-  };
+  const recheck = (file: string, logger: Logger) => warnA11y((m) => logger.warn(m), file);
 
   /** Regenerate one template. Returns whether its generated module changed. */
   const regenerate = (file: string, logger: Logger): boolean => {
@@ -131,6 +130,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       dirs = (opts.dirs ?? ["src"]).map((d) => resolve(config.root, d));
     },
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
+      ws = new Workspace(memo);
       for (const d of dirs) {
         if (!existsSync(d)) this.warn(`${relative(process.cwd(), d) || "."}:1:1 warning [dir-not-found] The folder ${d} given in tsDom({ dirs }) does not exist, so no templates in it are generated. Fix: dirs are resolved against Vite's root (${root}), not the working directory; give the folder relative to that root, or an absolute path.`);
       }
@@ -141,12 +141,13 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         throw e;
       }
       noteDefines();
-      warnA11y((m) => this.warn(m), templates());
+      warnA11y((m) => this.warn(m));
     },
     configureServer(server: { watcher: { add(p: string | string[]): void; on(ev: string, fn: (f: string) => void): void }; config: { logger: Logger } }) {
       const logger = server.config.logger;
       server.watcher.add(dirs);
       server.watcher.on("add", (f) => {
+        ws = new Workspace(memo);
         const file = resolve(f);
         if (file.endsWith(".html")) regenerate(file, logger);
         else if (dirOf(file) && isSourceTs(file)) {
@@ -155,6 +156,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         }
       });
       server.watcher.on("unlink", (f) => {
+        ws = new Workspace(memo);
         const file = resolve(f);
         if (file.endsWith(".html")) removeGenerated(file);
         else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
@@ -163,6 +165,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     },
     // A template is not a page, so Vite's own reload for a changed .html is ignored by the browser: regenerate it and reload once. A generated module that something else rewrote (ts-dom gen --watch, a checkout) goes through Vite's normal update.
     handleHotUpdate(ctx: { file: string; server: HotServer }) {
+      ws = new Workspace(memo);
       const file = resolve(ctx.file);
       const logger = ctx.server.config.logger;
       if (file.endsWith(".html.ts")) {
