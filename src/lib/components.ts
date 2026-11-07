@@ -5,19 +5,18 @@ export const TAGS_FILE = "ts-dom-tags.ts";
 
 export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
 
-/** A folder or link that vanishes between listing its parent and reading it (a host that outlives the edit) counts as empty or as a file. */
+/** A folder that vanishes between listing its parent and reading it (a host that outlives the edit) counts as empty, and a link to nothing as absent. */
 function readEntries(dir: string): { name: string; folder: boolean }[] {
-  const isFolder = (e: Dirent) => {
-    if (e.isDirectory()) return true;
-    if (!e.isSymbolicLink()) return false;
+  const entry = (e: Dirent): { name: string; folder: boolean }[] => {
+    if (!e.isSymbolicLink()) return [{ name: e.name, folder: e.isDirectory() }];
     try {
-      return statSync(join(dir, e.name)).isDirectory();
+      return [{ name: e.name, folder: statSync(join(dir, e.name)).isDirectory() }];
     } catch {
-      return false;
+      return [];
     }
   };
   try {
-    return readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: isFolder(e) }));
+    return readdirSync(dir, { withFileTypes: true }).flatMap(entry);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return [];
@@ -36,7 +35,7 @@ export function listTs(dir: string, ws = new Workspace()): string[] {
 }
 
 /** The offset just past the string literal, template literal or comment that starts at `i` (the end of `code` when it is not closed), or `i` when none starts there. */
-function skipNonCode(code: string, i: number): number {
+export function skipNonCode(code: string, i: number): number {
   const c = code[i];
   if (c === '"' || c === "'" || c === "`") {
     let j = i + 1;
@@ -143,11 +142,9 @@ export function literalKeys(code: string, open: number): { name: string; at: num
   return out;
 }
 
-/** A relative path to an `.html` file, with or without `.js`: doctor reports the form without it, which only another template system's bundler plugin resolves. */
-const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
-/** How a module imports a Nativele template: the `./x.html.js` form that codegen types; `./x.html` belongs to another template system. */
-export const TEMPLATE_SPEC = /^(\.{1,2}\/[^"']+\.html)\.js$/;
-const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_PATH}["']`, "g");
+const TEMPLATE_HTML = String.raw`(\.{1,2}\/[^"']+\.html)`;
+export const TEMPLATE_SPEC = new RegExp(String.raw`^${TEMPLATE_HTML}\.js$`);
+const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_HTML}(\.js)?["']`, "g");
 
 export interface TemplateImport {
   /** The local name of the default import, when the template is imported as one. */
@@ -524,6 +521,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const target = (from: string, spec: string): string | undefined => {
     if (!spec.startsWith(".")) return undefined;
     const base = resolve(dirname(from), spec);
+    if (base.endsWith(".html")) return undefined;
     const html = /^(.*\.html)\.js$/.exec(base)?.[1];
     if (html) return html;
     const stem = base.replace(/\.(?:m?js|jsx)$/, "");
