@@ -445,6 +445,21 @@ describe("the runs of a host", () => {
 });
 
 describe("the memo a host keeps between runs", () => {
+  it("keeps the declarations of every component of a file, however many it defines", () => {
+    const body = ["A", "B", "C"].map((n) => `export class ${n} extends Component(tpl, { props: { ${n.toLowerCase()}: Number } }) {}\ndefine("x-${n.toLowerCase()}", ${n});\n`).join("");
+    const dir = project({ "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`, "src/m.html": `<p></p>\n` });
+    const src = join(dir, "src");
+    const memo = new Memo();
+    const parsed = () => {
+      const spy = vi.spyOn(memo, "set");
+      lintRun([src], { ws: new Workspace(memo), cwd: dir });
+      const n = spy.mock.calls.filter((c) => String(c[1]).startsWith("declared")).length;
+      spy.mockRestore();
+      return n;
+    };
+    expect(parsed()).toBe(3);
+    expect(parsed()).toBe(0);
+  });
   it("keeps two values of each kind for a file, the content on disk and an unsaved buffer, used while the file has the content they were computed from", () => {
     const memo = new Memo();
     memo.set("/p/a.ts", "k", ["a"], 1);

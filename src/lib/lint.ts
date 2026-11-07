@@ -304,7 +304,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
       const own = template ? { get file() { return relative(cwd, template); }, get html() { return ws.text(template) ?? ""; } } : undefined;
       const unfollowed: Unread = { cause: "template-unfollowed", get at() { return `${relative(cwd, c.file)}:${c.line}`; } };
       contract = {
-        ...((ws.memo.get(c.file, "declared", [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, "declared", [c.call], declared(c.call))),
+        ...((ws.memo.get(c.file, `declared:${c.line}:${c.col}`, [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, `declared:${c.line}:${c.col}`, [c.call], declared(c.call))),
         get template() {
           return template && ws.text(template) !== null ? own : undefined;
         },
@@ -501,12 +501,18 @@ export function dataFlow(
         );
       }
     }
+    const methods = new Map<string, { fn: string | null; emitted: Set<string | undefined> }>();
     for (const site of a.eventSites) {
       if (!site.tag.includes("-")) continue;
-      const fn = methodBody(body, site.method);
+      let known = methods.get(site.method);
+      if (!known) {
+        const fn = methodBody(body, site.method);
+        methods.set(site.method, (known = { fn, emitted: new Set(fn ? [...fn.matchAll(EMIT_NAME)].map((m) => m[1]) : []) }));
+      }
+      const fn = known.fn;
       if (!fn) continue;
       const inner = fn.slice(1, -1).trim();
-      const forwardsSame = [...fn.matchAll(EMIT_NAME)].some((m) => m[1] === site.event);
+      const forwardsSame = known.emitted.has(site.event);
       const pureRelay = /^this\.emit\([\s\S]*\);?$/.test(inner) && (inner.match(/this\.emit\(/g) ?? []).length === 1 && inner.split(";").filter((x) => x.trim()).length === 1;
       if (forwardsSame || pureRelay) {
         report(
