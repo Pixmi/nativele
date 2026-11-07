@@ -35,7 +35,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 with Node 24 and Google Chrome 148, starting from `create-vite` 9.3.4 with the `vanilla-ts` template, with the example project in the Nativele repository (`skills/nativele-testing/example`). Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-06 with Node 24 and Google Chrome 148, starting from `create-vite` 9.3.4 with the `vanilla-ts` template. Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 

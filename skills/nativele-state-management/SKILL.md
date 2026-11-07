@@ -33,7 +33,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`). With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
+Verified on 2026-11-06 in Google Chrome 148. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
 
 ## Set-up
 
@@ -294,7 +294,7 @@ for (const name of ["set", "render"]) {
 }
 ```
 
-Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-state-management/example/verify.mjs) of the trial's example project, which does them with Playwright for Zustand, Redux, nanostores and `createStore`, plus the `bind` contract itself (an immediate call, no call for an `Object.is`-equal set, nothing after removal), the nanostores double call, selectors that return a new object or a kept slice, and no console errors.
+Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each.
 
 ## Troubleshooting
 

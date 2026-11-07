@@ -31,7 +31,7 @@ Web Awesome components are custom elements built with Lit, each with its own sha
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-07 in Google Chrome 157, in the dev server and the production build, in fresh projects made with `create-vite` and `nativele-vite`, and with the example project in the Nativele repository (`skills/nativele-web-awesome/example`). The example is a reference; it is not run in CI. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, in the dev server and the production build, in fresh projects made with `create-vite` and `nativele-vite`. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
 
 ## Set-up
 
@@ -238,7 +238,7 @@ In the browser, against the dev server and the build (`vite preview`):
 - a forwarded slot reaches the Web Awesome slot: `select.shadowRoot.querySelector("slot[name=hint]").assignedElements({ flatten: true })`;
 - no console errors, and in the build no warnings.
 
-A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-web-awesome/example/verify.mjs) of the example project, which does them with Playwright in the dev server and the build.
+
 
 ## Troubleshooting
 

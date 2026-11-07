@@ -24,7 +24,7 @@ src/lib/
   doctor.ts         ts-dom doctor
   skills.ts         ts-dom skills: listing, stale checks, copying
 src/cli.ts          the ts-dom command
-skills/             Skills shipped with the package; an example/ is a reference project from the Skill's agent trial
+skills/             Skills shipped with the package, one SKILL.md each
 examples/           user-card, todo, signup, readme and recipes examples, demo entry
 test/               unit tests (happy-dom)
 browser/            real Chrome tests and fixtures

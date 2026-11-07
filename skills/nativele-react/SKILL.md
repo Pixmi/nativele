@@ -31,7 +31,7 @@ Nativele components are native custom elements. React renders them like any othe
 | @vitejs/plugin-react | 6.2.1 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-react/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of React, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of React, treat every step as unverified.
 
 ## Set-up
 
@@ -189,7 +189,7 @@ npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and
 
 Pass `tsc` the tsconfig from step 3: the template's root `tsconfig.json` only lists `references`, so `tsc --noEmit` without `-p` checks nothing (`nativele-typescript`).
 
-In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-react/example/verify.mjs) of the trial's example project, which does them with Playwright, plus children that React reorders, adds and removes inside a `shadow: true` component and inside stable wrappers in a Light DOM component. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
+In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
 
 ## Troubleshooting
 
