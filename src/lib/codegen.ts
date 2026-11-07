@@ -490,7 +490,6 @@ ${needsEl ? `import type { El } from ${q(runtime)};\n` : ""}export default templ
 `;
 }
 
-/** x.html → x.html.ts */
 export function modulePathFor(htmlPath: string): string {
   return `${htmlPath}.ts`;
 }
@@ -500,7 +499,6 @@ export function isFullPage(html: string): boolean {
   return /^\s*(<!--[\s\S]*?-->\s*)*<(!doctype|html)\b/i.test(html);
 }
 
-/** `file:line:col severity [rule] message` — one line per diagnostic. */
 export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
   return ds.map((d) => `${file}:${d.line}:${d.col} ${d.severity} [${d.rule}] ${d.message}`).join("\n");
 }

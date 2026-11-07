@@ -236,7 +236,6 @@ export function Component(
   for (const k of Object.keys(opts.emits ?? {})) {
     if (`on${k}` in HTMLElement.prototype) throw new Error(`[native-event-name] emits.${k} has the same name as a native DOM event. Fix: rename the event (for example with a prefix such as "field-${k}").`);
   }
-  // Only props whose default is a string / number / boolean can be set from HTML attributes
   const attrProps = new Map<string, { key: string; kind: "string" | "number" | "boolean" }>();
   for (const k of propKeys) {
     const t = typeof propDefaults[k];
@@ -244,10 +243,8 @@ export function Component(
   }
   const content = tpl.build();
 
-  // Light mode: extract the template's top-level <style> elements and inject them once per document, not once per instance
   const injectStyles = createInjector(shadow ? [] : extractSheets(content));
 
-  // Scan once at definition time: which data-on-* events and methods the template (list items included) uses
   const eventTypes = new Set<string>();
   const methodNames = new Set<string>();
   (function scan(root: ParentNode) {
@@ -275,7 +272,6 @@ export function Component(
     #built = false;
     #started = false;
 
-    // state
     #state: Record<string, unknown> = { ...(opts.state as Record<string, unknown> | undefined) };
     #props: Record<string, unknown> = { ...propDefaults };
     #derived: Record<string, unknown> = {};
@@ -380,7 +376,6 @@ export function Component(
       }
     }
 
-    // ---- state ----
     get state(): Record<string, unknown> {
       return this.#state;
     }
@@ -406,7 +401,7 @@ export function Component(
         if (next === this.#state) next = { ...next };
         next[k] = p[k];
       }
-      if (next === this.#state) return; // nothing changed: no update and no render() call
+      if (next === this.#state) return;
       this.#dirtyFrom ??= this.#merged();
       this.#state = next;
       this.#flushIfIdle();
@@ -492,7 +487,6 @@ export function Component(
       this.render({ ...to, ...derived }, new Set(keys));
     }
 
-    // ---- everything else ----
     show(name: string, on: boolean): void {
       this.#show(name, on);
     }
@@ -533,7 +527,6 @@ export function Component(
           }
         }
         if (hasState) {
-          // First render: write all the current data into the view
           this.#ready = true;
           this.#dirtyFrom = null;
           this.#rendering = true;

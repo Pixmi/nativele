@@ -124,7 +124,6 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   return out;
 }
 
-/** Check every HTML template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const ws = new Workspace();
   return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
@@ -383,7 +382,6 @@ export function dataFlow(
     );
   }
 
-  // Child components used by the template: check attributes and events against their declared contract.
   for (const use of a.customUses) {
     const contract = contracts.get(use.tag);
     if (!contract) continue;
@@ -421,7 +419,6 @@ export function dataFlow(
     }
   }
 
-  // Custom element refs: ref name -> tag
   const customRefs = new Map<string, string>();
   for (const refs of [a.scope.refs, ...[...a.lists.values()].map((l) => l.refs)]) {
     for (const [name, type] of refs) {
@@ -497,7 +494,6 @@ export function dataFlow(
   return out;
 }
 
-/** Run the data-flow checks on every template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
   const ws = new Workspace();
   return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
@@ -676,10 +672,8 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
   return { issues: [...usage, ...flow, ...checks], templates };
 }
 
-/** The issues of lintRun. */
 export const runLint = (dirs: string[], options?: LintOptions): LintIssue[] => lintRun(dirs, options).issues;
 
-/** `file:line:col severity [rule] message` for a lint issue. */
 export function formatIssue(i: LintIssue): string {
   return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
 }

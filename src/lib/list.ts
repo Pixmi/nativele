@@ -11,7 +11,6 @@ export interface ListSchema {
    * and where codegen found the component: defined and exported in a scanned directory, defined there without export, or not found (a component from elsewhere).
    */
   item?: { tag: string; prop: string; key: string; source?: "local" | "unexported" | "external" };
-  /** The type of the item's root element: the item component for a list with `data-key` and `data-prop`. */
   // Not constrained to Element: checking it would need the class of a component whose template lists itself before that class is complete.
   rootElement?: unknown;
 }

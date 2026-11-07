@@ -129,7 +129,6 @@ const PRETTIER_CONFIGS = [".prettierrc", ...["json", "json5", "yaml", "yml", "to
 
 const MODULE_SPECIFIERS = /\b(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']|<reference\s+path\s*=\s*["']([^"']+)["']/g;
 
-/** Whether `file` imports, re-exports or references `tagMap` through a relative path. */
 function importsTagMap(file: string, tagMap: string): boolean {
   const target = tagMap.replace(/\.ts$/, "");
   return [...(readText(file) ?? "").matchAll(MODULE_SPECIFIERS)].some((m) => resolve(dirname(file), (m[1] ?? m[2]) as string).replace(/\.[jt]s$/, "") === target);

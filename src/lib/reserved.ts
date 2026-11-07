@@ -4,5 +4,4 @@ export const RESERVED_NAMES = new Set(
    refs lists text root state props set batch render show bind on emit onCleanup connected disconnected slotchange assignedNodes connectedCallback disconnectedCallback attributeChangedCallback`.split(/\s+/),
 );
 
-/** The HTML attribute name for a camelCase prop name: userName -> user-name */
 export const attrNameOf = (prop: string): string => prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);

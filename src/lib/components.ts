@@ -235,7 +235,6 @@ interface FileEntry {
  * A command line run starts with an empty one; the Vite and oxlint plugins keep theirs while they run.
  */
 export class Workspace implements Sources {
-  /** How many files were read from disk. */
   reads = 0;
   readonly #files = new Map<string, FileEntry>();
   readonly #overlay = new Map<string, string>();
@@ -349,7 +348,6 @@ export class Workspace implements Sources {
     return [...new Set([...this.#results.values()].filter((r) => r.deps.some(([f]) => f === file)).map((r) => r.file))];
   }
 
-  /** What it keeps: the files and the results. */
   get size(): { files: number; results: number; values: unknown[] } {
     return { files: this.#files.size, results: this.#results.size, values: [...this.#results.values()].map((r) => r.value) };
   }
@@ -509,7 +507,6 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   return { components, byFile, byTemplate, importers, defines, byTag, modules, resolve: (file, id) => resolveLocal(resolve(file), id) };
 }
 
-/** The index of the TypeScript files under `dirs`. */
 export const indexDirs = (dirs: string | readonly string[], ws: Workspace = new Workspace()): ComponentIndex => ws.index(typeof dirs === "string" ? [dirs] : dirs);
 
 export interface DefineDef {

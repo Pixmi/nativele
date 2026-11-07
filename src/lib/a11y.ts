@@ -180,7 +180,6 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
   const skip = new Set(ignore);
 
   const parsed: Parsed = new Map();
-  // Collect ids and label[for] first
   const ids = new Map<string, number>();
   const labelFor: { id: string; el: Element }[] = [];
   const all: { el: Element; parent: Element | null; inList: boolean; inLabel: boolean }[] = [];
@@ -268,7 +267,6 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       }
     }
 
-    // Semantic checks
     if (/^h[1-6]$/.test(tag)) {
       const level = Number(tag[1]);
       if (lastHeading && level > lastHeading + 1) report("heading-order", el, `<${tag}> skips a heading level (the previous heading is h${lastHeading}). Fix: use h${lastHeading + 1} here, or restructure the headings.`);
