@@ -4,7 +4,7 @@ description: "Lay out an app built with Nativele that has several pages: feature
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "vite@8.3.6 typescript@7.0.2 vitest@5.1.0 happy-dom@21.0.4 @vitest/browser-playwright@5.1.0 playwright@1.64.1 @playwright/test@1.64.1 create-vite@9.3.4 universal-router@10.0.3"
   author: "Nativele maintainers"
   detects: "universal-router"
@@ -37,7 +37,7 @@ metadata:
 | @playwright/test | 1.64.1 |
 | universal-router | 10.0.3 (checked by hand with the same tests as the Navigation API router, see step 5) |
 
-Verified on 2026-11-06 with Node 24 and Google Chrome 148. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-07 with Node 24 and Google Chrome 157. The router relies on the Navigation API and `URLPattern`, verified in Chrome only. With another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 

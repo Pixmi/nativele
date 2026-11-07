@@ -4,7 +4,7 @@ description: "Use Nativele web components inside an app built with a UI framewor
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "preact@11.1.1 vite@8.3.6 @preact/preset-vite@2.10.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "preact solid-js"
@@ -31,7 +31,7 @@ Nativele components are native custom elements. The framework renders their tags
 | @preact/preset-vite | 2.10.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template. The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
+Verified on 2026-11-07 in Google Chrome 157, starting from `create-vite` 9.3.4 with the `preact-ts` template. The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
 
 ## Set-up
 

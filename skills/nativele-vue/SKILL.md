@@ -4,7 +4,7 @@ description: "Use Nativele web components inside a Vue 3 app: telling the templa
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "vue@3.5.44 vite@8.3.6 @vitejs/plugin-vue@6.0.10 vue-tsc@3.3.14 typescript@6.0.3 @vue/tsconfig@0.9.1"
   author: "Nativele maintainers"
   detects: "vue"
@@ -33,7 +33,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 | typescript | 6.0.3 |
 | @vue/tsconfig | 0.9.1 |
 
-Verified on 2026-11-06 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `vue-ts` template, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of Vue, treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, starting from `create-vite` 9.3.4 with the `vue-ts` template, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of Vue, treat every step as unverified.
 
 ## Set-up
 
