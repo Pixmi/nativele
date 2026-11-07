@@ -4,7 +4,8 @@ import type { IsAny } from "./template.ts";
 import type { TextValue } from "./text.ts";
 
 export interface ListSchema {
-  refs: Record<string, Element>;
+  // Not constrained to Element, like Schema's refs.
+  refs: Record<string, object>;
   text: string;
   ifs: string;
   /**

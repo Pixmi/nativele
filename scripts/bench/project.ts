@@ -99,14 +99,14 @@ export function monorepo(dir: string, n: number): void {
 const VENDOR_TAGS = 40;
 
 /**
- * Small projects whose type check cost tsc reports, one folder each: the library alone, a chain of 30 components (each template holds the next component's tag),
+ * Small projects whose type check cost tsc reports, one folder each: the library alone, a chain of 100 components (each template holds the next component's tag),
  * components whose state and props hold DOM objects, and a template with many custom elements of another library declared in HTMLElementTagNameMap.
  */
 export function typeProjects(dir: string): string[] {
   rmSync(dir, { recursive: true, force: true });
   const sets: Record<string, (src: string) => void> = {
     library: (src) => write(join(src, "index.ts"), `import { Component } from "@nativele/ts-dom";\nexport const c = Component;\n`),
-    chain: (src) => chain(src, 30, "x"),
+    chain: (src) => chain(src, 100, "x"),
     "dom-state": (src) => {
       write(join(src, "form.html"), `<form data-ref="form"><label>Name <input data-ref="name" data-on-input="onName" /></label><p data-if="dirty">{{ label }}</p></form>\n`);
       const fields = [
