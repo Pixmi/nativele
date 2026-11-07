@@ -257,6 +257,18 @@ function findTsc(cwd: string): { name: string; bin: string } | null {
   return null;
 }
 
+/** The given folders that exist, as given, and a `dir-not-found` issue for each that does not; every command that takes folders goes through this. */
+export function splitDirs(given: readonly string[], cwd = process.cwd()): { dirs: string[]; missing: LintIssue[] } {
+  const dirs: string[] = [];
+  const missing: LintIssue[] = [];
+  for (const d of given) {
+    const file = relative(cwd, resolve(cwd, d)) || ".";
+    if (existsSync(resolve(cwd, d))) dirs.push(d);
+    else missing.push({ file, line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${file} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
+  }
+  return { dirs, missing };
+}
+
 /**
  * Everything an agent needs in one pass: template diagnostics, generated files, TypeScript errors mapped back to the templates, and the lint rules.
  * Returns the issues sorted by file and position.
@@ -266,11 +278,9 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   const generate = options.generate ?? {};
   const issues: LintIssue[] = [];
   const rel = (f: string) => relative(cwd, f);
-  const dirs: string[] = [];
-  for (const d of options.dirs.map((x) => resolve(cwd, x))) {
-    if (existsSync(d)) dirs.push(d);
-    else issues.push({ file: rel(d) || ".", line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${rel(d) || "."} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
-  }
+  const split = splitDirs(options.dirs, cwd);
+  const dirs = split.dirs.map((d) => resolve(cwd, d));
+  issues.push(...split.missing);
 
   const ws = new Workspace();
   const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws });

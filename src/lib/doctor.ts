@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { splitDirs } from "./check.ts";
 import { listHtml, scanTags, staleGenerated } from "./codegen.ts";
 import { listTs, scanDefines, templateImports } from "./components.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
@@ -145,11 +146,9 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
   const rel = (f: string) => relative(cwd, f) || ".";
   const issues: DoctorIssue[] = [];
   const add = (rule: DoctorRule, severity: DoctorIssue["severity"], message: string, at: { file?: string; line?: number } = {}) => issues.push({ rule, severity, message, ...at });
-  const dirs: string[] = [];
-  for (const d of options.dirs.map((x) => resolve(cwd, x))) {
-    if (existsSync(d)) dirs.push(d);
-    else add("dir-not-found", "error", `The folder ${rel(d)} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).`, { file: rel(d) });
-  }
+  const split = splitDirs(options.dirs, cwd);
+  const dirs = split.dirs.map((d) => resolve(cwd, d));
+  for (const m of split.missing) add("dir-not-found", "error", m.message, { file: m.file });
 
   const configs = projectConfigs(cwd, options.project);
   let paths: Record<string, unknown> = {};

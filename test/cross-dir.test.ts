@@ -132,3 +132,24 @@ describe("several scanned folders share their define() calls", () => {
     expect(run(["gen", "--check", "src", "src/sub"], dir).status).toBe(0);
   });
 });
+
+describe("a folder that does not exist", () => {
+  const dir = project({ "src/a.html": `<i></i>` });
+  const expected = "nope:1:1 error [dir-not-found]";
+  it.each([["lint"], ["gen"], ["gen", "--check"], ["check"], ["doctor"]])("ts-dom %s reports dir-not-found and exits 1", (...cmd) => {
+    const r = run([...cmd, "nope"], dir);
+    expect(r.stderr).not.toContain("ENOENT");
+    expect(r.stderr + r.stdout).toContain(expected);
+    expect(r.status).toBe(1);
+  });
+  it("still processes the folders that exist", () => {
+    const r = run(["gen", "nope", "src"], dir);
+    expect(r.stderr).toContain(expected);
+    expect(r.status).toBe(1);
+    expect(existsSync(join(dir, "src/a.html.ts"))).toBe(true);
+  });
+  it("lint --json lists it among the issues", () => {
+    const r = run(["lint", "--json", "nope"], dir);
+    expect((JSON.parse(r.stdout) as { issues: { rule: string }[] }).issues.map((i) => i.rule)).toEqual(["dir-not-found"]);
+  });
+});
