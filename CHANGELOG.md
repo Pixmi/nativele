@@ -27,10 +27,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - With `--a11y`, an element of a manifest is content lint cannot read, with its own cause in `unchecked-content` ("an element of a package whose custom elements manifest declares its attributes, events and slots but not what it renders", fix: check by hand that the element around it is operable or named); `data-on-click` on such an element itself is still not reported.
 - `engines.node` is `>=22`, the versions CI tests (22 and 24): Node 20 reached its end of life in April 2026 and is no longer supported; Node 22 is supported until its end of life in April 2027.
 
+### Fixes
+
+- A component tree of any depth type checks: a chain of components each holding the next one's tag no longer fails with "Type instantiation is excessively deep and possibly infinite" (TS2589) past about 45 levels, and a template that holds its own tag (a tree view), or the tag of a component whose template holds it back, as a `data-ref` or as its root element, no longer fails as circular. A component's type no longer reads the resolved types of its children's templates, so checking it costs the same at any depth.
+- `Schema["refs"]`, `Schema["rootElement"]` and `ListSchema["refs"]` are constrained to `object` instead of `Element`; codegen writes `El<tag>` there, so generated templates are typed as before.
+
 ### Skills
 
 - nativele-web-awesome: lint reads Web Awesome's custom elements manifest, so limitations 1 and 7, the troubleshooting rows and Verify describe `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot` and `unknown-custom-element` on `wa-` tags instead of `unchecked-custom-elements`; a forgotten import is still not reported.
 - nativele-linting: the contract ids include `unknown-slot` and `unknown-custom-element`, and check library elements that ship a manifest.
+- Skill trials are scripted for maintainers (`npm run trial`, not shipped): a fixture per Skill in `trials/<name>/` gives every trial the same starter project, pinned tool versions, task with its contract, type probes and browser check; the run is recorded with the Skill's hash and the packed build, and an accepted trial sets the Skill's `verified` date. CI reports which Skills a change needs a trial for, and replays the last accepted agent output on library changes. The first fixture is `nativele-vue`.
+- CI checks performance budgets (`npm run bench:check`): templates parsed, files read and folders listed by `ts-dom lint`, the Vite plugin and the oxlint plugin on a generated 1000-component project and a three-package monorepo, the memo entries a long editing session adds, and tsc instantiations for representative components, against `scripts/bench/budgets.json`.
 
 ## 0.7.1
 
