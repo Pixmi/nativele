@@ -33,7 +33,7 @@ describe("ts-dom check on a project", () => {
     mkdirSync(dir);
     try {
       writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
-      writeFileSync(join(dir, "broken.html"), `<p>{{ title }}</p>\n<button type="button" data-on-click="save">Save</button>\n`);
+      writeFileSync(join(dir, "broken.html"), `<p>{{ heading }}</p>\n<button type="button" data-on-click="save">Save</button>\n`);
       writeFileSync(
         join(dir, "broken.ts"),
         `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./broken.html.js";\nexport class Broken extends Component(tpl, { state: { count: 0 } }) {}\ndefine("x-broken", Broken);\nconst o = { a: 1 };\nexport const n = o.lenght;\n`,
@@ -196,6 +196,88 @@ describe("ts-dom check: handler parameter types", () => {
   });
 });
 
+describe("ts-dom check: any-in-contract", () => {
+  it("points any in state, props, derive and emits at its declaration and an any handler parameter at its data-on-*, accepts unknown, and drops the follow-up errors", () => {
+    const dir = join(process.cwd(), "check-any-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      const H = `import { Component, define, event } from "@nativele/ts-dom";\n`;
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "card.html"), `<p>{{ heading }}</p>\n<button type="button" data-on-click="onPick">Pick</button>\n`);
+      writeFileSync(
+        join(dir, "card.ts"),
+        `${H}import tpl from "./card.html.js";\ndeclare const raw: string;\nexport class Card extends Component(tpl, {\n  props: { heading: "", item: null as any },\n  state: { rows: [] as any[], data: JSON.parse(raw) },\n  derive: { total: (s) => s.rows.length as any },\n  emits: { "card-picked": event<any>() },\n}) {\n  onPick(): void {\n    this.emit("card-picked", 1);\n  }\n}\ndefine("x-card", Card);\n` +
+          `export class Typed extends Component(tpl, { props: { heading: "", item: null as unknown }, emits: { "card-picked": event<unknown>() } }) {\n  onPick(_e: unknown): void {}\n}\ndefine("x-typed", Typed);\n` +
+          `export class Loose extends Component(tpl, { props: { heading: "" } }) {\n  onPick(_e: any): void {}\n}\ndefine("x-loose", Loose);\n`,
+      );
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-any-tmp", "--project=check-any-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([
+        ["check-any-tmp/card.html", 2, 23, "any-in-contract"],
+        ["check-any-tmp/card.ts", 5, 25, "any-in-contract"],
+        ["check-any-tmp/card.ts", 6, 12, "any-in-contract"],
+        ["check-any-tmp/card.ts", 6, 31, "any-in-contract"],
+        ["check-any-tmp/card.ts", 7, 13, "any-in-contract"],
+        ["check-any-tmp/card.ts", 8, 12, "any-in-contract"],
+      ]);
+      const message = (path: string) => issues.find((i) => i.message.includes(path))?.message;
+      expect(message("props.item")).toMatch(/^props\.item is typed any, so tsc checks nothing that reads or assigns it.* Fix: declare a specific type .*or `unknown` and narrow it where it is read\.$/);
+      expect(message("state.rows[]")).toBeDefined();
+      expect(message("state.data")).toBeDefined();
+      expect(message('emits["card-picked"]')).toMatch(/^The detail of emits\["card-picked"\] is typed any.* Fix: declare the detail type/);
+      expect(issues[0]?.message).toMatch(/^The first parameter of onPick\(\), which data-on-click on <button> calls, is typed any.* Fix: type it as the event it receives/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe("ts-dom check: any-in-contract locations and causes", () => {
+  it("walks the option literal for quoted, dotted and repeated keys, and names an any method and an any template", () => {
+    const dir = join(process.cwd(), "check-any2-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "card.html"), `<p>{{ heading }}</p>\n<input data-on-input="onInput" />\n`);
+      writeFileSync(
+        join(dir, "card.ts"),
+        `import { Component, define } from "@nativele/ts-dom";\nimport type { Template } from "@nativele/ts-dom";\nimport tpl from "./card.html.js";\ndeclare const loose: any;\n` +
+          `export class Card extends Component(tpl, {\n  props: { heading: "" },\n  state: { meta: { user: { name: "" } }, user: { "a.b": loose, name: loose }, 'q"x': { a: 1 }, other: [loose] as [any] },\n}) {}\n` +
+          `export class Member extends Component(tpl, { props: { heading: "" } }) {\n  onInput: any = () => {};\n}\ndefine("x-member", Member);\n` +
+          `declare const raw: Template<any>;\nexport class Raw extends Component(raw, { state: { heading: "" } }) {}\nexport class Plain extends Component(raw) {}\n`,
+      );
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-any2-tmp", "--project=check-any2-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      const at = (start: string) => issues.filter((i) => i.message.startsWith(start)).map((i) => [i.file, i.line, i.col, i.rule]);
+      expect(at('state.user["a.b"] ')).toEqual([["check-any2-tmp/card.ts", 7, 50, "any-in-contract"]]);
+      expect(at("state.user.name ")).toEqual([["check-any2-tmp/card.ts", 7, 64, "any-in-contract"]]);
+      expect(at("state.other[0] ")).toEqual([["check-any2-tmp/card.ts", 7, 96, "any-in-contract"]]);
+      expect(issues.find((i) => i.message.startsWith("onInput,"))).toMatchObject({ file: "check-any2-tmp/card.html", line: 2, col: 8, rule: "any-in-contract" });
+      expect(issues.find((i) => i.message.startsWith("onInput,"))?.message).toMatch(/^onInput, which data-on-input on <input> calls, is typed any, so tsc checks neither that it is a method nor which event it accepts .* Fix: declare it as a method/);
+      expect(at("The template passed to Component()")).toEqual([
+        ["check-any2-tmp/card.ts", 14, 26, "any-in-contract"],
+        ["check-any2-tmp/card.ts", 15, 28, "any-in-contract"],
+      ]);
+      expect(issues.find((i) => i.message.startsWith("The template"))?.message).toMatch(/ Fix: import the template from its \.\/x\.html\.js module, which ts-dom gen types/);
+      expect(issues.filter((i) => i.rule !== "any-in-contract")).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
 describe("ts-dom check when tsc cannot run", () => {
   it("reports tsc-failed instead of no issues", () => {
     let out = "";
@@ -312,7 +394,7 @@ describe("ts-dom check: more cases", () => {
     try {
       writeFileSync(join(dir, "tsconfig.json"), `{ "files": [], "references": [{ "path": "./tsconfig.app.json" }] }`);
       writeFileSync(join(dir, "tsconfig.app.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
-      writeFileSync(join(dir, "broken.html"), `<p>{{ title }}</p>\n`);
+      writeFileSync(join(dir, "broken.html"), `<p>{{ heading }}</p>\n`);
       writeFileSync(join(dir, "broken.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./broken.html.js";\nexport class Broken extends Component(tpl, { state: { count: 0 } }) {}\ndefine("x-broken-2", Broken);\n`);
       let out = "";
       try {

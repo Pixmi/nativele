@@ -5,14 +5,12 @@ export const TAGS_FILE = "ts-dom-tags.ts";
 
 export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
 
-export function listTs(dir: string): string[] {
+export function listTs(dir: string, ws = new Workspace()): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const name = entry.name;
+  for (const { name, folder } of ws.entries(dir)) {
     if (name === "node_modules" || name === "dist") continue;
-    const full = join(dir, name);
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...listTs(full));
-    else if (isTs(name)) out.push(full);
+    if (folder) out.push(...listTs(join(dir, name), ws));
+    else if (isTs(name)) out.push(join(dir, name));
   }
   return out;
 }
@@ -60,6 +58,69 @@ export function matchClose(code: string, start: number, open: string, close: str
     else if (code[i] === close && !(close === ">" && code[i - 1] === "=") && --depth === 0) return i;
   }
   return -1;
+}
+
+/** The offset of the `,` that ends the expression starting at `from` (or of `end`, when none does before it), skipping brackets, strings and comments. */
+function expressionEnd(code: string, from: number, end: number): number {
+  let depth = 0;
+  for (let i = from; i < end; i++) {
+    const skip = skipNonCode(code, i);
+    if (skip > i) i = skip - 1;
+    else if ("([{".includes(code[i] as string)) depth++;
+    else if (")]}".includes(code[i] as string)) depth--;
+    else if (code[i] === "," && depth === 0) return i;
+  }
+  return end;
+}
+
+function skipSpace(code: string, i: number): number {
+  for (;;) {
+    while (/\s/.test(code[i] ?? "")) i++;
+    const skip = code[i] === "/" ? skipNonCode(code, i) : i;
+    if (skip === i) return i;
+    i = skip;
+  }
+}
+
+/** The arguments of the call whose `(` is at `open`: the offset each one starts at. */
+export function callArguments(code: string, open: number): number[] {
+  const close = matchClose(code, open, "(", ")");
+  const out: number[] = [];
+  for (let i = open + 1; close > 0 && i < close; i = expressionEnd(code, i, close) + 1) {
+    i = skipSpace(code, i);
+    if (i < close) out.push(i);
+  }
+  return out;
+}
+
+function stringValue(inner: string): string {
+  try {
+    return JSON.parse(`"${inner.replace(/\\(.)|"/g, (m, c: string | undefined) => (c === "'" ? c : c === undefined ? '\\"' : m))}"`) as string;
+  } catch {
+    return inner;
+  }
+}
+
+/** The keys written in the object literal whose `{` is at `open`, each with its offset and the offset of its value (-1 for a shorthand or a method); spreads and computed keys are left out. */
+export function literalKeys(code: string, open: number): { name: string; at: number; value: number }[] {
+  const close = matchClose(code, open, "{", "}");
+  const out: { name: string; at: number; value: number }[] = [];
+  for (let i = open + 1; close > 0 && i < close; i = expressionEnd(code, i, close) + 1) {
+    i = skipSpace(code, i);
+    const at = i;
+    let name: string | undefined;
+    if (code[i] === '"' || code[i] === "'") {
+      const end = skipNonCode(code, i);
+      name = stringValue(code.slice(i + 1, end - 1));
+      i = end;
+    } else {
+      name = /^[\w$]+/.exec(code.slice(i, close))?.[0];
+      i += name?.length ?? 0;
+    }
+    i = skipSpace(code, i);
+    if (name !== undefined) out.push({ name, at, value: code[i] === ":" ? skipSpace(code, i + 1) : -1 });
+  }
+  return out;
 }
 
 /** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
@@ -277,6 +338,7 @@ export class Memo {
 export class Workspace implements Sources {
   readonly memo: Memo;
   readonly #files = new Map<string, string | null>();
+  readonly #entries = new Map<string, { name: string; folder: boolean }[]>();
   readonly #listings = new Map<(dir: string, ws: Workspace) => string[], Map<string, string[]>>();
   readonly #indexes = new Map<string, ComponentIndex>();
   #base: Workspace | undefined;
@@ -307,6 +369,13 @@ export class Workspace implements Sources {
     view.#files.set(file, text);
     this.memo.see(file);
     return view;
+  }
+  /** The entries of the folder `dir`, read once in the run; a symbolic link to a folder is a folder. */
+  entries(dir: string): { name: string; folder: boolean }[] {
+    if (this.#base) return this.#base.entries(dir);
+    let found = this.#entries.get(dir);
+    if (!found) this.#entries.set(dir, (found = readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: e.isDirectory() || (e.isSymbolicLink() && statSync(join(dir, e.name)).isDirectory()) }))));
+    return found;
   }
   /** The files `find` lists under `dir`, listed once in the run. */
   list(dir: string, find: (dir: string, ws: Workspace) => string[]): string[] {

@@ -5,7 +5,7 @@ import type { ReadableStore } from "./store.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
-import type { El, Schema, Template } from "./template.ts";
+import type { El, IsAny, Schema, Template } from "./template.ts";
 import { mountTemplate } from "./mount.ts";
 
 export interface ComponentOptions {
@@ -34,21 +34,23 @@ type EmitArgs<D> = [DetailOf<D>] extends [void] ? [detail?: undefined] : [detail
  * Read-only all the way down: arrays, objects, Maps and Sets inside it cannot be changed through it.
  * State, props and derived values are typed this way, so changing an object in place instead of passing a new one is a tsc error.
  */
-export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+export type DeepReadonly<T> = T extends Opaque
   ? T
-  : T extends Node | Date | RegExp | Promise<unknown>
-    ? T
-    : T extends ReadonlyMap<infer K, infer V>
-      ? ReadonlyMap<K, DeepReadonly<V>>
-      : T extends ReadonlySet<infer V>
-        ? ReadonlySet<DeepReadonly<V>>
-        : T extends readonly unknown[]
-          ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-          : T extends object
-            ? IsPlainObject<T> extends true
-              ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-              : T
-            : T;
+  : T extends ReadonlyMap<infer K, infer V>
+    ? ReadonlyMap<K, DeepReadonly<V>>
+    : T extends ReadonlySet<infer V>
+      ? ReadonlySet<DeepReadonly<V>>
+      : T extends readonly unknown[]
+        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+        : T extends object
+          ? IsPlainObject<T> extends true
+            ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+            : T
+          : T;
+
+// Values a component's data holds but is not made of: DeepReadonly keeps them as they are, and any inside them is not looked for.
+// Library interfaces pass IsPlainObject, so the ones whose members are any (opener, detail, an index signature, ...) are named here.
+type Opaque = Function | EventTarget | Event | Storage | History | IDBCursor | IDBKeyRange | PerformanceEntry | Date | RegExp | Promise<unknown>;
 
 // A copy of only the public members is assignable back to a plain object type, but not to a class with private or protected members: such a class instance keeps its own type, so it can still be passed where the class is expected.
 type IsPlainObject<T> = { [K in keyof T]: T[K] } extends T ? true : false;
@@ -77,11 +79,46 @@ export interface DataOptions<St extends object, P extends object, R, E extends R
 }
 
 type Keys<St, P, R> = (keyof St | keyof P | keyof R) & string;
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type IdStart = "_" | "$" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | Uppercase<"a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z">;
+type IsIdentifier<S extends string, Started = false> = S extends `${infer C}${infer Rest}` ? (C extends IdStart | (Started extends true ? "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" : never) ? IsIdentifier<Rest, true> : false) : Started;
+type Quoted<S extends string> = S extends `${infer C}${infer Rest}` ? `${C extends "\\" | '"' ? `\\${C}` : C}${Quoted<Rest>}` : "";
+// A path is written as the property access that reaches the value, so ts-dom check can read it back: `.name`, `["a.b"]`, `[1]` for a tuple element, `[]` for any array or Set element, `[key]` for any value under an index signature or in a Map.
+type Segment<K> = {} extends Record<K & PropertyKey, 1> ? "[key]" : K extends number ? `[${K}]` : K extends string ? (IsIdentifier<K> extends true ? `.${K}` : `["${Quoted<K>}"]`) : never;
+type AnyPath<T, At extends string, Seen extends unknown[] = []> =
+  IsAny<T> extends true
+    ? At
+    : T extends Opaque
+      ? never
+      : true extends { [I in keyof Seen]: Same<T, Seen[I]> }[number]
+        ? never
+        : T extends ReadonlyMap<unknown, infer V>
+          ? AnyPath<V, `${At}[key]`, [...Seen, T]>
+          : T extends ReadonlySet<infer V>
+            ? AnyPath<V, `${At}[]`, [...Seen, T]>
+            : T extends readonly unknown[]
+              ? number extends T["length"]
+                ? AnyPath<T[number], `${At}[]`, [...Seen, T]>
+                : { [K in keyof T & `${number}`]: AnyPath<T[K], `${At}[${K}]`, [...Seen, T]> }[keyof T & `${number}`]
+              : T extends object
+                ? IsPlainObject<T> extends true
+                  ? { [K in keyof T]-?: AnyPath<T[K], `${At}${Segment<K>}`, [...Seen, T]> }[keyof T]
+                  : never
+                : never;
+// A template typed any, or the bare Template, which a value typed any also gives, has every name.
+type Untyped<S> = IsAny<S> extends true ? true : string extends (S & Schema)["text"] ? true : false;
+// Kept in a tuple, the union is not named by an alias, so tsc prints the paths themselves.
+type AnyIn<S, St, P, R, E> = [(Untyped<S> extends true ? "template" : never) | AnyPath<St, "state"> | AnyPath<P, "props"> | AnyPath<R, "derive"> | (IsAny<E> extends true ? "emits" : { [K in keyof E & string]: AnyPath<DetailOf<E[K]>, `emits${Segment<K>}`> }[keyof E & string])][0];
+// An option that is any as a whole has every name, so the other checks look at the options that are not, and a missing name is not reported.
+type Typed<T> = IsAny<T> extends true ? Record<never, never> : T;
+type WholeAny<S, St, P, R> = true extends Untyped<S> | IsAny<St> | IsAny<P> | IsAny<R> ? true : false;
 type MissingBindings<S extends Schema, St, P, R> = Exclude<S["text"] | S["ifs"], Keys<St, P, R>>;
 type Conflicts<St, P, R> = (keyof St & keyof P) | (keyof St & keyof R) | (keyof P & keyof R);
 type ReservedProps<P> = Extract<keyof P, keyof HTMLElement | "refs" | "lists" | "text" | "root" | "state" | "props" | "set" | "batch" | "render" | "show" | "bind" | "on" | "emit">;
 type NativeEmits<E> = Extract<keyof E, keyof HTMLElementEventMap>;
-type Problems<S extends Schema, St, P, R, E> = ([keyof St | keyof P | keyof R] extends [never] ? unknown : [MissingBindings<S, St, P, R>] extends [never] ? unknown : { missingStateKeys: MissingBindings<S, St, P, R> }) &
+// A value whose type is an error is any as well, and its path then reads as any: tsc already reports that error.
+type Problems<S extends Schema, St, P, R, E> = [AnyIn<S, St, P, R, E>] extends [never] ? CheckedProblems<S, St, P, R, E> : IsAny<AnyIn<S, St, P, R, E>> extends true ? CheckedProblems<S, St, P, R, E> : { anyInContract: AnyIn<S, St, P, R, E> } & CheckedProblems<S, Typed<St>, Typed<P>, Typed<R>, Typed<E>, WholeAny<S, St, P, R>>;
+type CheckedProblems<S extends Schema, St, P, R, E, SkipMissing = false> = (SkipMissing extends true ? unknown : [keyof St | keyof P | keyof R] extends [never] ? unknown : [MissingBindings<S, St, P, R>] extends [never] ? unknown : { missingStateKeys: MissingBindings<S, St, P, R> }) &
   ([Conflicts<St, P, R>] extends [never] ? unknown : { conflictingKeys: Conflicts<St, P, R> }) &
   ([ReservedProps<P>] extends [never] ? unknown : { reservedPropNames: ReservedProps<P> }) &
   ([NativeEmits<E>] extends [never] ? unknown : { nativeEventNames: NativeEmits<E> });
@@ -129,10 +166,10 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
    * Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually.
    * `fn` receives `Event`, or the narrower event its parameter names when the target declares it for `type` (see EventOf); a name the target does not declare is not checked. A name HTMLElementEventMap lists types an unannotated parameter.
    */
-  on<K extends keyof HTMLElementEventMap>(target: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions): () => void;
+  on<K extends keyof HTMLElementEventMap, E extends Event = Event>(target: HTMLElement, type: K, fn: (e: Listener<Declared<HTMLElementEventMap[K]>, E>) => void, opts?: AddEventListenerOptions): () => void;
   // Before the lookup below: inside its class the component itself is the polymorphic `this`, for which the lookup is deferred.
   on(target: EventTarget, type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions): () => void;
-  on<T extends EventTarget, K extends string, E extends Event = Event>(target: T, type: K, fn: (e: [EventOf<T, K>] extends [never] ? E : EventOf<T, K>) => void, opts?: AddEventListenerOptions): () => void;
+  on<T extends EventTarget, K extends string, E extends Event = Event>(target: T, type: K, fn: (e: Listener<EventOf<T, K>, E>) => void, opts?: AddEventListenerOptions): () => void;
   /** Register a cleanup function that runs when the element is removed. */
   onCleanup(fn: () => void): void;
   /** The nodes currently assigned to the slot (fallback content excluded). In Shadow mode this is the native `slot.assignedNodes()`. */
@@ -168,21 +205,41 @@ export interface StatefulInstance<S extends Schema, St extends object, P extends
 }
 
 /** The type of an event emitted by a component: `EmitEvent<FormField, "change-value">` is `CustomEvent<{ value: string }>`. */
-export type EmitEvent<I, N extends string> = I extends { readonly "~emits"?: infer M }
-  ? N extends keyof NonNullable<M>
-    ? CustomEvent<NonNullable<M>[N]>
-    : never
-  : never;
+export type EmitEvent<I, N extends string> =
+  IsAny<I> extends true
+    ? never
+    : I extends { readonly "~emits"?: infer M }
+      ? IsAny<M> extends true
+        ? never
+        : N extends keyof NonNullable<M>
+          ? CustomEvent<NonNullable<M>[N]>
+          : never
+      : never;
 
+type Declared<V> = IsAny<V> extends true ? never : V;
 // An index signature (HTMLFormElement's [name: string]: any) declares no property, so on<name> is looked up among the declared keys only;
-// an on<name> typed any or with a parameter that is not an Event reads as Event, which handler-event-type's Fix offers as always accepted.
+// an on<name> with a parameter that is not an Event reads as Event, which handler-event-type's Fix offers as always accepted.
 type KnownKeys<T> = keyof { [K in keyof T as string extends K ? never : number extends K ? never : K]: never };
-type OnProperty<T, N extends string> = `on${N}` extends KnownKeys<T> ? (NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V extends Event) => unknown ? V : never) : never;
-type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyof HTMLElementEventMap ? HTMLElementEventMap[N] : never) : never;
+type OnProperty<T, N extends string> = `on${N}` extends KnownKeys<T>
+  ? IsAny<T[`on${N}` & keyof T]> extends true
+    ? never
+    : NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V extends Event) => unknown
+      ? Declared<V>
+      : never
+  : never;
+type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyof HTMLElementEventMap ? Declared<HTMLElementEventMap[N]> : never) : never;
+
+// CustomEvent's detail and MessageEvent's data default to any: such an event is checked to be a CustomEvent or a MessageEvent, and its payload is not checked.
+type AnyPayload<V> = V extends CustomEvent<infer D> ? IsAny<D> : V extends MessageEvent<infer D> ? IsAny<D> : false;
+type UnknownPayload<V> = V extends CustomEvent ? CustomEvent<unknown> : MessageEvent<unknown>;
+/** The event as an error names it and as an unannotated listener parameter receives it: an any payload reads as unknown. */
+type Shown<V> = true extends AnyPayload<V> ? UnknownPayload<V> : V;
+/** The parameter `on()` gives its listener: the declared event; for an any payload the event the annotation names, when it is one; with no declaration the annotation or Event. */
+type Listener<V, E> = [V] extends [never] ? E : true extends AnyPayload<V> ? (E extends V ? E : Shown<V>) : V;
 
 /**
  * The event that `type` delivers on `T`, from the first source that declares it: the events T's component emits, the type of T's `on<type>` property (`onenterpictureinpicture` on a `<video>`), then `HTMLElementEventMap`.
- * `never` when no source declares the name, so it is not checked.
+ * `never` when no source declares the name, so it is not checked; a source that types it `any` does not declare it.
  */
 export type EventOf<T, N extends string> = [EmitEvent<T, N>] extends [never] ? ([OnProperty<T, N>] extends [never] ? FromEventMap<T, N> : OnProperty<T, N>) : EmitEvent<T, N>;
 
@@ -191,13 +248,14 @@ export function Component<S extends Schema>(
   // The data options are explicitly excluded so that an options object that has them never matches this overload;
   // otherwise TypeScript tries this overload first and cannot infer the type of the parameter of `derive`.
   opts?: ComponentOptions & { state?: never; props?: never; derive?: never; emits?: never },
-): new () => ComponentInstance<S>;
+): Untyped<S> extends true ? { anyInContract: "template" } : new () => ComponentInstance<S>;
 /**
  * With the `state` / `props` / `derive` / `emits` options, {{ holes }} and data-if in the HTML bind to same-named data.
  * When something is wrong the return type becomes an object type describing the problem, so
  * `class X extends Component(...)` fails in tsc and lists the names:
  * `missingStateKeys` (the HTML uses a name that does not exist), `conflictingKeys` (state / props / derive share a name),
- * `reservedPropNames` (a prop shares a name with HTMLElement or a ts-dom member), `nativeEventNames` (emits shares a name with a native event).
+ * `reservedPropNames` (a prop shares a name with HTMLElement or a ts-dom member), `nativeEventNames` (emits shares a name with a native event),
+ * `anyInContract` (a state or props field, a derived value, an emitted detail or the template is typed any, which would satisfy every check: the paths, such as `props.item` or `template`).
  * (The check lives in the return type, not in the parameter: in the parameter it prevents TypeScript from inferring the type of derive.)
  */
 export function Component<
@@ -224,7 +282,6 @@ export function Component(
   const propDefaults = (opts.props ?? {}) as Record<string, unknown>;
   const propKeys = Object.keys(propDefaults);
   const stateKeys = Object.keys(opts.state ?? {});
-  // Reject declarations that would cause hard-to-trace problems as early as possible, at definition time
   for (const k of propKeys) {
     if (k in HTMLElement.prototype || RESERVED_NAMES.has(k)) throw new Error(`[reserved-prop] props.${k} has the same name as a member of HTMLElement or ts-dom, which it would shadow. Fix: rename the prop (e.g. ${k}Text).`);
     if (stateKeys.includes(k)) throw new Error(`[conflicting-keys] "${k}" is declared in both state and props. Data must have exactly one owner. Fix: keep it in props (the parent owns it) or in state (the component owns it), not both.`);
@@ -567,11 +624,15 @@ type HandlerEvent<B> = B extends readonly [infer T extends string, infer N exten
 type Missing<I, E> = Exclude<keyof E, keyof I>;
 // Method parameters are compared bivariantly, so assigning the method type would accept a parameter narrower than the event: compare the parameter itself.
 type Mismatched<I, E> = {
-  [K in keyof E & keyof I]: I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
+  [K in keyof E & keyof I]: IsAny<I[K]> extends true ? never : I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
 }[keyof E & keyof I];
+type AnyHandlers<I, E> = {
+  [K in keyof E & keyof I & string]: IsAny<I[K]> extends true ? `this.${K}` : I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : IsAny<A[0]> extends true ? `this.${K}(event)` : never) : never;
+}[keyof E & keyof I & string];
 type HandlerProblems<I, E> = ([Missing<I, E>] extends [never] ? unknown : { missingHandlers: Missing<I, E> }) &
-  ([Mismatched<I, E>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, E>]: HandlerEvent<E[K]> } });
-type CheckHandlers<I> = I extends { readonly "~events"?: infer E; readonly "~template"?: infer F }
+  ([Mismatched<I, E>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, E>]: Shown<HandlerEvent<E[K]>> } }) &
+  ([AnyHandlers<I, E>] extends [never] ? unknown : { anyInContract: AnyHandlers<I, E> });
+type CheckHandlers<I> = IsAny<I> extends true ? unknown : I extends { readonly "~events"?: infer E; readonly "~template"?: infer F }
   ? IsClean<HandlerProblems<I, NonNullable<E>>> extends true
     ? unknown
     : HandlerProblems<I, NonNullable<E>> & { template: F }
@@ -580,7 +641,8 @@ type CheckHandlers<I> = I extends { readonly "~events"?: infer E; readonly "~tem
 /**
  * Register a custom element. Also checks types: every method name referenced by data-on-* in the HTML must exist on the
  * component as a public method, otherwise tsc reports an error that lists the missing names (`missingHandlers`), and its first
- * parameter, when it has one, must accept the event the template binds it to, otherwise tsc lists the method with that event type (`wrongHandlerParameters`).
+ * parameter, when it has one, must accept the event the template binds it to, otherwise tsc lists the method with that event type (`wrongHandlerParameters`);
+ * a first parameter typed any is listed as `anyInContract` (`this.onPick(event)`), and a method member typed any as `this.onPick`.
  */
 export function define<C extends abstract new (...args: never[]) => HTMLElement>(
   name: string,

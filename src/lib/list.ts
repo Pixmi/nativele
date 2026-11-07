@@ -1,5 +1,6 @@
 import { mountConds } from "./cond.ts";
 import { mountHoles } from "./text.ts";
+import type { IsAny } from "./template.ts";
 import type { TextValue } from "./text.ts";
 
 export interface ListSchema {
@@ -17,16 +18,22 @@ export interface ListSchema {
 
 type ItemElement<L> = L extends { rootElement: infer E extends Element } ? E : Element;
 
+type Unchecked = { [field: string]: unknown };
+
 type ItemOf<L> = L extends { item: { tag: infer T; prop: infer P } }
   ? T extends keyof HTMLElementTagNameMap
-    ? P extends keyof HTMLElementTagNameMap[T]
-      ? NonNullable<HTMLElementTagNameMap[T][P]>
-      : { dataPropNotOnItemComponent: P }
+    ? IsAny<HTMLElementTagNameMap[T]> extends true
+      ? Unchecked
+      : P extends keyof HTMLElementTagNameMap[T]
+        ? IsAny<HTMLElementTagNameMap[T][P]> extends true
+          ? Unchecked
+          : NonNullable<HTMLElementTagNameMap[T][P]>
+        : { dataPropNotOnItemComponent: P }
     : L extends { item: { source: "local" } }
       ? { itemComponentMissingFromTagMap: T; fix: "run ts-dom gen so ts-dom-tags.ts lists it" }
       : L extends { item: { source: "unexported" } }
         ? { itemComponentClassNotExported: T; fix: "export the class passed to define() so its type can be read" }
-        : { [field: string]: unknown }
+        : Unchecked
   : never;
 type KeyField<L> = L extends { item: { key: infer K extends string } } ? { [Q in K]: string | number } : unknown;
 

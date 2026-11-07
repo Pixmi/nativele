@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, unlinkSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
@@ -406,6 +406,7 @@ function globToRegExp(glob: string): RegExp {
 
 /** Whether `file` (under `dir`) is one of the templates `options.include` / `options.exclude` select. */
 export function isSelected(dir: string, file: string, options: GenerateOptions = {}): boolean {
+  if (!options.include?.length && !options.exclude?.length) return true;
   const rel = relative(dir, file).split(sep).join("/");
   const hit = (globs: readonly string[]) => globs.some((g) => globToRegExp(g).test(rel));
   return (!options.include?.length || hit(options.include)) && !(options.exclude?.length && hit(options.exclude));
@@ -568,11 +569,10 @@ export function listHtml(dir: string, ws = new Workspace()): string[] {
 
 function htmlUnder(dir: string, ws: Workspace): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const name = entry.name;
+  for (const { name, folder } of ws.entries(dir)) {
     if (name === "node_modules" || name === "dist") continue;
     const full = join(dir, name);
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...htmlUnder(full, ws));
+    if (folder) out.push(...htmlUnder(full, ws));
     else if (name.endsWith(".html") && !isFullPage(ws.text(resolve(full)) ?? "")) out.push(full);
   }
   return out;
@@ -683,7 +683,7 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs?:
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of orphans(dir, scanned)) files.set(f, null);
+  for (const f of orphans(dir, scanned, ws)) files.set(f, null);
   return { files, errors };
 }
 
@@ -707,17 +707,16 @@ export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?
 }
 
 /** The files ts-dom generated under `dir` that nothing generates any more: an `x.html.ts` whose template is gone, and a ts-dom-tags.ts in a subfolder that is not one of the `scanned`. */
-function orphans(dir: string, scanned: readonly string[], top = true): string[] {
+function orphans(dir: string, scanned: readonly string[], ws: Workspace, top = true): string[] {
   const out: string[] = [];
   const ownTags = top || scanned.some((d) => resolve(d) === resolve(dir));
-  const entries = readdirSync(dir, { withFileTypes: true });
+  const entries = ws.entries(dir);
   const names = new Set(entries.map((e) => e.name));
-  for (const entry of entries) {
-    const name = entry.name;
+  for (const { name, folder } of entries) {
     if (name === "node_modules") continue;
     const full = join(dir, name);
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...orphans(full, scanned, false));
-    else if (((name.endsWith(".html.ts") && !names.has(name.slice(0, -3))) || (name === TAGS_FILE && !ownTags)) && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
+    if (folder) out.push(...orphans(full, scanned, ws, false));
+    else if (((name.endsWith(".html.ts") && !names.has(name.slice(0, -3))) || (name === TAGS_FILE && !ownTags)) && ws.text(resolve(full))?.startsWith(TAGS_HEADER)) out.push(full);
   }
   return out;
 }
@@ -752,7 +751,7 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of orphans(dir, scanned)) unlinkSync(f);
+  for (const f of orphans(dir, scanned, ws)) rmSync(f, { force: true });
   if (errors.length) throw new CodegenError(errors.join("\n"), written);
   return written;
 }

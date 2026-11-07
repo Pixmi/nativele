@@ -4,7 +4,7 @@ description: "Bring the Nativele (@nativele/ts-dom) template lint rules into a p
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "oxlint@1.91.0 vite-plus@1.5.0 eslint@10.14.0 eslint@9.39.4 typescript-eslint@8.72.1 typescript@7.0.2 typescript@6.0.3"
   author: "Nativele maintainers"
   detects: "oxlint eslint"
@@ -30,7 +30,7 @@ metadata:
 | typescript-eslint | 8.72.1 (the parser for `.ts` files in ESLint; it requires `typescript` below 6.1, so the ESLint projects used 6.0.3) |
 | typescript | 7.0.2 (oxlint and Vite+ projects), 6.0.3 (ESLint projects) |
 
-Verified on 2026-11-07 in fresh projects built from the packed library, with a fixture that has an unused `data-ref`, a template no file imports, an `<img>` without `alt`, a misspelled child prop, a missing handler and a test-only component. With a different major version of oxlint or ESLint, or a legacy `.eslintrc*` config, treat every step as unverified.
+Verified on 2026-11-08 in fresh projects built from the packed library, with a fixture that has an unused `data-ref`, a template no file imports, an `<img>` without `alt`, a misspelled child prop, a missing handler and a test-only component. With a different major version of oxlint or ESLint, or a legacy `.eslintrc*` config, treat every step as unverified.
 
 ## Set-up
 
@@ -71,6 +71,7 @@ Check first, then change only what the task needs. Keep the user's plugins, rule
 - To give one id another severity, ignore it in its group and enable it alone: `"ts-dom/unused-markup": ["error", { "ignore": ["unused-ref"] }], "ts-dom/unused-ref": "warn"`. A group and one of its ids both on report the finding twice.
 - Choose by what each id costs when it is missed: unused-markup ids are dead or broken markup (blank text, an empty list) and stay errors. data-flow ids are design advice plus child contract checks (`unknown-prop`, `invalid-prop-value`, `unknown-event`), warnings by default; raise the contract ids to `"error"` singly if the user wants. a11y ids are static hints, warnings, and `ignore` takes the ids that do not apply (for example `aria-idref` when labels point outside the template).
 - An `ignore` id that does not exist is silently accepted: check every id against `npx ts-dom rules` before writing it.
+- `any` in the rest of the code is the project linter's choice: enable `typescript/no-explicit-any` (oxlint, `vp lint`) or `@typescript-eslint/no-explicit-any` (ESLint) when the user wants it forbidden. Nativele itself reports `any` only in component contracts (`any-in-contract`, from `ts-dom check`, not from the plugin). An `any` handler parameter is reported only once the class's `Component()` contract errors (an `any` in `state` or `props` among them) are fixed, as tsc checks the handlers at `define()` after the class compiles; run `ts-dom check` again after each fix.
 
 ## Example
 

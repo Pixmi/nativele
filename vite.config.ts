@@ -30,9 +30,14 @@ export default defineConfig({
       "ts-dom/a11y": ["warn", { ignore: [] }],
       // Data-flow suggestions: avoid passing props and events down or up level by level
       "ts-dom/data-flow": ["warn", { ignore: [] }],
+      "typescript/no-explicit-any": "error",
     },
     // Tests use refs from outside the class through instances, so the "the component itself must use it" rule does not apply
-    overrides: [{ files: ["test/**", "browser/**"], rules: { "ts-dom/unused-markup": "off", "ts-dom/a11y": "off", "ts-dom/data-flow": "off" } }],
+    overrides: [
+      { files: ["test/**", "browser/**"], rules: { "ts-dom/unused-markup": "off", "ts-dom/a11y": "off", "ts-dom/data-flow": "off" } },
+      // These type tests write any on purpose, to check how the library treats it
+      { files: ["test/any-types.ts", "test/any-contract-types.ts"], rules: { "typescript/no-explicit-any": "off" } },
+    ],
   },
   // The Skill examples are separate projects with their own tests, run by their `npm run verify`; agent worktrees are copies of this repository.
   test: { environment: "happy-dom", exclude: [...configDefaults.exclude, "skills/**", ".claude/worktrees/**"] },
