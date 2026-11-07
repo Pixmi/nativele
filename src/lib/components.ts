@@ -222,66 +222,81 @@ export interface Sources {
 }
 
 interface FileEntry {
-  stamp: string;
   text: string;
   /** Changes with the content, so a result can tell whether a file it read is still the same. */
   rev: number;
   facts?: ModuleFacts;
 }
 
+function readText(file: string): string | undefined {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** The revision of each file something was computed from as it read it, 0 for a file that did not exist. */
+type Deps = Map<string, number>;
+
 /**
- * The source files that runs read, and what is derived from them. A file is read again only when its size or mtime changes;
- * a derived result (see `result`) records the files it was computed from and is computed again when one of them changes.
+ * The source files that runs read, and what is derived from them. A file is read again on each look, since its size and mtime cannot tell
+ * a rewrite of the same size within one mtime tick (coarse on some file systems), and its revision changes only when its content does.
+ * A derived result (see `result`) and an index record the revision of each file they read, also of one that did not exist, and are computed again when one of them changes.
  * It keeps texts, module facts and results such as diagnostics, never parse trees, and forgets a file that no longer exists.
  * A command line run starts with an empty one; the Vite and oxlint plugins keep theirs while they run.
  */
 export class Workspace implements Sources {
-  reads = 0;
   readonly #files = new Map<string, FileEntry>();
   readonly #overlay = new Map<string, string>();
-  readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: [string, number][]; value: unknown }>();
-  #reading: Set<string> | null = null;
-  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; revs: [string, number][]; moduleChanges: number }>();
-  /** Counts the changes to files whose module facts were read, which an index may have been built from. */
-  #moduleChanges = 0;
+  readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: Deps; value: unknown }>();
+  #reading: Deps | null = null;
+  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean }>();
   #rev = 0;
 
   #entry(file: string): FileEntry | undefined {
-    const overlay = this.#overlay.get(file);
-    let stamp = "overlay";
-    if (overlay === undefined) {
-      try {
-        const s = statSync(file);
-        stamp = s.isFile() ? `${s.size}:${s.mtimeMs}` : "";
-      } catch {
-        stamp = "";
-      }
-    }
+    const text = this.#overlay.get(file) ?? readText(file);
     const known = this.#files.get(file);
-    if (!stamp) {
+    if (known?.text === text) return known;
+    for (const i of this.#indexes.values()) if (i.deps.has(file)) i.stale = true;
+    if (text === undefined) {
       this.#files.delete(file);
       return undefined;
     }
-    if (known && known.stamp === stamp && (overlay === undefined || known.text === overlay)) return known;
-    const text = overlay ?? readFileSync(file, "utf8");
-    if (overlay === undefined) this.reads++;
-    if (known && known.text === text) {
-      known.stamp = stamp;
-      return known;
-    }
-    const entry: FileEntry = { stamp, text, rev: ++this.#rev };
-    if (known?.facts) this.#moduleChanges++;
+    const entry: FileEntry = { text, rev: ++this.#rev };
     this.#files.set(file, entry);
     return entry;
   }
 
+  #read(file: string): FileEntry | undefined {
+    const e = this.#entry(file);
+    if (this.#reading && !this.#reading.has(file)) this.#reading.set(file, e?.rev ?? 0);
+    return e;
+  }
+  /** Add `deps` to what the result being computed read. */
+  #reuse(deps: Deps): void {
+    if (this.#reading) for (const [f, rev] of deps) if (!this.#reading.has(f)) this.#reading.set(f, rev);
+  }
+  #current(deps: Deps): boolean {
+    for (const [f, rev] of deps) if (this.rev(f) !== rev) return false;
+    return true;
+  }
+  #recording<T>(compute: () => T): { value: T; deps: Deps } {
+    const outer = this.#reading;
+    const deps: Deps = (this.#reading = new Map());
+    try {
+      return { value: compute(), deps };
+    } finally {
+      this.#reading = outer;
+      this.#reuse(deps);
+    }
+  }
+
   text(file: string): string | null {
-    this.#reading?.add(file);
-    return this.#entry(file)?.text ?? null;
+    return this.#read(file)?.text ?? null;
   }
   facts(file: string): ModuleFacts | undefined {
-    this.#reading?.add(file);
-    const e = this.#entry(file);
+    const e = this.#read(file);
     return e && (e.facts ??= moduleFacts(e.text));
   }
   /** A number that changes when the file's content does; 0 when it does not exist. */
@@ -295,26 +310,29 @@ export class Workspace implements Sources {
   }
 
   /**
-   * The index of the TypeScript files under `dirs`. It is built again when the listing or the content of a file it read changed;
-   * within `maxAge` milliseconds of the last look, the folders are not listed again.
+   * The index of the TypeScript files under `dirs`. It is built again when the listing or a file it read changed;
+   * within `maxAge` milliseconds of the last look, the folders are not listed again unless a change to a file it read was seen.
    */
   index(dirs: readonly string[], maxAge = 0): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
     const last = this.#indexes.get(key);
-    if (last && Date.now() - last.at < maxAge && last.moduleChanges === this.#moduleChanges) return last.index;
+    if (last && !last.stale && Date.now() - last.at < maxAge) {
+      this.#reuse(last.deps);
+      return last.index;
+    }
     const files = dirs.flatMap(listTs);
     const listing = files.join("\0");
-    if (last && last.listing === listing && last.revs.every(([f, rev]) => this.rev(f) === rev)) {
+    if (last && last.listing === listing && this.#current(last.deps)) {
       last.at = Date.now();
-      last.moduleChanges = this.#moduleChanges;
+      last.stale = false;
+      this.#reuse(last.deps);
       return last.index;
     }
     for (const f of this.#files.keys()) this.#entry(f);
     for (const [k, r] of this.#results) if (!this.#files.has(r.file)) this.#results.delete(k);
-    const index = componentIndex(files, this);
-    const revs = [...index.modules.keys()].map((f): [string, number] => [f, this.rev(f)]);
-    index.revs = new Map(revs);
-    this.#indexes.set(key, { listing, at: Date.now(), index, revs, moduleChanges: this.#moduleChanges });
+    const { value: index, deps } = this.#recording(() => componentIndex(files, this));
+    index.revs = deps;
+    this.#indexes.set(key, { listing, at: Date.now(), index, deps, stale: false });
     return index;
   }
 
@@ -324,18 +342,13 @@ export class Workspace implements Sources {
    */
   result<T>(key: string, file: string, sigOf: (uses: readonly string[]) => string, compute: (uses: Set<string>) => T): { value: T; computed: boolean } {
     const last = this.#results.get(key);
-    if (last && last.deps.every(([f, rev]) => this.rev(f) === rev) && sigOf(last.uses) === last.sig) return { value: last.value as T, computed: false };
-    const outer = this.#reading;
-    const reading = (this.#reading = new Set());
-    const uses = new Set<string>();
-    let value: T;
-    try {
-      value = compute(uses);
-    } finally {
-      this.#reading = outer;
+    if (last && this.#current(last.deps) && sigOf(last.uses) === last.sig) {
+      this.#reuse(last.deps);
+      return { value: last.value as T, computed: false };
     }
-    for (const f of reading) outer?.add(f);
-    this.#results.set(key, { file, sig: sigOf([...uses]), uses: [...uses], deps: [...reading].map((f) => [f, this.rev(f)]), value });
+    const uses = new Set<string>();
+    const { value, deps } = this.#recording(() => compute(uses));
+    this.#results.set(key, { file, sig: sigOf([...uses]), uses: [...uses], deps, value });
     return { value, computed: true };
   }
 
@@ -346,7 +359,7 @@ export class Workspace implements Sources {
 
   /** The files of the results that read `file`. */
   dependents(file: string): string[] {
-    return [...new Set([...this.#results.values()].filter((r) => r.deps.some(([f]) => f === file)).map((r) => r.file))];
+    return [...new Set([...this.#results.values()].filter((r) => r.deps.has(file)).map((r) => r.file))];
   }
 
   get size(): { files: number; results: number; values: unknown[] } {
@@ -400,7 +413,7 @@ export interface ComponentIndex {
   modules: Map<string, ModuleFacts>;
   /** What the name `id` in `file` refers to: a class declaration or a template. */
   resolve(file: string, id: string): Target | undefined;
-  /** For an index a Workspace built: the revision of each module as the index read it. */
+  /** For an index a Workspace built: the revision of each file as the index read it, 0 for one that did not exist. */
   revs?: ReadonlyMap<string, number>;
 }
 

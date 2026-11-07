@@ -32,18 +32,31 @@ const project = (): LintProject => lintProject(ws, [process.cwd()], process.cwd(
 
 type Found = { label: string; findings: TemplateFindings }[];
 
+/** The groups of the rules that are on for the file being linted: oxlint calls the create() of each of them for a file before it visits the file's nodes. */
+let enabled = new Set<Group>();
+let visiting = false;
+function enable(group: Group): void {
+  if (visiting) {
+    enabled = new Set();
+    visiting = false;
+  }
+  enabled.add(group);
+}
+
 /** The findings of the templates the import `node` brings into `file`, with `text` as the file's content. The rules of one lint of the file visit the same node, so they share the answer. */
 const answered = new WeakMap<object, Found>();
 function findingsThrough(node: ImportNode, file: string, text: string): Found {
+  visiting = true;
   const known = answered.get(node);
   if (known) return known;
+  const groups = GROUPS.filter((g) => enabled.has(g));
   const spec = node.source.value;
   ws.overlay(file, text);
   ws.rev(file);
   try {
     let p = project();
-    if (templatesThrough(p, file, spec).some(({ html }) => indexBehind(p, html, GROUPS))) p = lintProject(ws, [process.cwd()], process.cwd());
-    const found = templatesThrough(p, file, spec).map(({ html, label }) => ({ label, findings: lintTemplate(p, html, GROUPS).value }));
+    if (templatesThrough(p, file, spec).some(({ html }) => indexBehind(p, html, groups))) p = lintProject(ws, [process.cwd()], process.cwd());
+    const found = templatesThrough(p, file, spec).map(({ html, label }) => ({ label, findings: lintTemplate(p, html, groups).value }));
     answered.set(node, found);
     return found;
   } finally {
@@ -78,6 +91,7 @@ function templateRule(group: Group, description: string, only?: string) {
   return {
     meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema },
     create(context: Context) {
+      enable(group);
       return {
         ImportDeclaration(node: ImportNode) {
           const ignore = context.options?.[0]?.ignore ?? [];

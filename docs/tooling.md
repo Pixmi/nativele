@@ -40,7 +40,7 @@ Whitespace in text is kept as written. To keep only the whitespace the browser r
 
 To scan several folders of one package, list them: `npx ts-dom gen src/app src/shared` (the same for `--check`, `--watch`, `check`, `doctor` and `lint`, and the Vite plugin's `dirs` option). The folders are generated together: a template in one folder that uses a component defined in another gets the import of that component, as the relative path from the template to the file with the `define()`, and a tag defined with different classes in two folders is a `duplicate-define` error. Do not scan another package's folder: the relative imports are written into that package's generated files. A package of shared components generates its own files, and the app imports the package.
 
-During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`. A change reads only the files whose size or modification time changed.
+During development, use `npx ts-dom gen --watch` to keep watching `.html` files, together with `tsc --watch`. A change parses only the files whose content changed.
 
 The generated files (`x.html.ts` next to each template, and `ts-dom-tags.ts` in each scanned folder) are derived from the templates, so most projects do not commit them: add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.
 
@@ -222,7 +222,7 @@ plugins: [tsDom({ a11y: true })]            // or { a11y: { ignore: ["img-alt"] 
 npx ts-dom lint --a11y [--strict]
 ```
 
-All three read the components defined in the scanned folders, so `click-semantics` on a component's tag gives the same result everywhere. The Vite plugin and the oxlint plugin keep what they read while they run and use it again until a file it came from changes: a template's warnings are computed again when the template, a template of a component inside it that a check read, or the TypeScript that defines those components changes, so saving a child template that loses its `<button>` warns on the parent at once. The Vite plugin then prints the warnings of the saved template and of the templates computed again; a save reads only the files that changed, however large the project. In the editor the oxlint plugin lists the folders again at most once a second, so a component defined in a new file is seen within a second. The Vite plugin and the oxlint rule report per template, so `unchecked-custom-elements`, which is reported once per run, comes only from `ts-dom lint` and `ts-dom check`.
+All three read the components defined in the scanned folders, so `click-semantics` on a component's tag gives the same result everywhere. The Vite plugin and the oxlint plugin keep what they read while they run and use it again until a file it came from changes: a template's warnings are computed again when the template, a template of a component inside it that a check read, or the TypeScript that defines those components changes, so saving a child template that loses its `<button>` warns on the parent at once. The Vite plugin then prints the warnings of the saved template and of the templates computed again; a save parses only the files whose content changed, however large the project. In the editor the oxlint plugin lists the folders again at most once a second, so a component defined in a new file is seen within a second. The Vite plugin and the oxlint rule report per template, so `unchecked-custom-elements`, which is reported once per run, comes only from `ts-dom lint` and `ts-dom check`.
 
 `ignore` takes rule ids and can turn off individual checks:
 

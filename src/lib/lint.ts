@@ -230,8 +230,8 @@ export interface Contract {
   emits: Set<string>;
   /** The emitted events declared with `bubbles: true`. */
   bubbles: Set<string>;
-  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and its current text. */
-  template?: { file: string; readonly html: string };
+  /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists now (a check that asks depends on that): path relative to the `cwd` given to contractsFor, and its current text. */
+  readonly template?: { file: string; readonly html: string };
 }
 
 function kindOf(valueText: string): PropKind {
@@ -279,8 +279,8 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
     const template = c?.template;
     if (c) {
       const emits = optionEntries(c.call, "emits");
-      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)) };
-      if (template && ws.text(template) !== null) contract.template = { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } };
+      const own = template ? { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } } : undefined;
+      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)), get template() { return template && ws.text(template) !== null ? own : undefined; } };
     }
     const files = [resolve(def.file), ...(def.class ? [def.class.file] : []), ...(template ? [template] : [])];
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
