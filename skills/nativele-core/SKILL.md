@@ -115,7 +115,7 @@ define("todo-app", TodoApp);
 
 - A `derive` function gets the state and props merged: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - Declare each event in `emits` with `event()` or `event<Detail>()`; the parent's handler declares the event it receives, `onX(e: EmitEvent<Child, "name">)`, and reads `e.detail`; `define()` checks that type against the `data-on-*` binding: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
-- Call `bind` in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
+- Call `bind` in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state; a store from another library (an object with `getSnapshot`/`getState` and `subscribe`, Zustand, Redux, nanostores) is bound through the adapter in `npx ts-dom skills nativele-state-management`, not a hand-written one
 
 ## The loop
 

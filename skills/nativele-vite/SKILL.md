@@ -198,4 +198,4 @@ Then run `npm run dev`, open every page and check that its components render and
 - The tsconfig: https://github.com/Pixmi/nativele/blob/main/skills/nativele-typescript/SKILL.md
 - The whitespace mode with a formatter: https://github.com/Pixmi/nativele/blob/main/skills/nativele-formatting/SKILL.md
 - CI: https://github.com/Pixmi/nativele/blob/main/skills/nativele-ci/SKILL.md
-- An app in a workspace: https://github.com/Pixmi/nativele/blob/main/skills/nativele-monorepo/SKILL.md
+- An app in a workspace, including one `tsDom()` per package in one Vite config: https://github.com/Pixmi/nativele/blob/main/skills/nativele-monorepo/SKILL.md
