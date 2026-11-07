@@ -309,11 +309,13 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     if (notJudged.length) {
-      const own = [...unreadHere.keys()].filter((n) => n.tagName !== "slot").map((n) => `<${n.tagName}>`);
+      const custom = [...unreadHere.keys()].filter((n) => n.tagName !== "slot");
+      const own = [...new Set(custom.filter((n) => !children.has(n.tagName)).map((n) => `<${n.tagName}>`))];
+      const noFile = [...new Set(custom.filter((n) => children.has(n.tagName)).map((n) => `<${n.tagName}>`))];
       report(
         "unchecked-content",
         el,
-        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`).join("; ")}${own.length ? `; for a component of this project, add the folder that defines ${and([...new Set(own)])} to the scanned folders` : ""}.`,
+        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`).join("; ")}${own.length ? `; for a component of this project, add the folder that defines ${and(own)} to the scanned folders` : ""}${noFile.length ? `; ${and(noFile)} ${noFile.length > 1 ? "are" : "is"} defined in the scanned folders, but the template file ${noFile.length > 1 ? "their classes import" : "its class imports"} cannot be read, so restore that file or correct the import path in the class` : ""}.`,
       );
     }
 

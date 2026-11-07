@@ -106,6 +106,15 @@ describe("unchecked-content: an element a rule cannot judge because its composed
   it("a third-party element with data-on-click itself is left to unchecked-custom-elements", () => {
     expect(found(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
   });
+  it("a component defined in the scanned folders whose template file cannot be read is not blamed on the scanned folders", () => {
+    const withBroken: A11yChildren = new Map([...children, ["x-broken", {}]]);
+    const messages = (html: string) => checkA11y(html, [], withBroken).map((d) => d.message);
+    const [own] = messages(`<div data-on-click="go"><x-broken></x-broken></div>`);
+    expect(own).toContain("<x-broken> is defined in the scanned folders, but the template file its class imports cannot be read");
+    expect(own).not.toContain("to the scanned folders");
+    const [outside] = messages(`<div data-on-click="go"><x-elsewhere></x-elsewhere></div>`);
+    expect(outside).toContain("add the folder that defines <x-elsewhere> to the scanned folders");
+  });
   it("is left out with the rules it names", () => {
     expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["click-semantics"], children)).toEqual([]);
     expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["unchecked-content"], children)).toEqual([]);
