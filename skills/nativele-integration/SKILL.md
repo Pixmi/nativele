@@ -109,7 +109,7 @@ declare module "preact" {
 }
 ```
 
-Used from a Preact component, with the `nv-info-card` and `nv-text-field` components of `nativele-vue`'s example (props `label`, `count`, `item`, event `item-select`; prop `value`, event `value-change`):
+Used from a Preact component, with two Nativele components, `nv-info-card` and `nv-text-field` (props `label`, `count`, `item`, event `item-select`; prop `value`, event `value-change`):
 
 ```tsx
 import { useState } from "preact/hooks";

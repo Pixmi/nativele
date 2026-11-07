@@ -171,7 +171,7 @@ Verified on 2026-11-06 with Node 24 and Google Chrome 148. The router relies on 
 
 ## Example
 
-A project tracker: a projects list (`/`), a project page with its tasks (`/projects/:id`) and a settings page (`/settings`). Everything below is enough to build the same layout; the full project from the agent trial is in the repository only as a reference.
+A project tracker: a projects list (`/`), a project page with its tasks (`/projects/:id`) and a settings page (`/settings`). Everything below is enough to build the same layout.
 
 ```
 index.html  package.json  tsconfig.json  vite.config.ts  playwright.config.ts

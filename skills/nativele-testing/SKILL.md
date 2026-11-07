@@ -312,7 +312,7 @@ test("the built page renders the components and they respond", async ({ page }) 
 });
 ```
 
-Playwright locators reach into open shadow roots, so `page.locator("shadow-panel h2")` finds the heading inside a `shadow: true` component; its text is the slot fallback, not what is shown (limitation 6).
+Playwright locators reach into open shadow roots, so `page.locator("shadow-panel h2")` finds the heading inside a `shadow: true` component; its text is the slot fallback, not what is shown (limitation 6). When the element put in the slot is an `<h2>` too, the same locator matches both, the slotted one first and then the one in the shadow root, and an assertion on one element fails with a strict mode violation: assert both (`toHaveText(["Shadow", "Untitled"])`) or find what is shown with `getByRole`.
 
 ## Known limitations
 
