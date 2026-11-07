@@ -19,6 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - The oxlint plugin in the editor keeps the findings of a file's unsaved buffer while the same file is also linted as it is on disk, instead of parsing its template again on each switch.
 - The oxlint and Vite plugins drop what they keep for files that are no longer read: a deleted or renamed template, a file followed through an import outside the scanned folders, a `.tsx` or `.mts` file, or a folder no longer scanned. A long-running language server or dev server no longer grows with every rename.
 - `ts-dom-tags.ts` is generated in time linear in the number of components.
+- The event of a `data-on-*` handler, and of `this.on()`, is no longer `unknown` on an element whose lib.dom type has a string index signature: `<form data-on-focusout="check">` delivers `FocusEvent`, so `check(e: Event)` and `check(e: FocusEvent)` pass `ts-dom check` instead of failing `handler-event-type` with "delivers unknown", and `this.on(form, "vendor-ready", (e: CustomEvent<...>) => ...)` compiles. An `on<name>` property is read only where the element declares it, and an `on<name>` typed `any` or whose parameter is not an `Event` reads as `Event`, so the `handler-event-type` Fix, which offers `Event` as an alternative, only offers a type that is accepted.
 
 ## 0.6.8 (not published)
 

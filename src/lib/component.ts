@@ -174,7 +174,10 @@ export type EmitEvent<I, N extends string> = I extends { readonly "~emits"?: inf
     : never
   : never;
 
-type OnProperty<T, N extends string> = `on${N}` extends keyof T ? (NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V) => unknown ? V : never) : never;
+// An index signature (HTMLFormElement's [name: string]: any) declares no property, so on<name> is looked up among the declared keys only;
+// an on<name> typed any or with a parameter that is not an Event reads as Event, which handler-event-type's Fix offers as always accepted.
+type KnownKeys<T> = keyof { [K in keyof T as string extends K ? never : number extends K ? never : K]: never };
+type OnProperty<T, N extends string> = `on${N}` extends KnownKeys<T> ? (NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V extends Event) => unknown ? V : never) : never;
 type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyof HTMLElementEventMap ? HTMLElementEventMap[N] : never) : never;
 
 /**

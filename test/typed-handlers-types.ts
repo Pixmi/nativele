@@ -22,6 +22,9 @@ export class Typed extends Component(tpl) {
   onSubmit(e: SubmitEvent): void {
     void e.submitter;
   }
+  onFocusOut(e: FocusEvent): void {
+    void e.relatedTarget;
+  }
   onUnknown(_e: Event): void {}
   onBoth(_e: MouseEvent | CustomEvent<void>): void {}
   onRow(_e: MouseEvent, hit: EventHit): void {
@@ -36,6 +39,7 @@ export class Untyped extends Component(tpl) {
   onKey(_e: Event): void {}
   onChange(_e: Event): void {}
   onSubmit(_e: Event): void {}
+  onFocusOut(_e: Event): void {}
   onUnknown(_e: Event): void {}
   onBoth(_e: Event): void {}
   onRow(_e: Event, _hit: EventHit): void {}
@@ -48,6 +52,7 @@ export class NoParameters extends Component(tpl) {
   onKey(): void {}
   onChange(): void {}
   onSubmit(): void {}
+  onFocusOut(): void {}
   onUnknown(): void {}
   onBoth(): void {}
   onRow(): void {}
@@ -71,6 +76,13 @@ class WrongNative extends Untyped {
 }
 // @ts-expect-error wrongHandlerParameters: onClick is bound to click, which is a MouseEvent
 define("x-wrong-native", WrongNative);
+
+// HTMLFormElement's [name: string] index signature declares no on<name> property: focusout keeps its HTMLElementEventMap type.
+class WrongFocus extends Untyped {
+  override onFocusOut(_e: KeyboardEvent): void {}
+}
+// @ts-expect-error wrongHandlerParameters: onFocusOut is bound to focusout on <form>, which is a FocusEvent
+define("x-wrong-focus", WrongFocus);
 
 class Narrower extends Untyped {
   override onChange(_e: InputEvent): void {}
@@ -111,6 +123,7 @@ export class Sources extends Component(eventsTpl) {
     this.on(this.refs.video, "enterpictureinpicture", (e: PictureInPictureEvent) => void e.pictureInPictureWindow);
     this.on(this.refs.video, "enterpictureinpicture", (e) => void e.type);
     this.on(this.refs.field, "keydown", (e) => void e.key);
+    this.on(this.refs.form, "vendor-ready", (e: CustomEvent<{ id: number }>) => void e.detail.id);
     this.on(window, "resize", (e: UIEvent) => void e.detail);
     this.on(this.refs.field, "vendor-ready", (e: CustomEvent<{ id: number }>) => void e.detail.id);
     this.on(this.refs.field, "vendor-ready", (e) => void e.type);
