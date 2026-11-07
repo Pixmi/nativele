@@ -1,7 +1,7 @@
 name: Skills
 
-# A required check: it runs on every pull request and push, and skips its steps (not the job) when nothing it
-# checks changed, so it always reports.
+# "SKILL.md format" is a required check: it runs on every pull request and push, and skips its steps (not the job) when
+# nothing it checks changed, so it always reports. "Skill trials needed" only reports; "Skill replay" is not required.
 on:
   pull_request:
   push:
@@ -37,7 +37,7 @@ jobs:
           if [ -z "$files" ] || has '^\.github/workflows/skills\.yml$'; then all=true; fi
           format=$all
           # test/skills.test.ts also checks the links in the READMEs, llms.txt and the guides.
-          if has '^(skills/|docs/|README|llms\.txt$|test/skills\.test\.ts$|src/)'; then format=true; fi
+          if has '^(skills/|docs/|README|llms\.txt$|test/skills\.test\.ts$|src/|trials/|scripts/trial\.ts$|test/trials\.test\.ts$)'; then format=true; fi
           echo "format=$format" | tee -a "$GITHUB_OUTPUT"
 
   format:
@@ -54,5 +54,58 @@ jobs:
           cache: npm
       - run: npm ci
         if: needs.changes.outputs.format == 'true'
-      - run: npx vitest run test/skills.test.ts
+      - run: npx vitest run test/skills.test.ts test/trials.test.ts
         if: needs.changes.outputs.format == 'true'
+
+  trials:
+    name: Skill trials needed
+    runs-on: ubuntu-latest
+    outputs:
+      replay: ${{ steps.affected.outputs.replay }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # Which Skills this change needs a replay or an agent trial for (scripts/trial.ts affected); agent trials are run
+      # by a maintainer, never in CI, so this step reports and does not fail.
+      - id: affected
+        continue-on-error: true
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) base="${{ github.event.pull_request.base.sha }}"; head="${{ github.event.pull_request.head.sha }}" ;;
+            push) base="${{ github.event.before }}"; head="${{ github.sha }}" ;;
+            *) base=""; head="" ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No base commit to compare with; nothing to report." >> "$GITHUB_STEP_SUMMARY"
+            echo "replay=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          { echo "## Skill trials"; echo; node scripts/trial.ts affected --base="$base" --head="$head"; } >> "$GITHUB_STEP_SUMMARY"
+          replay="$(node scripts/trial.ts affected --base="$base" --head="$head" --json | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.stringify(JSON.parse(s).replay)))')"
+          echo "replay=$replay" | tee -a "$GITHUB_OUTPUT"
+
+  replay:
+    name: Skill replay (${{ matrix.skill }})
+    needs: trials
+    if: needs.trials.outputs.replay != '' && needs.trials.outputs.replay != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJSON(needs.trials.outputs.replay) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The runner ships google-chrome; when it is missing, launchChrome falls back to Playwright's Chromium
+      - run: npx playwright-core install --with-deps chromium
+      # The last accepted agent output of the Skill on a fresh project with this change's package. A failure means the
+      # library regressed, or the change is intended and the Skill needs an update and a new agent trial.
+      - run: npm run trial -- replay ${{ matrix.skill }}

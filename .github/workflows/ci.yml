@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       # Each job runs only for the files it depends on. Jobs are skipped with `if`, not with paths-ignore, so the required
       # checks still report; the matrix job skips its steps instead, because a skipped matrix job does not report the
-      # per-version check names. SKILL.md has its own workflow.
+      # per-version check names. SKILL.md and trials/ have their own workflow.
       - id: diff
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -39,7 +39,7 @@ jobs:
           all=false
           if [ -z "$files" ] || has '^(src/|package(-lock)?\.json$|tsconfig\.json$|vite\.config\.ts$|\.github/workflows/ci\.yml$)'; then all=true; fi
           check=$all; browser=$all; smoke=$all; nobundler=$all; bench=$all
-          if echo "$files" | grep -qvE '(\.md$|^LICENSE$|^llms\.txt$|^\.gitignore$|^skills/|^\.github/)'; then check=true; fi
+          if echo "$files" | grep -qvE '(\.md$|^LICENSE$|^llms\.txt$|^\.gitignore$|^skills/|^trials/|^\.github/)'; then check=true; fi
           if has '^(browser|examples)/'; then browser=true; fi
           if has '^scripts/consumer-smoke\.sh$'; then smoke=true; fi
           if has '^scripts/no-bundler-smoke\.sh$'; then nobundler=true; fi

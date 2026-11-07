@@ -73,6 +73,7 @@
     "smoke": "bash scripts/consumer-smoke.sh",
     "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh",
     "bench": "node scripts/bench.ts",
+    "trial": "node scripts/trial.ts",
     "bench:check": "node scripts/bench/check.ts"
   },
   "dependencies": {
