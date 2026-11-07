@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -105,7 +105,8 @@ export function installedCopies(cwd: string, name: string): string[] {
 
 export function addSkill(skill: Skill, target: string): string {
   const dest = join(target, skill.name);
-  cpSync(skill.dir, dest, { recursive: true });
+  mkdirSync(dest, { recursive: true });
+  copyFileSync(join(skill.dir, "SKILL.md"), join(dest, "SKILL.md"));
   return dest;
 }
 

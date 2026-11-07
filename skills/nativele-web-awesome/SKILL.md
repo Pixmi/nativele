@@ -238,8 +238,6 @@ In the browser, against the dev server and the build (`vite preview`):
 - a forwarded slot reaches the Web Awesome slot: `select.shadowRoot.querySelector("slot[name=hint]").assignedElements({ flatten: true })`;
 - no console errors, and in the build no warnings.
 
-
-
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

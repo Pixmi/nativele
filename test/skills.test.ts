@@ -166,6 +166,11 @@ describe("Skill helpers", () => {
     const react = listSkills(skillsRoot()).find((s) => s.name === "nativele-react")!;
     const dest = addSkill(react, skillsTarget(claude));
     expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
+    const leftover = tmp();
+    mkdirSync(join(leftover, "nativele-x", "example", "node_modules"), { recursive: true });
+    writeFileSync(join(leftover, "nativele-x", "SKILL.md"), "x");
+    const copied = addSkill({ ...react, name: "nativele-x", dir: join(leftover, "nativele-x") }, skillsTarget(claude));
+    expect(readdirSync(copied)).toEqual(["SKILL.md"]);
   });
 });
 

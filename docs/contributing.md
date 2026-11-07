@@ -49,8 +49,6 @@ browser/            real Chrome tests and fixtures
 
 Examples in the repo point directly to `src/lib` through an alias in `vite.config.ts`, so no packing is needed first.
 
-To run a Skill's example project: `npm run build:lib`, then in `skills/<name>/example` run `npm install` and `npm run verify` (it depends on the library in this repository through `file:../../..`).
-
 ### Browser tests
 
 `npm run test:browser` starts `vp dev` and drives the system-installed Chrome with `playwright-core` (no browser is downloaded), verifying behavior that happy-dom cannot cover: native `@scope`, slot assignment for parser-created elements, dynamic slots through `MutationObserver`, and native slots and style isolation in Shadow DOM.

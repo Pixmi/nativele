@@ -168,8 +168,6 @@ In the browser, render a component with an object prop and an event listener, an
 - the listener runs once per event;
 - children that the framework toggles, reorders, adds and removes stay in the right slot, with no errors or framework warnings in the console (run this check once against the dev server too: production builds drop framework warnings). Read a slot with `el.assignedNodes(name)` (`""` is the default slot), which works in both modes; a Light DOM component has no `<slot>` elements once rendered. Frameworks leave comment and empty text nodes as anchors among the children, so compare elements, not all nodes.
 
-
-
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
