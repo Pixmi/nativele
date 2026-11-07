@@ -173,7 +173,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
       const child = type.includes("CustomEvent<") ? sites.find((x) => x.tag.includes("-")) : undefined;
       issue(
         "handler-event-type",
-        `${name}() is bound to ${bound.length ? [...new Set(bound)].join(" and ") : "a data-on-* attribute"}, which delivers ${type}, but its first parameter does not accept that event (tsc at ${where}). Fix: type the first parameter as \`${type}\`${child ? ` (for data-on-${child.event} on <${child.tag}> that is \`EmitEvent<Child, "${child.event}">\` with the class that defines <${child.tag}>)` : ""}, or as \`Event\`.`,
+        `${name}() is bound to ${bound.length ? [...new Set(bound)].join(" and ") : "a data-on-* attribute"}, which delivers ${type}, but its first parameter does not accept that event (tsc at ${where}). Fix: type the first parameter as \`${type}\`${child ? ` (for data-on-${child.event} on <${child.tag}> that is \`EmitEvent<Child, "${child.event}">\` with the class that defines <${child.tag}>)` : ""}${type === "Event" ? "" : ", or as `Event`"}.`,
         first && { file: rel(first.html), line: first.line, col: first.col },
       );
     }

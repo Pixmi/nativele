@@ -138,6 +138,34 @@ describe("ts-dom check: handler parameter types", () => {
     }
   }, 30_000);
 
+  it("types an event from the first source that declares it, leaves a name no source declares unchecked, and keeps checking an event typed Event", () => {
+    const dir = join(process.cwd(), "check-events-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      const H = `import { Component, define, event } from "@nativele/ts-dom";\nimport type { EmitEvent } from "@nativele/ts-dom";\n`;
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "child.html"), `<button type="button" data-on-click="fire">Fire</button>\n`);
+      writeFileSync(join(dir, "child.ts"), `${H}import tpl from "./child.html.js";\nexport class Child extends Component(tpl, { emits: { "child-picked": event<{ id: number }>({ bubbles: true }) } }) {\n  fire(): void {\n    this.emit("child-picked", { id: 1 });\n  }\n}\ndefine("x-child", Child);\n`);
+      writeFileSync(join(dir, "page.html"), `<video data-ref="video" data-on-enterpictureinpicture="pip"></video>\n<div data-on-child-picked="picked"><x-child></x-child></div>\n<input aria-label="f" data-on-change="changed" />\n`);
+      writeFileSync(
+        join(dir, "page.ts"),
+        `${H}import tpl from "./page.html.js";\nimport type { Child } from "./child.ts";\nexport class Page extends Component(tpl) {\n  pip(e: PictureInPictureEvent): void {\n    void e.pictureInPictureWindow;\n  }\n  picked(e: EmitEvent<Child, "child-picked">): void {\n    void e.detail.id;\n  }\n  changed(_e: InputEvent): void {}\n  override connected(): void {\n    this.on(this.refs.video, "enterpictureinpicture", (e: PictureInPictureEvent) => void e.pictureInPictureWindow);\n  }\n}\ndefine("x-page", Page);\n`,
+      );
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-events-tmp", "--project=check-events-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([["check-events-tmp/page.html", 3, "handler-event-type"]]);
+      expect(issues[0]?.message).toMatch(/Fix: type the first parameter as `Event`\.$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("reads several handlers and union types out of one tsc message", () => {
     const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
     try {
@@ -160,7 +188,8 @@ describe("ts-dom check: handler parameter types", () => {
         ["handler-event-type", 2, 53],
       ]);
       expect(issues[0]?.message).toContain("onBoth() is bound to data-on-click on <button> and data-on-row-closed on <x-row>, which delivers CustomEvent<void> | PointerEvent");
-      expect(issues[1]?.message).toContain("Fix: type the first parameter as `Event`");
+      expect(issues[1]?.message).toContain("Fix: type the first parameter as `Event`.");
+      expect(issues[0]?.message).toContain(", or as `Event`.");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

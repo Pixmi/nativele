@@ -321,7 +321,7 @@ npx ts-dom lint src/pages`,
 npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
   },
   "custom-event-on-native": {
-    why: "A child's custom event does not bubble, so a handler on a native element would never receive it. Events are handled on the tag of the component that emits them.",
+    why: "An event a child component emits without bubbles: true reaches only the child's own tag, so a handler on a native element around it would never receive it. Events are handled on the tag of the component that emits them; an event declared with event<...>({ bubbles: true }) can be caught on a wrapper. A name no component in the scanned folders emits is not reported.",
     bad: `<div data-on-quantity-change="update">
   <qty-input></qty-input>
 </div>`,

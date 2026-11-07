@@ -193,10 +193,9 @@ export const DATA_FLOW_RULES = {
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
-/** Common native events. A data-on-* on a native element whose event is not listed here is treated as a custom event. */
-const NATIVE_EVENTS = new Set(
-  `click dblclick auxclick mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave contextmenu wheel keydown keyup keypress input beforeinput change submit reset invalid select focus blur focusin focusout scroll resize load unload error abort toggle cancel close drag dragstart dragend dragenter dragleave dragover drop copy cut paste compositionstart compositionupdate compositionend touchstart touchmove touchend touchcancel pointerdown pointerup pointermove pointerover pointerout pointerenter pointerleave pointercancel gotpointercapture lostpointercapture animationstart animationend animationiteration transitionstart transitionend transitionrun transitioncancel play pause ended playing timeupdate volumechange seeking seeked loadeddata loadedmetadata canplay waiting slotchange fullscreenchange online offline hashchange popstate storage message`.split(/\s+/),
-);
+/** Every event name that the element event maps of lib.dom declare (test/native-events-types.ts proves the list equal to them). */
+export const NATIVE_EVENT_NAMES = ["abort", "afterprint", "animationcancel", "animationend", "animationiteration", "animationstart", "auxclick", "beforeinput", "beforematch", "beforeprint", "beforetoggle", "beforeunload", "blur", "cancel", "canplay", "canplaythrough", "change", "click", "close", "command", "compositionend", "compositionstart", "compositionupdate", "contextlost", "contextmenu", "contextrestored", "copy", "cuechange", "cut", "dblclick", "drag", "dragend", "dragenter", "dragleave", "dragover", "dragstart", "drop", "durationchange", "emptied", "encrypted", "ended", "enterpictureinpicture", "error", "focus", "focusin", "focusout", "formdata", "fullscreenchange", "fullscreenerror", "gamepadconnected", "gamepaddisconnected", "gotpointercapture", "hashchange", "input", "invalid", "keydown", "keypress", "keyup", "languagechange", "leavepictureinpicture", "load", "loadeddata", "loadedmetadata", "loadstart", "lostpointercapture", "message", "messageerror", "mousedown", "mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover", "mouseup", "offline", "online", "pagehide", "pagereveal", "pageshow", "pageswap", "paste", "pause", "play", "playing", "pointercancel", "pointerdown", "pointerenter", "pointerleave", "pointermove", "pointerout", "pointerover", "pointerrawupdate", "pointerup", "popstate", "progress", "ratechange", "rejectionhandled", "reset", "resize", "scroll", "scrollend", "securitypolicyviolation", "seeked", "seeking", "select", "selectionchange", "selectstart", "slotchange", "stalled", "storage", "submit", "suspend", "timeupdate", "toggle", "touchcancel", "touchend", "touchmove", "touchstart", "transitioncancel", "transitionend", "transitionrun", "transitionstart", "unhandledrejection", "unload", "volumechange", "waiting", "waitingforkey", "webkitanimationend", "webkitanimationiteration", "webkitanimationstart", "webkittransitionend", "wheel"] as const;
+const NATIVE_EVENTS: ReadonlySet<string> = new Set(NATIVE_EVENT_NAMES);
 
 /** Attributes that are valid on any element and are never props. */
 const GLOBAL_ATTRS = new Set(
@@ -279,6 +278,8 @@ export type PropKind = "string" | "number" | "boolean" | "other";
 export interface Contract {
   props: Map<string, PropKind>;
   emits: Set<string>;
+  /** The emitted events declared with `bubbles: true`. */
+  bubbles: Set<string>;
   /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and text. */
   template?: { file: string; html: string };
 }
@@ -323,7 +324,8 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), index: Compone
     const c = def.component;
     let contract: Contract | null = null;
     if (c) {
-      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(c.call, "emits")) };
+      const emits = optionEntries(c.call, "emits");
+      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)) };
       const html = c.template && sources.text(c.template);
       if (c.template && typeof html === "string") contract.template = { file: relative(cwd, c.template), html };
     }
@@ -396,13 +398,15 @@ export function dataFlow(
   };
 
   for (const site of a.eventSites) {
-    if (!site.tag.includes("-") && !NATIVE_EVENTS.has(site.event)) {
-      report(
-        "custom-event-on-native",
-        `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is not a native event. Events emitted by a child component do not bubble by default, so only the child's own tag receives them. Fix: put data-on-${site.event} on the child component tag that emits it.`,
-        `event:${site.method}`,
-      );
-    }
+    if (site.tag.includes("-") || NATIVE_EVENTS.has(site.event)) continue;
+    const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
+    if (!emitters.length || emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
+    const tags = emitters.map(([tag]) => `<${tag}>`).join(", ");
+    report(
+      "custom-event-on-native",
+      `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is an event that ${tags} emits without bubbles: true, so only the tag of the component that emits it receives it. Fix: put data-on-${site.event} on ${emitters.length === 1 ? tags : "the tag of the component that emits it"}, or declare the event with event<...>({ bubbles: true }) in its emits.`,
+      `event:${site.method}`,
+    );
   }
 
   // Child components used by the template: check attributes and events against their declared contract.

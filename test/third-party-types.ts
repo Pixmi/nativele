@@ -32,7 +32,7 @@ define("x-uses-third-party", UsesThirdParty);
 class NarrowOther extends UsesThirdParty {
   override onOther(_e: CustomEvent<{ n: number }>): void {}
 }
-// @ts-expect-error wrongHandlerParameters: an event that no event map declares is received as Event
+// An event that no event map declares is not checked.
 define("x-narrow-other", NarrowOther);
 
 class WrongDetail extends Component(tpl) {

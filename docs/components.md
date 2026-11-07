@@ -82,7 +82,7 @@ Provided members:
 | `slotchange(name)` | Override to react to later changes of slot content in Light mode |
 | `assignedNodes(name)` | The nodes currently assigned to that slot (excluding fallback content); behaves the same in Light and Shadow |
 | `bind(store, fn)` | Subscribe to a store, call once immediately, and unsubscribe automatically when the element is removed |
-| `on(target, type, fn)` | Attach a native event listener, removed automatically when the element is removed; returns a function for manual removal. Event types and parameters are inferred from `HTMLElementEventMap` |
+| `on(target, type, fn)` | Attach an event listener, removed automatically when the element is removed; returns a function for manual removal. A name `HTMLElementEventMap` lists types an unannotated parameter on an element; a parameter typed narrower than `Event` must accept the event the target declares for the name, looked up as for `data-on-*` (its `emits`, its `on<name>` property, then `HTMLElementEventMap`), and a name the target does not declare is not checked |
 | `onCleanup(fn)` | Register a cleanup function to run when the element is removed; it runs once and is dropped, so register it in `connected()` to have it for every connection (see [Recipes](recipes.md#cancelling-a-request-when-the-component-is-removed)) |
 | `root` | The element itself (default), or the `ShadowRoot` (`shadow: true`) |
 | `connected()` / `disconnected()` | Override to attach your own behavior |
@@ -232,10 +232,11 @@ removeItem(e: MouseEvent, hit: EventHit) { this.set((s) => ({ items: s.items.fil
   | Bound to | The handler receives |
   |---|---|
   | `data-on-<event>` on a child component tag whose class declares `<event>` in `emits` | `EmitEvent<Child, "<event>">` (`CustomEvent<Detail>`) |
+  | Any other `data-on-<event>` whose element has an `on<event>` property | The type of that property's event: `onenterpictureinpicture` on a `<video>` is `PictureInPictureEvent` |
   | Any other `data-on-<event>` (a native element, or a native event on a component tag) | The type `HTMLElementEventMap` lists for the name: `click` is `MouseEvent` (`PointerEvent` in recent DOM types, which a `MouseEvent` parameter accepts), `keydown` `KeyboardEvent`, `submit` `SubmitEvent` |
-  | A name neither of them knows (a bubbling event of a grandchild caught on a wrapper, a third-party element's event) | `Event` |
+  | A name none of them declares (a bubbling event of a child caught on a wrapper, a third-party element's event no map declares) | Not checked: type the parameter as the event the handler expects, such as `EmitEvent<Child, "name">` |
 
-  A parameter that does not accept that event, such as `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error at `define()` that names the method and the event type it receives (`wrongHandlerParameters: { onSaved: CustomEvent<{ id: number }> }`), and `ts-dom check` reports it as `handler-event-type` at the `data-on-*` attribute. A handler bound to several events or tags must accept all of them (their union). `Event`, or no parameter, always compiles. The check compares the parameter itself, because TypeScript compares method types bivariantly and would let a parameter narrower than the event pass. A third-party element's events are typed as in [Custom elements from other libraries](#custom-elements-from-other-libraries). The second parameter, `hit`, is not checked.
+  A parameter that does not accept that event, such as `KeyboardEvent` on a `click` or another component's `EmitEvent`, is a tsc error at `define()` that names the method and the event type it receives (`wrongHandlerParameters: { onSaved: CustomEvent<{ id: number }> }`), and `ts-dom check` reports it as `handler-event-type` at the `data-on-*` attribute. A handler bound to several events or tags must accept all of them (their union), leaving out the bindings no source declares. `Event`, or no parameter, always compiles; a known event typed `Event`, such as `change`, still rejects a narrower parameter such as `InputEvent`. The check compares the parameter itself, because TypeScript compares method types bivariantly and would let a parameter narrower than the event pass. A third-party element's events are typed as in [Custom elements from other libraries](#custom-elements-from-other-libraries). The second parameter, `hit`, is not checked.
 - Event names must be lowercase (HTML attributes are case-insensitive); for mixed-case events such as `DOMContentLoaded`, use `this.on()` instead.
 
 ## Composition: Using Multiple Components Together
@@ -276,7 +277,7 @@ A template can use a custom element from another library (a date picker, a chart
 |---|---|---|
 | Registering | `ts-dom gen` imports its module from the generated `x.html.ts` | Not imported: import the library once, before the element is used (in the app's entry, or in the module of the component that uses it) |
 | `refs` | Typed as its class, through `ts-dom-tags.ts` | Typed by its entry in `HTMLElementTagNameMap`; a tag the map does not list is `HTMLElement` |
-| `data-on-<event>` | Its `emits` type the handler: `EmitEvent<Child, "event">` | Write the event name the element dispatches (lowercase; a mixed-case name goes through `this.on()`, see [Events](#events-data-on-)). The handler receives the type `HTMLElementEventMap` lists for that name, otherwise `Event` |
+| `data-on-<event>` | Its `emits` type the handler: `EmitEvent<Child, "event">` | Write the event name the element dispatches (lowercase; a mixed-case name goes through `this.on()`, see [Events](#events-data-on-)). The handler receives the type `HTMLElementEventMap` lists for that name; a name it does not list is not checked |
 | Attributes and events in lint | `unknown-prop`, `invalid-prop-value` and `unknown-event` check them | Not checked: lint does not know the element's props or events, so a misspelled attribute or event name is not reported |
 | `data-on-click` in the accessibility check | `click-semantics` reports it when the component's template has no operable element (`<button>`, `<a href>`, a form control, `<summary>`, `contenteditable`, an interactive role plus `tabindex`) a click could come from, unless the tag itself has an interactive role plus `tabindex` | Not checked: the element may handle the keyboard itself |
 
@@ -361,7 +362,7 @@ A common problem in Vue is re-emitting layer by layer and passing props down lay
 | `prop-forwarding` | Assigning your own prop as-is to a child component (`this.refs.kid.name = v.name`, where `name` is your own prop) |
 | `emit-forwarding` | A method that handles a child event merely `emit`s the event again (with the same name, or the whole method is just one `this.emit(...)`) |
 | `props-mutation` | Assigning to props inside the component (`this.count = …`) |
-| `custom-event-on-native` | Writing a custom event on the `data-on-*` of a native element (a child component's events do not bubble, so it would never be received) |
+| `custom-event-on-native` | Writing on the `data-on-*` of a native element an event that a child component emits without `bubbles: true` (only the child's own tag receives it). An event declared with `bubbles: true` can be caught on a wrapper, and a name no component emits is not reported |
 | `unknown-prop` | An attribute written on a child component's tag is not a prop it declares (hints "Did you mean …") |
 | `invalid-prop-value` | The attribute cannot set that prop: the prop is not string / number / boolean (it can only be passed through JS properties) |
 | `unknown-event` | `data-on-xxx` is written on a child component's tag, but the child does not declare (`emits`) this event and it is not a native event either |

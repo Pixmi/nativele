@@ -124,9 +124,14 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
   show(name: S["ifs"], on: boolean): void;
   /** Subscribe to a store: calls fn immediately once, and unsubscribes automatically when the element is removed. */
   bind<T>(store: ReadableStore<T>, fn: (value: T) => void): void;
-  /** Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually. */
+  /**
+   * Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually.
+   * `fn` receives `Event`, or the narrower event its parameter names when the target declares it for `type` (see EventOf); a name the target does not declare is not checked. A name HTMLElementEventMap lists types an unannotated parameter.
+   */
   on<K extends keyof HTMLElementEventMap>(target: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions): () => void;
+  // Before the lookup below: inside its class the component itself is the polymorphic `this`, for which the lookup is deferred.
   on(target: EventTarget, type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions): () => void;
+  on<T extends EventTarget, K extends string, E extends Event = Event>(target: T, type: K, fn: (e: [EventOf<T, K>] extends [never] ? E : EventOf<T, K>) => void, opts?: AddEventListenerOptions): () => void;
   /** Register a cleanup function that runs when the element is removed. */
   onCleanup(fn: () => void): void;
   /** The nodes currently assigned to the slot (fallback content excluded). In Shadow mode this is the native `slot.assignedNodes()`. */
@@ -167,6 +172,15 @@ export type EmitEvent<I, N extends string> = I extends { readonly "~emits"?: inf
     ? CustomEvent<NonNullable<M>[N]>
     : never
   : never;
+
+type OnProperty<T, N extends string> = `on${N}` extends keyof T ? (NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V) => unknown ? V : never) : never;
+type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyof HTMLElementEventMap ? HTMLElementEventMap[N] : never) : never;
+
+/**
+ * The event that `type` delivers on `T`, from the first source that declares it: the events T's component emits, the type of T's `on<type>` property (`onenterpictureinpicture` on a `<video>`), then `HTMLElementEventMap`.
+ * `never` when no source declares the name, so it is not checked.
+ */
+export type EventOf<T, N extends string> = [EmitEvent<T, N>] extends [never] ? ([OnProperty<T, N>] extends [never] ? FromEventMap<T, N> : OnProperty<T, N>) : EmitEvent<T, N>;
 
 const NON_BUBBLING = new Set([
   "focus", "blur", "mouseenter", "mouseleave", "pointerenter", "pointerleave", "load", "error", "scroll", "scrollend", "toggle", "beforetoggle", "cancel", "close", "invalid",
@@ -559,13 +573,7 @@ export function Component(
 }
 
 // The event type is resolved here, not in the template module: a component whose template uses its own tag would otherwise reference itself in its own base type.
-type HandlerEvent<B> = B extends readonly [infer T extends string, infer N extends string]
-  ? [EmitEvent<El<T>, N>] extends [never]
-    ? N extends keyof HTMLElementEventMap
-      ? HTMLElementEventMap[N]
-      : Event
-    : EmitEvent<El<T>, N>
-  : never;
+type HandlerEvent<B> = B extends readonly [infer T extends string, infer N extends string] ? EventOf<El<T>, N> : never;
 type Missing<I, E> = Exclude<keyof E, keyof I>;
 // Method parameters are compared bivariantly, so assigning the method type would accept a parameter narrower than the event: compare the parameter itself.
 type Mismatched<I, E> = {

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { componentClasses, contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, templateCode, unusedMarkup } from "../src/lib/lint.ts";
+import { componentClasses, contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, NATIVE_EVENT_NAMES, templateCode, unusedMarkup } from "../src/lib/lint.ts";
 import type { Contract } from "../src/lib/lint.ts";
 
 describe("one file importing several templates", () => {
@@ -180,9 +180,13 @@ describe("data-flow checks", () => {
     expect(r.length).toBe(1);
     expect(r[0]?.message).toMatch(/"count"/);
   });
-  it("custom-event-on-native: a custom event written on a native element", () => {
-    expect(dataFlow(`<div data-on-value-change="x"></div>`, []).some((d) => d.rule === "custom-event-on-native")).toBe(true);
-    expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [])).toEqual([]);
+  it("custom-event-on-native: an event a child emits without bubbles, written on a native element", () => {
+    const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["value-change"]), bubbles: new Set(bubbles) }]]);
+    const found = dataFlow(`<div data-on-value-change="x"><x-kid></x-kid></div>`, [], kid([])).filter((d) => d.rule === "custom-event-on-native");
+    expect(found.map((d) => d.message)).toEqual([expect.stringContaining(`"value-change" is an event that <x-kid> emits without bubbles: true`)]);
+    expect(dataFlow(`<div data-on-value-change="x"><x-kid></x-kid></div>`, [], kid(["value-change"]))).toEqual([]);
+    expect(dataFlow(`<div data-on-value-change="x"></div>`, [])).toEqual([]);
+    expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [], kid([]))).toEqual([]);
   });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
@@ -244,7 +248,7 @@ describe("child component contract rules", () => {
 import tpl from "./kid.html.js";
 export class Kid extends Component(tpl, {
   props: { label: "", maxCount: 0, open: false, items: [] as string[] },
-  emits: { saved: event<string>(), "value-change": event<number>() },
+  emits: { saved: event<string>(), "value-change": event<number>({ bubbles: true }) },
 }) {}
 define("x-kid", Kid);`;
   const dir = setup({ "kid.ts": child, "bare.ts": `export class Bare extends Component(tpl) {}\ndefine("x-bare", Bare);` });
@@ -261,7 +265,8 @@ define("x-kid", Kid);`;
       ["items", "other"],
     ]);
     expect([...(k?.emits ?? [])]).toEqual(["saved", "value-change"]);
-    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set() });
+    expect([...(k?.bubbles ?? [])]).toEqual(["value-change"]);
+    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set(), bubbles: new Set() });
     expect(contracts.has("x-other")).toBe(false);
   });
   it("accepts declared props (kebab-case maps to camelCase) and declared events", () => {
@@ -317,7 +322,7 @@ define("x-kid", Kid);`;
     expect(dataFlow(`<x-kid foo="1" data-on-nope="n"></x-kid>`, [])).toEqual([]);
   });
   it("a hand-built contract works too", () => {
-    const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]) }]]);
+    const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]), bubbles: new Set() }]]);
     expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, hand)).toEqual([]);
     expect(run(`<x-hand sise="1"></x-hand>`, hand)[0]?.message).toContain(`Did you mean "size"?`);
   });
@@ -479,4 +484,13 @@ describe("data-flow: unguarded-input-value", () => {
   it("leaves event handlers and elements that are not form controls alone", async () => {
     expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);
   });
+});
+
+describe("native events: one list, the one lib.dom's element event maps declare", () => {
+  const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["kid-done"]), bubbles: new Set() }]]);
+  for (const name of NATIVE_EVENT_NAMES) {
+    it(`data-on-${name} on a native element and on a child component tag is a native event`, () => {
+      expect(dataFlow(`<div data-on-${name}="h"></div><video data-on-${name}="h"></video><x-kid data-on-${name}="h"></x-kid>`, [], kid)).toEqual([]);
+    });
+  }
 });
