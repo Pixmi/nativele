@@ -2,9 +2,9 @@
 import type { ELEMENT_EVENT_NAMES } from "../src/lib/events.ts";
 import type { TAG_EVENT_NAMES } from "../src/lib/lint.ts";
 
-// test/third-party-types.ts adds vendor-change to the maps of this program.
-type Element = Exclude<keyof HTMLElementEventMap, "vendor-change">;
-type Declared = Exclude<keyof HTMLElementEventMap | keyof HTMLMediaElementEventMap | keyof HTMLVideoElementEventMap | keyof HTMLBodyElementEventMap | keyof HTMLFrameSetElementEventMap | keyof SVGElementEventMap | keyof SVGSVGElementEventMap | keyof MathMLElementEventMap, "vendor-change">;
+// test/third-party-types.ts and test/any-types.ts add events to the maps of this program.
+type Element = Exclude<keyof HTMLElementEventMap, "vendor-change" | "mapped-any" | "mapped-detail">;
+type Declared = Exclude<keyof HTMLElementEventMap | keyof HTMLMediaElementEventMap | keyof HTMLVideoElementEventMap | keyof HTMLBodyElementEventMap | keyof HTMLFrameSetElementEventMap | keyof SVGElementEventMap | keyof SVGSVGElementEventMap | keyof MathMLElementEventMap, "vendor-change" | "mapped-any" | "mapped-detail">;
 type ElementListed = (typeof ELEMENT_EVENT_NAMES)[number];
 type Listed = ElementListed | (typeof TAG_EVENT_NAMES)[keyof typeof TAG_EVENT_NAMES][number];
 

@@ -301,7 +301,7 @@ declare global {
 export {};
 ```
 
-Then `<vendor-picker data-ref="picker" data-on-vendor-change="onPick">` gives `this.refs.picker` the type `VendorPicker`, and `define()` checks that `onPick` accepts `CustomEvent<{ value: string }>`. Like a Nativele component tag, the element is not one of the typed controls of a form's `elements` ([Reading a form](#reading-a-form)). `ts-dom lint` and `ts-dom check` list such tags once per run in the warning `unchecked-custom-elements`, which says that their attributes, events and `data-on-click` are not checked; a project that only uses another library's elements there can pass `--ignore=unchecked-custom-elements`.
+Then `<vendor-picker data-ref="picker" data-on-vendor-change="onPick">` gives `this.refs.picker` the type `VendorPicker`, and `define()` checks that `onPick` accepts `CustomEvent<{ value: string }>`. A declaration typed `any` counts as no declaration, so it neither passes nor switches off a check by accident: a tag map entry typed `any` gives `HTMLElement`, an event map entry, an `on<event>` property or its listener parameter typed `any` leaves the event to the next source (or unchecked), a `data-prop` property typed `any` takes items as an element from elsewhere does (any object with the `data-key` field), and a `CustomEvent` or `MessageEvent` whose `detail` or `data` is `any` (as in a bare `CustomEvent`) is checked to be that event with its payload unchecked: the handler may name any `CustomEvent<Detail>`, and an error names it `CustomEvent<unknown>`. Like a Nativele component tag, the element is not one of the typed controls of a form's `elements` ([Reading a form](#reading-a-form)). `ts-dom lint` and `ts-dom check` list such tags once per run in the warning `unchecked-custom-elements`, which says that their attributes, events and `data-on-click` are not checked; a project that only uses another library's elements there can pass `--ignore=unchecked-custom-elements`.
 
 ## Data Flow: props Down, Events Up
 
@@ -352,6 +352,7 @@ A framework's template type checker (TSX, `vue-tsc`, `svelte-check`) learns the 
 | `emits` with the same name as a native event (`click`, `input`…) | tsc reports an error (`nativeEventNames`); an error is thrown at runtime |
 | The parent gives the child a prop with a wrong name or type | tsc reports an error (types come from `HTMLElementTagNameMap`) |
 | A handler's parameter does not accept the event the HTML binds it to | tsc reports an error at `define()` (`wrongHandlerParameters`) |
+| `any` in the contract: a field of `state` or `props`, a derived value or an emitted detail typed `any` (also inferred, as from `JSON.parse`, and inside arrays and plain objects), or a handler's first parameter typed `any` | tsc reports an error at `Component()` or `define()` that names where it is (`anyInContract: "props.item"`, `"onPick(event)"`), and `ts-dom check` reports it as `any-in-contract` at the declaration or the `data-on-*` attribute; `unknown` is accepted |
 
 ### Avoiding Layer-by-Layer Passing (lint: `ts-dom/data-flow`)
 

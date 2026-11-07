@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
-import { classSpan, componentClassHeads, indexDirs, scanDefines, Workspace } from "./components.ts";
+import { classSpan, componentClassHeads, indexDirs, matchClose, scanDefines, Workspace } from "./components.ts";
 import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
@@ -16,6 +16,7 @@ export const CHECK_RULES = {
   "conflicting-keys": "the same name is declared in more than one of state, props and derive (found by tsc)",
   "reserved-prop": "a prop is named like a member of HTMLElement or ts-dom (found by tsc)",
   "native-event-name": "an emitted event is named like a native DOM event (found by tsc)",
+  "any-in-contract": "state, props, a derived value, an emitted detail or the event parameter of a data-on-* handler is typed any, which switches its checks off (found by tsc)",
   "missing-handler": "a data-on-* names a method the component class does not define (found by tsc through define())",
   "handler-event-type": "the first parameter of a data-on-* handler does not accept the event the template binds it to (found by tsc)",
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
@@ -128,7 +129,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
   const classKey = (file: string, name?: string) => `${file}\0${name ?? ""}`;
   const brokenBodies: { file: string; from: number; to: number }[] = [];
   for (const e of errors) {
-    if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames/.test(e.message)) continue;
+    if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames|anyInContract/.test(e.message)) continue;
     const text = readFileSync(resolve(cwd, e.file), "utf8");
     const lines = text.split("\n");
     const head = componentClassHeads(lines[e.line - 1] ?? "")[0];
@@ -177,6 +178,27 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
         first && { file: rel(first.html), line: first.line, col: first.col },
       );
     }
+    for (const path of namesAfter(e.message, "anyInContract")) {
+      named = true;
+      const method = /^([\w$]+)\(event\)$/.exec(path)?.[1];
+      if (method) {
+        const html = templateOf(e);
+        const sites = html ? analysisOf(html).eventSites.filter((x) => x.method === method).map((x) => ({ html, ...x })) : [];
+        const bound = [...new Set(sites.map((x) => `data-on-${x.event} on <${x.tag}>`))];
+        const first = sites[0];
+        issue(
+          "any-in-contract",
+          `The first parameter of ${method}(), which ${bound.length ? bound.join(" and ") : "a data-on-* attribute"} calls, is typed any, so tsc does not check that it accepts the event the template binds it to (tsc at ${where}). Fix: type it as the event it receives (\`Event\` always fits; ts-dom check names the exact type when a narrower one is wrong), or as \`unknown\` and narrow it.`,
+          first && { file: rel(first.html), line: first.line, col: first.col },
+        );
+        continue;
+      }
+      const [option, key] = path.split(/[.[]/) as [string, string | undefined];
+      const at = optionAt(readFileSync(file, "utf8"), e, option, key);
+      const what = option === "emits" ? `The detail of ${path} is typed any, so tsc checks neither what emit() sends nor what the parent's handler reads from it` : `${path} is typed any, so tsc checks nothing that reads or assigns it: the template, render(), derive and the parent all accept any value there`;
+      const fix = option === "emits" ? `declare the detail type, event<{ id: string }>(), or event<unknown>() and narrow it in the handler` : `declare a specific type (an empty array or null default needs one: \`[] as Todo[]\`, \`null as User | null\`; a value from JSON.parse or a fetch needs an annotation), or \`unknown\` and narrow it where it is read`;
+      issue("any-in-contract", `${what} (tsc at ${where}). Fix: ${fix}.`, at && { file: rel(file), ...at });
+    }
     for (const [key, rule, fix] of CONTRACT) {
       if (!e.message.includes(key)) continue;
       named = true;
@@ -217,6 +239,28 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
     const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cls.cause.file))}:${cls.cause.line}:${cls.cause.col}`;
     return [{ ...i, message: `${i.message.replace(/ Fix: .*$/s, "")} This error follows from the contract error of ${cls.name} at ${at}, which makes tsc type ${cls.name} as that error instead of an element. Fix: fix that error first; this one then goes away.` }];
   });
+}
+
+/** Where `option` (and its `key`, when written there) is declared in the Component(...) call that a tsc error at `e` reports. */
+function optionAt(text: string, e: TscError, option: string, key?: string): { line: number; col: number } | undefined {
+  const lines = text.split("\n");
+  const lineStart = lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0);
+  const head = componentClassHeads(lines[e.line - 1] ?? "")[0];
+  if (!head) return undefined;
+  const open = lineStart + head.open;
+  const close = matchClose(text, open, "(", ")");
+  const call = text.slice(open, close < 0 ? undefined : close);
+  const opt = new RegExp(`(?<![\\w$.])${option}\\s*:`).exec(call);
+  if (!opt) return undefined;
+  let found = opt.index;
+  const brace = call.indexOf("{", opt.index);
+  if (key && brace >= 0 && /^\s*:\s*$/.test(call.slice(opt.index + option.length, brace))) {
+    const body = call.slice(brace, Math.max(brace, matchClose(call, brace, "{", "}")));
+    const k = new RegExp(`(?<![\\w$.])["']?${key.replace(/[$]/g, "\\$&")}["']?\\s*[:,}(]`).exec(body);
+    if (k) found = brace + k.index;
+  }
+  const before = text.slice(0, open + found).split("\n");
+  return { line: before.length, col: (before.at(-1) as string).length + 1 };
 }
 
 /** The members of a union or intersection type as tsc prints it (`A & { x: number; }` gives `A` and `{ x: number; }`); any other type is its only member. */

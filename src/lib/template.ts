@@ -52,8 +52,13 @@ export interface Template<S extends Schema = Schema> {
   readonly __schema?: S;
 }
 
+/** `true` when T is `any`: a type Nativele reads from elsewhere and finds `any` in counts as not declared, so it never satisfies or switches off a check by accident. */
+export type IsAny<T> = 0 extends 1 & T ? true : false;
+
 export type El<K extends string> = K extends keyof HTMLElementTagNameMap
-  ? HTMLElementTagNameMap[K]
+  ? IsAny<HTMLElementTagNameMap[K]> extends true
+    ? HTMLElement
+    : HTMLElementTagNameMap[K]
   : HTMLElement;
 
 export function template<S extends Schema = Schema>(nodes: readonly TemplateNode[]): Template<S> {

@@ -11,6 +11,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, chosen from the whole set by this policy (a minor version when any iteration has a breaking change or a new feature), its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.1 (not published)
+
+### Breaking changes
+
+- `any` in a component's own contract is a tsc error: a field of `state` or `props`, a derived value or an emitted detail typed `any` fails at `Component()` (`anyInContract: "props.item"`), also when it is inferred (a value from `JSON.parse`, a default cast `as any`) or sits inside an array, tuple or plain object (`"state.rows[]"`, `"state.user.name"`), and a `data-on-*` handler whose first parameter is `any` fails at `define()` (`anyInContract: "onPick(event)"`). Code that compiled with such an `any` now fails `tsc`: declare the type (`[] as Todo[]`, `null as User | null`, `JSON.parse(text) as Settings`, `event<{ id: string }>()`, the event the handler receives), or declare `unknown` and narrow it where it is read; `unknown` is accepted.
+- An `any` read from a type Nativele did not write counts as not declared, so it no longer satisfies a check by accident. A `HTMLElementTagNameMap` entry typed `any` gives `HTMLElement` for `refs`, `El<tag>` and list item elements; a `data-prop` property or item tag typed `any` takes items as an element from elsewhere does (any object with the `data-key` field) instead of `any`; an `HTMLElementEventMap` entry, an `on<event>` property or its listener parameter typed `any` leaves the event to the next source, or unchecked, where an `on<event>` property typed `any` used to require `Event`; a component type that is `any` emits no declared events. A `CustomEvent` or `MessageEvent` whose payload is `any` (a bare `CustomEvent`) is still checked to be that event, its payload is not, and `this.on()` and the `wrongHandlerParameters` error name it with an `unknown` payload (`CustomEvent<unknown>`) instead of `any`.
+
+### New checks
+
+- `ts-dom check` reports `anyInContract` as `any-in-contract`: at the `state`, `props`, `derive` or `emits` entry that declares it, and for a handler parameter at its `data-on-*` attribute, with a `Fix:` to declare the type or `unknown` (`ts-dom rules --explain=any-in-contract`).
+
+### Skills
+
+- nativele-linting: the project's linter may forbid `any` in the rest of the code with `typescript/no-explicit-any` (oxlint) or `@typescript-eslint/no-explicit-any` (ESLint); Nativele reports it only in component contracts.
+
 ## 0.7.0
 
 `data-on-*` handlers are checked against the event they are bound to, form controls and list item elements are typed from the template, and lint, `ts-dom check`, codegen and the editor read how templates, classes and `define()` calls relate from one index that follows the imports, so they agree with each other on any file layout.

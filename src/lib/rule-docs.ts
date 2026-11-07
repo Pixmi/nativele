@@ -535,6 +535,21 @@ onPicked(e: MouseEvent) { /* ... */ }`,
 // list.ts
 onPicked(e: EmitEvent<ItemPicker, "item-picked">) { this.set({ picked: e.detail.id }); }`,
   },
+  "any-in-contract": {
+    why: "The names and types in a template are checked against the component's contract: state, props, derive, the emitted details and the parameters of its data-on-* handlers. A value typed `any` there satisfies every check, so a wrong hole value, a wrong prop from the parent, a wrong list item or a wrong handler event passes tsc without an error. Component() and define() therefore report `any` in the contract, also when it is inferred (an `[]` or `null` default cast `as any`, a value from JSON.parse). `unknown` is not reported: it is a declared type that is narrowed where it is read. `any` in the rest of the code is left to the project's own linter (`typescript/no-explicit-any` in oxlint, `@typescript-eslint/no-explicit-any` in ESLint).",
+    bad: `export class Card extends Component(tpl, {
+  props: { item: null as any },
+  state: { rows: JSON.parse(saved) },
+}) {
+  onPick(e: any) { /* ... */ }
+}`,
+    good: `export class Card extends Component(tpl, {
+  props: { item: null as Item | null },
+  state: { rows: JSON.parse(saved) as Row[] },
+}) {
+  onPick(e: MouseEvent) { /* ... */ }
+}`,
+  },
   "missing-handler": {
     why: "data-on-* names a method, and a missing method means the event does nothing. define() checks it in tsc through the generated types, ts-dom check points the error at the data-on-* attribute, and the component throws when it connects without the method.",
     bad: `<button data-on-click="save">save</button>

@@ -71,6 +71,7 @@ Check first, then change only what the task needs. Keep the user's plugins, rule
 - To give one id another severity, ignore it in its group and enable it alone: `"ts-dom/unused-markup": ["error", { "ignore": ["unused-ref"] }], "ts-dom/unused-ref": "warn"`. A group and one of its ids both on report the finding twice.
 - Choose by what each id costs when it is missed: unused-markup ids are dead or broken markup (blank text, an empty list) and stay errors. data-flow ids are design advice plus child contract checks (`unknown-prop`, `invalid-prop-value`, `unknown-event`), warnings by default; raise the contract ids to `"error"` singly if the user wants. a11y ids are static hints, warnings, and `ignore` takes the ids that do not apply (for example `aria-idref` when labels point outside the template).
 - An `ignore` id that does not exist is silently accepted: check every id against `npx ts-dom rules` before writing it.
+- `any` in the rest of the code is the project linter's choice: enable `typescript/no-explicit-any` (oxlint, `vp lint`) or `@typescript-eslint/no-explicit-any` (ESLint) when the user wants it forbidden. Nativele itself reports `any` only in component contracts (`any-in-contract`, from `ts-dom check`, not from the plugin).
 
 ## Example
 
