@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentIndex } from "../src/lib/components.ts";
-import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, NATIVE_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
+import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, unusedMarkup } from "../src/lib/lint.ts";
+import { ELEMENT_EVENT_NAMES, OTHER_NATIVE_EVENT_NAMES } from "../src/lib/events.ts";
 import type { Contract } from "../src/lib/lint.ts";
 
 /** A folder with `files` written into it. */
@@ -489,7 +490,7 @@ describe("data-flow: unguarded-input-value", () => {
 
 describe("native events: one list, the one lib.dom's element event maps declare", () => {
   const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["kid-done"]), bubbles: new Set() }]]);
-  for (const name of NATIVE_EVENT_NAMES) {
+  for (const name of [...ELEMENT_EVENT_NAMES, ...OTHER_NATIVE_EVENT_NAMES]) {
     it(`data-on-${name} on a native element and on a child component tag is a native event`, () => {
       expect(dataFlow(`<div data-on-${name}="h"></div><video data-on-${name}="h"></video><x-kid data-on-${name}="h"></x-kid>`, [], kid)).toEqual([]);
     });

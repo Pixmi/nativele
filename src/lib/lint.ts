@@ -4,6 +4,7 @@ import { checkA11y } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
+import { ELEMENT_EVENT_NAMES, OTHER_NATIVE_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex, Sources } from "./components.ts";
 
 export type { Diagnostic };
@@ -144,9 +145,7 @@ export const DATA_FLOW_RULES = {
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
-/** Every event name that the element event maps of lib.dom declare (test/native-events-types.ts proves the list equal to them). */
-export const NATIVE_EVENT_NAMES = ["abort", "afterprint", "animationcancel", "animationend", "animationiteration", "animationstart", "auxclick", "beforeinput", "beforematch", "beforeprint", "beforetoggle", "beforeunload", "blur", "cancel", "canplay", "canplaythrough", "change", "click", "close", "command", "compositionend", "compositionstart", "compositionupdate", "contextlost", "contextmenu", "contextrestored", "copy", "cuechange", "cut", "dblclick", "drag", "dragend", "dragenter", "dragleave", "dragover", "dragstart", "drop", "durationchange", "emptied", "encrypted", "ended", "enterpictureinpicture", "error", "focus", "focusin", "focusout", "formdata", "fullscreenchange", "fullscreenerror", "gamepadconnected", "gamepaddisconnected", "gotpointercapture", "hashchange", "input", "invalid", "keydown", "keypress", "keyup", "languagechange", "leavepictureinpicture", "load", "loadeddata", "loadedmetadata", "loadstart", "lostpointercapture", "message", "messageerror", "mousedown", "mouseenter", "mouseleave", "mousemove", "mouseout", "mouseover", "mouseup", "offline", "online", "pagehide", "pagereveal", "pageshow", "pageswap", "paste", "pause", "play", "playing", "pointercancel", "pointerdown", "pointerenter", "pointerleave", "pointermove", "pointerout", "pointerover", "pointerrawupdate", "pointerup", "popstate", "progress", "ratechange", "rejectionhandled", "reset", "resize", "scroll", "scrollend", "securitypolicyviolation", "seeked", "seeking", "select", "selectionchange", "selectstart", "slotchange", "stalled", "storage", "submit", "suspend", "timeupdate", "toggle", "touchcancel", "touchend", "touchmove", "touchstart", "transitioncancel", "transitionend", "transitionrun", "transitionstart", "unhandledrejection", "unload", "volumechange", "waiting", "waitingforkey", "webkitanimationend", "webkitanimationiteration", "webkitanimationstart", "webkittransitionend", "wheel"] as const;
-const NATIVE_EVENTS: ReadonlySet<string> = new Set(NATIVE_EVENT_NAMES);
+const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...OTHER_NATIVE_EVENT_NAMES]);
 
 /** Attributes that are valid on any element and are never props. */
 const GLOBAL_ATTRS = new Set(

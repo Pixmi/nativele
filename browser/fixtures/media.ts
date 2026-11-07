@@ -9,5 +9,8 @@ export class MediaBox extends Component(tpl) {
   closed(): void {
     this.seen.push("close");
   }
+  hit(e: Event): void {
+    this.seen.push(e.type);
+  }
 }
 define("media-box", MediaBox);

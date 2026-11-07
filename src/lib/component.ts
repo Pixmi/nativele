@@ -2,6 +2,7 @@ import type { List } from "./list.ts";
 import type { TextOf } from "./list.ts";
 import { LightSlots } from "./slots.ts";
 import type { ReadableStore } from "./store.ts";
+import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
 import type { El, Schema, Template } from "./template.ts";
@@ -182,11 +183,6 @@ type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyo
  */
 export type EventOf<T, N extends string> = [EmitEvent<T, N>] extends [never] ? ([OnProperty<T, N>] extends [never] ? FromEventMap<T, N> : OnProperty<T, N>) : EmitEvent<T, N>;
 
-const NON_BUBBLING = new Set([
-  "focus", "blur", "mouseenter", "mouseleave", "pointerenter", "pointerleave", "load", "error", "scroll", "scrollend", "toggle", "beforetoggle", "cancel", "close", "invalid",
-  "abort", "canplay", "canplaythrough", "durationchange", "emptied", "ended", "loadeddata", "loadedmetadata", "loadstart", "pause", "play", "playing", "progress", "ratechange", "seeked", "seeking", "stalled", "suspend", "timeupdate", "volumechange", "waiting",
-]);
-
 export function Component<S extends Schema>(
   tpl: Template<S>,
   // The data options are explicitly excluded so that an options object that has them never matches this overload;
@@ -234,7 +230,7 @@ export function Component(
     if (stateKeys.includes(k) || propKeys.includes(k)) throw new Error(`[conflicting-keys] derive.${k} has the same name as a state or props field. Fix: rename the derived value.`);
   }
   for (const k of Object.keys(opts.emits ?? {})) {
-    if (`on${k}` in HTMLElement.prototype) throw new Error(`[native-event-name] emits.${k} has the same name as a native DOM event. Fix: rename the event (for example with a prefix such as "field-${k}").`);
+    if ((ELEMENT_EVENT_NAMES as readonly string[]).includes(k)) throw new Error(`[native-event-name] emits.${k} has the same name as a native DOM event. Fix: rename the event (for example with a prefix such as "field-${k}").`);
   }
   const attrProps = new Map<string, { key: string; kind: "string" | "number" | "boolean" }>();
   for (const k of propKeys) {
@@ -336,12 +332,10 @@ export function Component(
       }
       conds.hideAll(); // hidden by default; TypeScript decides when to show them
       this.root.append(frag);
-      // Event delegation: one listener per event type on the root.
-      // Native bubbling events use the bubble phase (so a user's stopPropagation is respected);
-      // the rest (non-bubbling native events and custom events emitted by child components) need the capture phase.
+      // Whether an event bubbles is known only per dispatch (scroll bubbles from the document but not from an element), so each type gets
+      // a bubble-phase listener for bubbling events, which respects a stopPropagation below, and a capture-phase one for the rest.
       for (const type of eventTypes) {
-        const nativeBubbling = `on${type}` in HTMLElement.prototype && !NON_BUBBLING.has(type);
-        this.root.addEventListener(type, (e) => this.#dispatch(e), !nativeBubbling);
+        for (const capture of [false, true]) this.root.addEventListener(type, (e) => e.bubbles === capture || this.#dispatch(e), capture);
       }
     }
 
