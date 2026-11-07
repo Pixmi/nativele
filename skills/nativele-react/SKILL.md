@@ -3,7 +3,7 @@ name: nativele-react
 description: "Use Nativele web components inside a React 19 app: passing props, receiving events, children and slots, lifecycle, and TSX types. Use when a project depends on react and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-07"
   tools: "react@19.3.1 react-dom@19.3.1 @types/react@19.3.0 @types/react-dom@19.3.0 vite@8.3.5 @vitejs/plugin-react@6.2.1 typescript@7.0.2"
   author: "Nativele maintainers"
@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |

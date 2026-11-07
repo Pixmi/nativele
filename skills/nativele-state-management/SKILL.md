@@ -3,7 +3,7 @@ name: nativele-state-management
 description: "Decide where state lives in an app built with Nativele (component state, a shared createStore, or an existing Zustand, Redux Toolkit or nanostores store) and connect external stores to this.bind with a small adapter: selectors that limit re-rendering, actions and dispatch from event handlers, unsubscribing when a component is removed. Use when a project depends on @nativele/ts-dom and on zustand, @reduxjs/toolkit, redux or nanostores, or when components need to share data."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-07"
   tools: "zustand@5.0.16 @reduxjs/toolkit@2.14.0 redux@5.0.1 nanostores@1.5.5 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | zustand (`zustand/vanilla`) | 5.0.16 |
 | @reduxjs/toolkit | 2.14.0 |
 | redux | 5.0.1 (installed by `@reduxjs/toolkit`; a `legacy_createStore` store with the adapter was checked by hand with `tsc` and Node) |

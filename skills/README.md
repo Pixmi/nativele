@@ -34,7 +34,7 @@ name: nativele-react
 description: "Use Nativele web components inside a React 19 app: props, events, children and slots, lifecycle, and TSX types. Use when a project has react and @nativele/ts-dom."
 metadata:
   tier: official                 # official | community | experimental
-  nativele: ">=0.5.0 <0.6.0"     # the library versions the Skill supports; the lower bound is the first one it was verified with
+  nativele: ">=0.7.0 <0.8.0"     # the library versions the Skill supports; the lower bound is the first one it was verified with
   verified: "2026-11-05"         # date of the last verification
   tools: "react@19.3.1 react-dom@19.3.1 vite@8.3.5 @vitejs/plugin-react@6.2.1 typescript@7.0.2"
   author: "Nativele maintainers" # for community Skills: the contributor

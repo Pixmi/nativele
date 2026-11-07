@@ -3,7 +3,7 @@ name: nativele-<tool>
 description: "What the Skill lets an agent do, and when to use it (the dependencies or files that call for it)."
 metadata:
   tier: experimental
-  nativele: ">=0.5.0 <0.6.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "YYYY-MM-DD"
   tools: "<tool>@<exact version> <other tool>@<exact version>"
   author: "<your name or GitHub handle>"

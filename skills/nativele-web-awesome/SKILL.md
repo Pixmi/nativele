@@ -3,7 +3,7 @@ name: nativele-web-awesome
 description: "Use Web Awesome (@awesome.me/webawesome, the successor of Shoelace) components such as wa-button, wa-input, wa-select and wa-dialog inside Nativele templates: importing only the components used and the theme, attributes and properties, data-on-* with typed Web Awesome events, forms and FormData, Light DOM and shadow: true, slots, and what ts-dom check and lint can and cannot see. Use when a project depends on @awesome.me/webawesome and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-07"
   tools: "@awesome.me/webawesome@3.14.0 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ Web Awesome components are custom elements built with Lit, each with its own sha
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | @awesome.me/webawesome | 3.14.0 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |

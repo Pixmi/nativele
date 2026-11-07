@@ -3,7 +3,7 @@ name: nativele-formatting
 description: "Keep a formatter (oxfmt, Prettier, vp fmt) and Nativele (@nativele/ts-dom) consistent without replacing the formatter or its options: what reformatting does to .html templates and their rendered spacing, which whitespace mode to generate with, how to check that a reformat changed no text, and keeping the formatter off the generated files. Use when a project with @nativele/ts-dom formats its templates, when ts-dom doctor reports formatter-whitespace, or when spacing or text changed after formatting a template."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "oxfmt@0.76.0 prettier@3.9.10 vite-plus@1.5.0 typescript@6.0.3"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ Why it matters: `ts-dom gen` turns every text node of a template into data, incl
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | oxfmt | 0.76.0 |
 | prettier | 3.9.10 |
 | vite-plus | 1.5.0 (`vp fmt` runs oxfmt 0.76.0) |
