@@ -105,6 +105,22 @@ describe("the lint plugin in oxlint", () => {
     expect(out.diagnostics.map((d) => [d.filename, d.message.slice(0, d.message.indexOf("]") + 1)])).toEqual([["card.ts", "./templates/card.html:1:1 [unused-ref]"]]);
   }, 30_000);
 
+  it("labels a template reached through a barrel by its path from the file, with ./ only for the same folder or below", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
+    const files: Record<string, string> = {
+      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unused-ref": "error" } }),
+      "templates/card.html": `<p data-ref="note"></p>\n`,
+      "templates/index.ts": `export { default as cardTpl } from "./card.html.js";\n`,
+      "pages/card.ts": `import { Component, define } from "@nativele/ts-dom";\nimport { cardTpl } from "../templates/index.ts";\nexport class Card extends Component(cardTpl) {}\ndefine("x-card", Card);\n`,
+    };
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), text);
+    }
+    const out = JSON.parse(run(dir, "pages/card.ts")) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["../templates/card.html:1:1 [unused-ref]"]);
+  }, 30_000);
+
   it("has no rule unchecked-custom-elements, which only ts-dom lint and ts-dom check report once per run", async () => {
     const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
     expect("unchecked-custom-elements" in plugin.rules).toBe(false);
