@@ -499,6 +499,13 @@ describe("data-flow: unguarded-input-value", () => {
     expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name) this.refs.name.value = v.name;\n  }`)).toEqual([]);
     expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name)\n      this.refs.name.value = v.name;\n  }`)).toEqual([]);
   });
+  it("treats value, valueAsNumber and valueAsDate as one set", async () => {
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsNumber !== v.n) this.refs.name.value = String(v.n);\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsNumber === v.n) return;\n    this.refs.name.value = String(v.n);\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsDate !== v.d) this.refs.name.valueAsDate = v.d;\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.valueAsNumber = v.n;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.valueAsDate = v.d;\n  }`)).toEqual(["unguarded-input-value"]);
+  });
   it("leaves event handlers and elements that are not form controls alone", async () => {
     expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);
   });

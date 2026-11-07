@@ -429,7 +429,7 @@ When writing data back to an `<input>` in `render`, first compare whether the va
 if (changed.has("value") && this.refs.input.value !== v.value) this.refs.input.value = v.value;
 ```
 
-The lint rule `unguarded-input-value` (in the `data-flow` group, also `ts-dom/unguarded-input-value` on its own) reports a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without this comparison. Writing a value in an event handler, such as clearing a field after submit, is fine and not reported.
+The lint rule `unguarded-input-value` (in the `data-flow` group, also `ts-dom/unguarded-input-value` on its own) reports a `render()` that writes an `<input>`, `<textarea>` or `<select>` value without this comparison (`value`, `valueAsNumber` and `valueAsDate` count as one: comparing any of them guards a write to any of them). Writing a value in an event handler, such as clearing a field after submit, is fine and not reported.
 
 The example [examples/signup](../examples/signup/signup-form.ts) does exactly this, and a real Chrome test verifies that the cursor position does not jump.
 

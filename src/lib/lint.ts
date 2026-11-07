@@ -622,14 +622,15 @@ export function dataFlow(
     if (!render || !formControls.size) continue;
     const lines = render.split("\n");
     lines.forEach((line, i) => {
-      for (const m of line.matchAll(/\brefs\.(\w+)\.value\s*=(?!=)/g)) {
+      for (const m of line.matchAll(/\brefs\.(\w+)\.(value|valueAsNumber|valueAsDate)\s*=(?!=)/g)) {
         const ref = m[1] as string;
+        const prop = m[2] as string;
         if (!formControls.has(ref)) continue;
-        const guarded = [line, lines[i - 1] ?? ""].some((l) => new RegExp(`refs\\.${esc(ref)}\\.value\\s*!==?`).test(l));
+        const guarded = [line, lines[i - 1] ?? ""].some((l) => new RegExp(`refs\\.${esc(ref)}\\.(?:value|valueAsNumber|valueAsDate)\\s*[!=]==?`).test(l));
         if (guarded) continue;
         report(
           "unguarded-input-value",
-          `render() assigns this.refs.${ref}.value without comparing it first. Writing a form control's value while the user types moves the caret to the end. Fix: if (this.refs.${ref}.value !== next) this.refs.${ref}.value = next;`,
+          `render() assigns this.refs.${ref}.${prop} without comparing it first. Writing a form control's value while the user types moves the caret to the end. Fix: if (this.refs.${ref}.${prop} !== next) this.refs.${ref}.${prop} = next;`,
           `ref:${ref}`,
         );
       }

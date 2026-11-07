@@ -29,6 +29,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixes
 
+- `unguarded-input-value` treats `value`, `valueAsNumber` and `valueAsDate` of a form control as one set: a write to any of them in `render()` is checked, and a comparison of any of them (`!==`, `!=`, `===`) on the same ref counts as the guard, so `if (this.refs.input.valueAsNumber !== v.n) this.refs.input.value = String(v.n)` is no longer reported and an unguarded `valueAsNumber` or `valueAsDate` write is.
 - `unknown-prop` no longer skips every attribute that starts with `on` (such as `open` of a library element, whose `="false"` is now reported), only the inline event handlers of HTML (`onclick`), and it skips every global attribute of HTML, including `inputmode`, `enterkeyhint`, `autocapitalize`, `autocorrect`, `writingsuggestions` and `itemref`.
 - A component tree of any depth type checks: a chain of components each holding the next one's tag no longer fails with "Type instantiation is excessively deep and possibly infinite" (TS2589) past about 45 levels, and a template that holds its own tag (a tree view), or the tag of a component whose template holds it back, as a `data-ref` or as its root element, no longer fails as circular. A component's type no longer reads the resolved types of its children's templates, so checking it costs the same at any depth.
 - `Schema["refs"]`, `Schema["rootElement"]` and `ListSchema["refs"]` are constrained to `object` instead of `Element`; codegen writes `El<tag>` there, so generated templates are typed as before.
