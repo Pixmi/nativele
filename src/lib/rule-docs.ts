@@ -329,6 +329,13 @@ npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
   <qty-input data-on-quantity-change="update"></qty-input>
 </div>`,
   },
+  "unknown-native-event": {
+    why: "A data-on-* on a native element whose name the element never fires is silently never called, so a typo such as data-on-submt on a <form> or data-on-clik on a <p> breaks the handler with no error anywhere. A wrapper may still catch a custom event that bubbles up from a child, so lint reports the name only when nothing it reads can deliver it: the element does not fire it natively, it is not a native event of any other element, no component in the scanned folders emits it with bubbles: true, no custom elements manifest of the template's package or its dependencies lists it for any element, and one of the element's own native events is one or two letters away. A custom event dispatched by code lint does not read (a component outside the scanned folders, a library without a manifest) is a false positive: declare it with event<...>({ bubbles: true }) in the emitting component's emits, scan that component's folder, or pass --ignore=unknown-native-event.",
+    bad: `<form data-on-submt="save"></form>
+<p data-on-clik="open"></p>`,
+    good: `<form data-on-submit="save"></form>
+<p data-on-click="open"></p>`,
+  },
   "unknown-prop": {
     why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing. On another library's element the attributes come from its custom elements manifest; when the manifest may leave some out (a class above the element that the manifest leaves out and does not copy the members of, an attribute it could not describe), unknown attributes are not reported for that element. Global attributes such as inputmode, aria-*, data-* and inline event handlers such as onclick are never props. A manifest lists the attributes the element's class reads; one that only the library's styles read and its manifest leaves out (Web Awesome 3.14's <wa-page disable-sticky>) is reported too: ignore that finding with --ignore=unknown-prop or the plugin's ignore option if the project needs it.",
     bad: `<x-kid lable="hi"></x-kid>

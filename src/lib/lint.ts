@@ -139,6 +139,7 @@ export const DATA_FLOW_RULES = {
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
   "unknown-event": "the child component does not emit this event",
+  "unknown-native-event": "the native element does not fire this event and nothing lint reads declares it as one that can reach it, while a native event is one or two letters away",
   "unknown-slot": "the child component or library element has no slot of this name, so the element is not shown",
   "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
@@ -304,6 +305,8 @@ interface PackageView {
   children: A11yChildren;
   known: ReadonlyMap<string, Known>;
   definitions: Map<string, string>;
+  /** The event names that can reach a native element from a descendant: those a component in the scanned folders emits with bubbles: true, and those an applicable manifest lists for any element. */
+  bubbling: ReadonlySet<string>;
 }
 
 const manifestContracts = new WeakMap<ManifestElement, Contract>();
@@ -414,12 +417,16 @@ function atPackage(all: Contracts, file: string): PackageView {
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
       else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
+    const bubbling = new Set([...all.values()].flatMap((defs) => defs.flatMap((d) => [...(d.contract?.bubbles ?? [])])));
     const fromManifests = new Map<string, { pkg: string; el: ManifestElement }[]>();
     const files = new Set<string>();
     for (const m of all.manifests(pkg)) {
       if (!("elements" in m) || files.has(m.file)) continue;
       files.add(m.file);
-      for (const [tag, el] of m.elements) fromManifests.set(tag, [...(fromManifests.get(tag) ?? []), { pkg: m.pkg, el }]);
+      for (const [tag, el] of m.elements) {
+        fromManifests.set(tag, [...(fromManifests.get(tag) ?? []), { pkg: m.pkg, el }]);
+        for (const e of el.events ?? []) bubbling.add(e);
+      }
     }
     for (const [tag, found] of fromManifests) {
       if (!known.has(tag)) known.set(tag, { from: "manifest", pkg: (found[0] as { pkg: string }).pkg });
@@ -431,7 +438,7 @@ function atPackage(all: Contracts, file: string): PackageView {
         children.set(tag, c);
       } else children.set(tag, { unread: { cause: "ambiguous", packages: found.map((f) => f.pkg) } });
     }
-    all.byPackage.set(pkg, (out = { contracts, children, known, definitions: new Map() }));
+    all.byPackage.set(pkg, (out = { contracts, children, known, definitions: new Map(), bubbling }));
   }
   return out;
 }
@@ -470,6 +477,7 @@ const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the
  * - emit-forwarding: the handler of a child's event only emits the event again
  * - props-mutation: a prop is assigned inside the component
  * - custom-event-on-native: a custom event is written on a native element's data-on-*
+ * - unknown-native-event: a native element's data-on-* names no event that can reach it and no element's native event, one or two letters from one of its own native events (`bubbling` holds the names that can; default: those `contracts` emit with bubbles: true)
  * - unknown-prop / invalid-prop-value / unknown-event / unknown-slot: the attributes, events and slot names written on a child tag do not match
  *   what the child component or the library element's manifest declares (needs `contracts`, see contractsFor)
  * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
@@ -480,6 +488,7 @@ export function dataFlow(
   contracts: ReadonlyMap<string, Contract> = new Map(),
   a: Analysis = analyze(html),
   known: ReadonlyMap<string, Known> = new Map(),
+  bubbling: Pick<ReadonlySet<string>, "has"> = new Set([...contracts.values()].flatMap((c) => [...c.bubbles])),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const report = (rule: keyof typeof DATA_FLOW_RULES, message: string, key?: string, loc?: { line: number; col: number }) => {
@@ -489,12 +498,24 @@ export function dataFlow(
   for (const site of a.eventSites) {
     if (site.tag.includes("-") || firesNatively(site.tag, site.event)) continue;
     const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
-    if (!emitters.length || emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
+    if (!emitters.length) {
+      const near = NATIVE_EVENTS.has(site.event) || bubbling.has(site.event) ? undefined : nearest(site.event, [...ELEMENT_EVENT_NAMES, ...(TAG_EVENTS.get(site.tag) ?? [])]);
+      if (near !== undefined)
+        report(
+          "unknown-native-event",
+          `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is not an event <${site.tag}> fires, no component in the scanned folders emits it with bubbles: true, and no applicable custom elements manifest lists it, so ${site.method}() never runs. Did you mean "${near}"? Fix: correct the event name; if "${site.event}" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <${site.tag}>.`,
+          undefined,
+          site,
+        );
+      continue;
+    }
+    if (emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
     const tags = emitters.map(([tag]) => `<${tag}>`).join(", ");
     report(
       "custom-event-on-native",
       `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is an event that ${tags} emits without bubbles: true, so only the tag of the component that emits it receives it. Fix: put data-on-${site.event} on ${emitters.length === 1 ? tags : "the tag of the component that emits it"}, or declare the event with event<...>({ bubbles: true }) in its emits.`,
-      `event:${site.method}`,
+      undefined,
+      site,
     );
   }
 
@@ -723,6 +744,7 @@ export function lintProject(ws: Workspace, dirs: readonly string[], cwd = proces
 }
 
 const ALL = "*";
+const BUBBLING = "\u0001";
 
 /** A view of `map` that adds each key it is asked about to `uses`, and ALL when it is read whole. */
 function recording<V>(map: ReadonlyMap<string, V>, uses: Set<string>): ReadonlyMap<string, V> {
@@ -753,13 +775,17 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
   const importers = (p.index.importers.get(file) ?? []).map((i) => p.ws.text(i.file) ?? "");
-  const { contracts, children, known, definitions } = atPackage(p.contracts, file);
-  // A key in `known` starts with a character no tag starts with.
+  const { contracts, children, known, definitions, bubbling } = atPackage(p.contracts, file);
+  // A key in `known` starts with a character no tag starts with, and so does BUBBLING.
   const definition = (key: string): string => {
     let d = definitions.get(key);
     if (d === undefined) {
-      const [map, tag] = key.startsWith("\0") ? [known, key.slice(1)] : [children, key];
-      definitions.set(key, (d = contents(tag === ALL ? [...map] : [map.get(tag)])));
+      if (key === BUBBLING) d = contents(bubbling);
+      else {
+        const [map, tag] = key.startsWith("\0") ? [known, key.slice(1)] : [children, key];
+        d = contents(tag === ALL ? [...map] : [map.get(tag)]);
+      }
+      definitions.set(key, d);
     }
     return d;
   };
@@ -775,7 +801,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
   const value: TemplateFindings = {
     diagnostics: analysis.diagnostics,
     usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
-    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis, recording(known, knownTags)) : [],
+    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis, recording(known, knownTags), { has: (name) => (tags.add(BUBBLING), bubbling.has(name)) }) : [],
     a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
     uses: [...uses.values()],
   };

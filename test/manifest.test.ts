@@ -437,3 +437,33 @@ describe("unknown-custom-element ignored", () => {
     expect(cli("lint")[0]?.message).toContain("<fk-buton>");
   });
 });
+
+describe("unknown-native-event", () => {
+  const kidEmitting = (bubbles: boolean) => `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./kid.html.js";\nexport class Kid extends Component(tpl, { props: { label: "", count: 0 }, emits: { clicked: event<{ id: string }>(${bubbles ? "{ bubbles: true }" : ""}) } }) {}\ndefine("x-kid", Kid);\n`;
+  const page = `<form data-on-submt="go"></form>\n<p data-on-clik="go"></p>\n<form data-on-submit="go"></form>\n<div data-on-clicked="go"><x-kid></x-kid></div>\n<div data-on-fk-selected="go"></div>\n<div data-on-selectd="go"></div>\n<div data-on-quantity-change="go"></div>\n`;
+  const found = (root: string, ws?: Workspace) => lint(root, false, ws).filter((i) => i.rule === "unknown-native-event" || i.rule === "custom-event-on-native").map((i) => `${i.line}:${i.col} ${i.rule}`);
+  const manifest = { ...MANIFEST, modules: [...MANIFEST.modules, { kind: "javascript-module", path: "components/menu/menu.js", declarations: [{ kind: "class", name: "FkMenu", customElement: true, tagName: "fk-menu", superclass: { name: "HTMLElement" }, attributes: [], events: [{ name: "selectd" }] }] }] };
+
+  it("reports a misspelled native event on a native element, with the closest native name", () => {
+    const issues = lint(fakeProject({ page }, { "src/kid.ts": kidEmitting(true) }, manifest)).filter((i) => i.rule === "unknown-native-event");
+    expect(issues.map((i) => `${i.line}:${i.col}`)).toEqual(["1:7", "2:4"]);
+    expect(issues[0]?.message).toBe(`data-on-submt is on the native element <form>, but "submt" is not an event <form> fires, no component in the scanned folders emits it with bubbles: true, and no applicable custom elements manifest lists it, so go() never runs. Did you mean "submit"? Fix: correct the event name; if "submt" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <form>.`);
+    expect(issues[1]?.message).toContain(`Did you mean "click"?`);
+  });
+  it("leaves out an event a child emits with bubbles: true, one a manifest lists, and a name far from every native event", () => {
+    expect(found(fakeProject({ page }, { "src/kid.ts": kidEmitting(true) }, manifest))).toEqual(["1:7 unknown-native-event", "2:4 unknown-native-event"]);
+  });
+  it("an event a child emits without bubbles: true is custom-event-on-native, not a misspelling", () => {
+    expect(found(fakeProject({ page }, { "src/kid.ts": kidEmitting(false) }, manifest))).toEqual(["1:7 unknown-native-event", "2:4 unknown-native-event", "4:6 custom-event-on-native"]);
+  });
+  it("reports a name close to a native event that nothing declares, and follows the child's bubbles: true across runs", () => {
+    const root = fakeProject({ page: `<div data-on-clicked="go"><x-kid></x-kid></div>\n<div data-on-selectd="go"></div>\n` });
+    const memo = new Memo();
+    expect(found(root, new Workspace(memo))).toEqual(["1:6 unknown-native-event", "2:6 unknown-native-event"]);
+    write(root, { "src/kid.ts": kidEmitting(true) });
+    expect(found(root, new Workspace(memo))).toEqual(["2:6 unknown-native-event"]);
+  });
+  it("an event native to another element is not a misspelling", () => {
+    expect(found(fakeProject({ page: `<div data-on-unload="go"></div>\n<div data-on-encrypted="go"></div>\n` }))).toEqual([]);
+  });
+});

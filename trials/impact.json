@@ -82,6 +82,7 @@
     "unknown-prop": ["src/lib/lint.ts"],
     "invalid-prop-value": ["src/lib/lint.ts"],
     "unknown-event": ["src/lib/lint.ts"],
+    "unknown-native-event": ["src/lib/lint.ts", "src/lib/manifest.ts"],
     "unguarded-input-value": ["src/lib/lint.ts"],
     "unchecked-custom-elements": ["src/lib/lint.ts"],
     "unknown-slot": ["src/lib/lint.ts", "src/lib/manifest.ts"],
