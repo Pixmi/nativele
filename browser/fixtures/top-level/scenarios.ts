@@ -9,6 +9,7 @@ import ifTpl from "./if.html.js";
 import ifListTpl from "./if-list.html.js";
 import holeTpl from "./hole.html.js";
 import fallbackTpl from "./fallback.html.js";
+import mixedTpl from "./mixed.html.js";
 import type { ScenarioName } from "./expected.ts";
 
 interface Row {
@@ -92,6 +93,17 @@ class Fallback extends Component(fallbackTpl) {
 }
 define("tl-fallback", Fallback);
 
+class Mixed extends Component(mixedTpl, { state: { title: "", msg: false, note: false, rows: [] as readonly Row[] } }) {
+  changes: string[] = [];
+  override render(v: { rows: readonly Row[] }): void {
+    this.lists.rows.replace(v.rows, key, update);
+  }
+  override slotchange(name: "x" | ""): void {
+    this.changes.push(name);
+  }
+}
+define("tl-mixed", Mixed);
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const items = (el: Element) => [...el.querySelectorAll(".it")].map((n) => n.textContent?.trim());
 const texts = (nodes: Node[]) => nodes.map((n) => n.textContent);
@@ -100,6 +112,14 @@ const layout = (el: Element) =>
   [...el.childNodes]
     .map((n) => (n instanceof Comment ? `<!--${n.data}-->` : n instanceof Element ? `${n.localName}:${n.textContent}` : (n.textContent ?? "").trim()))
     .filter(Boolean);
+
+const user = (tag: string, text: string, slot?: string) => {
+  const n = document.createElement(tag);
+  n.textContent = text;
+  if (slot) n.slot = slot;
+  return n;
+};
+const report = (el: Mixed) => ({ layout: layout(el), x: texts(el.assignedNodes("x")), assigned: texts(el.assignedNodes("")), changes: el.changes.splice(0) });
 
 async function mount<T extends HTMLElement>(tag: string, init?: (el: T) => void): Promise<T> {
   const el = document.createElement(tag) as T;
@@ -252,5 +272,76 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     el.set({ rows: rows(1, 2, 3) });
     await tick();
     return items(el);
+  },
+  "an assigned node removed and appended back in the same task stays in its slot": async () => {
+    const el = await mount<Default>("tl-default");
+    const a = user("u", "A");
+    const b = user("u", "B");
+    el.append(a, b);
+    await tick();
+    el.changes = [];
+    a.remove();
+    el.append(a);
+    await tick();
+    const backAtTheEnd = { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes.splice(0) };
+    a.remove();
+    el.append(a);
+    await tick();
+    return { backAtTheEnd, sameOrder: { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes } };
+  },
+  "a child appended while the element is disconnected is slotted when it is connected again": async () => {
+    const el = await mount<Default>("tl-default");
+    el.remove();
+    el.append(user("u", "U"));
+    document.body.append(el);
+    await tick();
+    return { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes };
+  },
+  "a hidden data-if in a slot fallback stays hidden when the fallback comes back": async () => {
+    const el = await mount<Mixed>("tl-mixed");
+    const u = user("u", "U");
+    el.append(u);
+    await tick();
+    el.changes = [];
+    u.remove();
+    await tick();
+    const hidden = report(el);
+    el.set({ note: true });
+    await tick();
+    const shown = report(el);
+    el.append(u);
+    await tick();
+    el.set({ note: false });
+    el.set({ note: true });
+    await tick();
+    const assigned = report(el);
+    u.remove();
+    await tick();
+    return { hidden, shown, assigned, back: report(el) };
+  },
+  "list items in a slot fallback leave with the fallback and come back with it": async () => {
+    const el = await mount<Mixed>("tl-mixed", (e) => e.set({ rows: rows(1) }));
+    const first = report(el);
+    const x = user("b", "X", "x");
+    el.append(x);
+    await tick();
+    el.set({ rows: rows(1, 2) });
+    await tick();
+    const filled = report(el);
+    x.remove();
+    await tick();
+    return { first, filled, back: report(el) };
+  },
+  "the template's own top-level nodes are never assigned: text hole, data-if block and slot comments": async () => {
+    const el = await mount<Mixed>("tl-mixed");
+    el.append(user("u", "U"), user("b", "X", "x"));
+    await tick();
+    el.changes = [];
+    el.set({ title: "T", msg: true });
+    await tick();
+    const shown = report(el);
+    el.set({ msg: false });
+    await tick();
+    return { shown, hidden: report(el) };
   },
 };
