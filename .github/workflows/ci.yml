@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
       # Each job runs only for the files it depends on. Jobs are skipped with `if`, not with paths-ignore, so the required
       # checks still report; the matrix job skips its steps instead, because a skipped matrix job does not report the
-      # per-version check names. SKILL.md and the Skill examples have their own workflows.
+      # per-version check names. SKILL.md has its own workflow.
       - id: diff
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
