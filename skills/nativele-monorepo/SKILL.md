@@ -257,13 +257,13 @@ In each package that has components (here `packages/ui`, then `apps/web`; pnpm: 
 
 ```sh
 npx ts-dom doctor src            # expect: no error; tsconfig-* findings go to the TypeScript Skill; skill-available is info
-npx ts-dom check src             # expect: ts-dom check: no issues (never tsc-not-found)
+npx ts-dom check src             # expect: no error (never tsc-not-found); packages/ui: ts-dom check: no issues; an app that uses ui tags: one unchecked-custom-elements warning that names them, since their define() is in another package (silence it with --ignore=unchecked-custom-elements)
 ```
 
 From the root, the build through the workspace on a clean checkout (no `*.html.ts`, no `ts-dom-tags.ts`, no `dist`):
 
 ```sh
-npm run build                    # pnpm: pnpm run build; expect: packages/ui's script before apps/web's, each "ts-dom check: no issues", then vite's "built in"
+npm run build                    # pnpm: pnpm run build; expect: packages/ui's script before apps/web's, each check without an error (the app's with the unchecked-custom-elements warning above), then vite's "built in"
 ```
 
 Then prove the types cross the package boundary: in the app's `render`, write `this.refs.add.label = v.tags.length;` and expect `TS2322: Type 'number' is not assignable to type 'string'` from `npx ts-dom check src`; write `this.lists.tags.items = v.tags.map((t) => ({ id: t.id, name: t.label }));` and expect a `TS2322` that ends with `Property 'label' is missing in type '{ id: string; name: string; }'`. Undo both. In the browser (`vite preview`), `customElements.get("ui-button")` and `customElements.get("ui-tag")` are defined, clicking the button changes its label to "Add another" and adds a `<ui-tag>` per click, and the console has no errors.
