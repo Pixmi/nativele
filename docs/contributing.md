@@ -24,7 +24,7 @@ src/lib/
   doctor.ts         ts-dom doctor
   skills.ts         ts-dom skills: listing, stale checks, copying
 src/cli.ts          the ts-dom command
-skills/             Skills shipped with the package; an example/ is a reference project from the Skill's agent trial
+skills/             Skills shipped with the package, one SKILL.md each
 examples/           user-card, todo, signup, readme and recipes examples, demo entry
 test/               unit tests (happy-dom)
 browser/            real Chrome tests and fixtures
@@ -48,8 +48,6 @@ browser/            real Chrome tests and fixtures
 | `npm run lint:html` | The CLI version of the same checks |
 
 Examples in the repo point directly to `src/lib` through an alias in `vite.config.ts`, so no packing is needed first.
-
-To run a Skill's example project: `npm run build:lib`, then in `skills/<name>/example` run `npm install` and `npm run verify` (it depends on the library in this repository through `file:../../..`).
 
 ### Browser tests
 

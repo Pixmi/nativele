@@ -2,6 +2,7 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
 import { defineDefs, isTs, Memo, Workspace } from "./components.ts";
+import type { DefineDef } from "./components.ts";
 import { lintProject, lintTemplate } from "./lint.ts";
 
 export interface TsDomPluginOptions {
@@ -50,9 +51,13 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let ws = new Workspace(memo);
   const existing = () => dirs.filter((d) => existsSync(d));
   const defs = () => defineDefs(ws.index(existing()));
-  // The files with a define() call or the class it registers, as of the last generation: a change to one of them, also one that removes the define(), regenerates the tag maps.
+  // The define() calls as of the last generation, and the files with one or with the class it registers: a change to one of them, also one that removes the define(), regenerates what depends on the define() calls.
+  let generatedDefs: DefineDef[] = [];
   let defineFiles = new Set<string>();
-  const noteDefines = () => (defineFiles = new Set(defs().flatMap((d) => [resolve(d.file), resolve(d.classFile)])));
+  const noteDefines = () => {
+    generatedDefs = defs();
+    defineFiles = new Set(generatedDefs.flatMap((d) => [resolve(d.file), resolve(d.classFile)]));
+  };
   const isDefineFile = (file: string) => defineFiles.has(file);
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
@@ -75,32 +80,32 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     const dir = dirOf(file);
     const html = ws.text(file);
     if (!dir || html === null || file.includes(`${sep}node_modules${sep}`) || isFullPage(html) || !isSelected(dir, file, generate)) return false;
-    const out = `${file}.ts`;
-    const before = read(out);
+    let written: string | null;
     try {
-      generateFile(file, generate, defs(), dir, ws);
+      written = generateFile(file, generate, defs(), dir, ws);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
       return false;
     }
     recheck(file, logger);
-    return read(out) !== before;
+    return written !== null;
   };
 
-  /** Regenerate after a define() call may have changed: the tag maps and the child imports of every template. */
-  const regenerateAll = (logger: Logger) => {
-    const before = new Map(existing().flatMap((d) => listHtml(d, ws)).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
+  /** Regenerate after a define() call may have changed: the tag maps and the templates that use a tag whose definition changed. */
+  const regenerateDefs = (logger: Logger) => {
+    let written: readonly string[];
     try {
-      generateDirs(existing(), generate, ws);
+      written = generateDirs(existing(), generate, ws, generatedDefs);
     } catch (e) {
-      if (e instanceof CodegenError) logger.error(e.message);
-      else throw e;
+      if (!(e instanceof CodegenError)) throw e;
+      logger.error(e.message);
+      written = e.written;
     }
     noteDefines();
-    for (const [out, content] of before) {
-      const now = read(out);
-      if (now !== null && now !== content) shown.set(out, now);
+    for (const out of written) {
+      const now = out.endsWith(".html.ts") ? read(out) : null;
+      if (now !== null) shown.set(out, now);
     }
   };
 
@@ -148,7 +153,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         const file = resolve(f);
         if (file.endsWith(".html")) regenerate(file, logger);
         else if (dirOf(file) && isTs(file)) {
-          if (ws.text(file)?.includes("define(")) regenerateAll(logger);
+          if (ws.text(file)?.includes("define(")) regenerateDefs(logger);
           recheck(file, logger);
         }
       });
@@ -158,7 +163,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         if (file.endsWith(".html")) {
           removeGenerated(file);
           printed.delete(file);
-        } else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
+        } else if (dirOf(file) && isDefineFile(file)) regenerateDefs(logger);
         if (dirOf(file)) recheck(file, logger);
       });
     },
@@ -179,7 +184,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         return [];
       }
       if (!dirOf(file) || !isTs(file)) return;
-      if (ws.text(file)?.includes("define(") || isDefineFile(file)) regenerateAll(logger);
+      if (ws.text(file)?.includes("define(") || isDefineFile(file)) regenerateDefs(logger);
       recheck(file, logger);
       return;
     },

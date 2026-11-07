@@ -156,7 +156,7 @@ describe("Skill helpers", () => {
     expect(staleReason(s, "0.5.1", new Date("2027-06-01"))).toContain("six months");
   });
 
-  it("copies into .claude/skills when the project has .claude, otherwise .agents/skills, without the example", () => {
+  it("copies into .claude/skills when the project has .claude, otherwise .agents/skills", () => {
     const plain = tmp();
     expect(skillsTarget(plain)).toBe(join(plain, ".agents", "skills"));
     const claude = tmp();
@@ -166,7 +166,11 @@ describe("Skill helpers", () => {
     const react = listSkills(skillsRoot()).find((s) => s.name === "nativele-react")!;
     const dest = addSkill(react, skillsTarget(claude));
     expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
-    expect(existsSync(join(dest, "example"))).toBe(false);
+    const leftover = tmp();
+    mkdirSync(join(leftover, "nativele-x", "example", "node_modules"), { recursive: true });
+    writeFileSync(join(leftover, "nativele-x", "SKILL.md"), "x");
+    const copied = addSkill({ ...react, name: "nativele-x", dir: join(leftover, "nativele-x") }, skillsTarget(claude));
+    expect(readdirSync(copied)).toEqual(["SKILL.md"]);
   });
 });
 

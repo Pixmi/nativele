@@ -4,7 +4,7 @@ description: "Use Nativele web components inside an app built with a UI framewor
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "preact@11.1.1 vite@8.3.6 @preact/preset-vite@2.10.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "preact solid-js"
@@ -31,7 +31,7 @@ Nativele components are native custom elements. The framework renders their tags
 | @preact/preset-vite | 2.10.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 in Google Chrome 148, starting from `create-vite` 9.3.4 with the `preact-ts` template, with the example project in the Nativele repository (`skills/nativele-integration/example`). The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
+Verified on 2026-11-07 in Google Chrome 157, starting from `create-vite` 9.3.4 with the `preact-ts` template. The procedure was also followed in a Vue app made with the `vue-ts` template. The rules come from the custom element standard and hold for any framework, but each framework's own behavior (the answers to step 3) is verified only for Preact 11 here and for the frameworks that have their own Skill. With Preact 10, treat the Preact answers below as unverified.
 
 ## Set-up
 
@@ -109,7 +109,7 @@ declare module "preact" {
 }
 ```
 
-Used from a Preact component, with the `nv-info-card` and `nv-text-field` components of `nativele-vue`'s example (props `label`, `count`, `item`, event `item-select`; prop `value`, event `value-change`):
+Used from a Preact component, with two Nativele components, `nv-info-card` and `nv-text-field` (props `label`, `count`, `item`, event `item-select`; prop `value`, event `value-change`):
 
 ```tsx
 import { useState } from "preact/hooks";
@@ -167,8 +167,6 @@ In the browser, render a component with an object prop and an event listener, an
 - the element has no attribute for the object prop (`el.getAttributeNames()`) and `el.<prop>` is the object;
 - the listener runs once per event;
 - children that the framework toggles, reorders, adds and removes stay in the right slot, with no errors or framework warnings in the console (run this check once against the dev server too: production builds drop framework warnings). Read a slot with `el.assignedNodes(name)` (`""` is the default slot), which works in both modes; a Light DOM component has no `<slot>` elements once rendered. Frameworks leave comment and empty text nodes as anchors among the children, so compare elements, not all nodes.
-
-A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-integration/example/verify.mjs) of the trial's example project, which does them for Preact with Playwright, plus a component defined after render, keyed reordering of hosts with and without `moveBefore`, and the end of `bind` on removal.
 
 ## Troubleshooting
 

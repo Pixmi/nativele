@@ -4,7 +4,7 @@ description: "Decide where state lives in an app built with Nativele (component 
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "zustand@5.0.16 @reduxjs/toolkit@2.14.0 redux@5.0.1 nanostores@1.5.5 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "zustand @reduxjs/toolkit redux nanostores"
@@ -33,7 +33,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-state-management/example`). With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
+Verified on 2026-11-07 in Google Chrome 157. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
 
 ## Set-up
 
@@ -294,7 +294,7 @@ for (const name of ["set", "render"]) {
 }
 ```
 
-Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each. A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-state-management/example/verify.mjs) of the trial's example project, which does them with Playwright for Zustand, Redux, nanostores and `createStore`, plus the `bind` contract itself (an immediate call, no call for an `Object.is`-equal set, nothing after removal), the nanostores double call, selectors that return a new object or a kept slice, and no console errors.
+Then typing a note must log nothing for `cart-badge`, and adding an item must log `set` and `render` once each.
 
 ## Troubleshooting
 

@@ -18,15 +18,11 @@ skills/
 ├── nativele-core/
 │   └── SKILL.md
 ├── nativele-react/
-│   ├── SKILL.md
-│   └── example/                  # optional: a reference project from the agent trial
-│       ├── package.json          # exact versions of every tool the Skill names
-│       ├── ...                   # the minimal app the SKILL.md example comes from
-│       └── verify.mjs            # browser checks run by `npm run verify` (or the project's own tests, see below)
+│   └── SKILL.md
 └── ...
 ```
 
-The npm package ships every `SKILL.md` (so the CLI can list and read them offline), not the `example/` folders.
+A Skill is one `SKILL.md` and nothing else: no example project or helper files next to it. The npm package ships every `SKILL.md`, so the CLI can list and read them offline.
 
 ## SKILL.md format
 
@@ -61,7 +57,7 @@ Required sections, in this order:
 
 Rules for the content:
 
-- Only what was run: every step, example and limitation comes from the verified example, not from memory of how a tool used to work.
+- Only what was run: every step, example and limitation comes from an agent trial or a measurement in a fresh project, not from memory of how a tool used to work.
 - Version-bound statements say so ("React 19 passes object props as properties; React 18 passes everything as attributes").
 - No promises beyond the verified versions.
 - English, plain and concrete; no restating of `docs/`.
@@ -100,9 +96,7 @@ The library already lives in the user's `node_modules`, so its Skills travel wit
 
 None of this adds a runtime dependency: listing and copying read the Markdown files with Node's file API, and the frontmatter is parsed with a small reader for the fields above.
 
-## Examples
-
-A Skill may keep the project from its agent trial in `skills/<name>/example/` as a reference: the files the Skill's example comes from, with exact versions and `"@nativele/ts-dom": "file:../../.."`. An example is not run in CI; the Skill is verified by its agent trials. The npm package does not ship the `example/` folders.
+## Checks
 
 The workflow `.github/workflows/skills.yml` has one required check for `main`, "SKILL.md format": it checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, whenever any of them changes.
 
@@ -119,7 +113,7 @@ A Skill is written for agents, so the maintainers accept it by having an agent u
 1. **Check the format**: the frontmatter is complete, every required section is there, the facts link to `docs/` instead of restating them, and nothing would add a dependency to the library's core.
 2. **Build the package from the PR branch** (`npm run build:lib && npm pack`), so the trial uses the real delivery path.
 3. **Start a fresh project** in an empty folder outside the repository: for an integration Skill, the tool's own starter project at the versions the Skill lists (for example `create-vite` with the `react-ts` template), built once to confirm it works before Nativele is added. Install the packed library and the exact tool versions the Skill lists, and install the Skill the way users do: `npx ts-dom skills add <name>`.
-4. **Give a fresh agent a task** that the Skill says it covers, written from its "When to use" and "Example": a small but real piece of work that goes through every set-up step and touches every known limitation. The agent may use the Skill, `npx ts-dom` and the public guides in `docs/`, but not the Nativele source, this repository or the Skill's `example/`. It reports the files it wrote, the output of every Verify command, every point where it had to guess or look elsewhere, and every error it hit and how it fixed it.
+4. **Give a fresh agent a task** that the Skill says it covers, written from its "When to use" and "Example": a small but real piece of work that goes through every set-up step and touches every known limitation. The agent may use the Skill, `npx ts-dom` and the public guides in `docs/`, but not the Nativele source or this repository. It reports the files it wrote, the output of every Verify command, every point where it had to guess or look elsewhere, and every error it hit and how it fixed it.
 5. **Check the result independently**, without relying on the agent's report: run the Verify commands again and check the behavior in a real browser or with a test.
 
 The Skill is accepted when:

@@ -31,7 +31,7 @@ Web Awesome components are custom elements built with Lit, each with its own sha
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-07 in Google Chrome 157, in the dev server and the production build, in fresh projects made with `create-vite` and `nativele-vite`, and with the example project in the Nativele repository (`skills/nativele-web-awesome/example`). The example is a reference; it is not run in CI. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, in the dev server and the production build, in fresh projects made with `create-vite` and `nativele-vite`. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
 
 ## Set-up
 
@@ -216,7 +216,8 @@ waUtilities.replaceSync(css);
    - With `--a11y`, an element whose readable content would fail `click-semantics`, `control-name` or `heading-empty` without what a `wa-` tag inside it renders gets one `unchecked-content` warning that names the rule and the tag, instead of that rule: a `<div data-on-click>` around a `<wa-icon>` and text is not keyboard operable, while a `<div data-on-click>` around a `<wa-button>` is fine. For a clickable card, put the click on a `<button type="button">` (or `<wa-button>`) that holds the icon and the text; a card that has to stay a `<div>` gets `role="button"`, `tabindex="0"` and a `data-on-keydown` handler that calls the click handler on Enter and Space (with `e.preventDefault()` for Space), and then lint has nothing left to decide, so no warning appears. Check each remaining one, then pass `--ignore=unchecked-content`.
    - `ts-dom check` and the `ts-dom/data-flow` group report `prop-forwarding` when `render` writes one of the component's own props unchanged to a Web Awesome element (`this.refs.select.value = view.selected`), and `emit-forwarding` when a handler only re-emits a Web Awesome event. Both are warnings and do not change the exit code. A wrapper whose job is to adapt a Web Awesome control can turn its value into its own data before emitting, as `ThemePicker` emits the `Theme` object; otherwise ignore the ids in the project's linter (`npx ts-dom skills nativele-linting`), knowing `ts-dom check` and `ts-dom lint` still print them.
 8. **Define before use.** Step 3 puts the imports in the component's module, so the tags are defined before Nativele creates its elements. A component used in a page without its module imported, or a Web Awesome module loaded later with `import()`, was not verified.
-9. Not verified: Shoelace, Web Awesome Pro, the CDN and autoloader, `<wa-icon>` with Font Awesome names, translations, server-side rendering, styling parts with `::part()` from a template `<style>`, dark mode classes (`wa-dark`), and use inside a UI framework (for that, follow the framework's Skill for the Nativele side and Web Awesome's documentation for its side).
+9. **Icons.** The package ships no icon files: by default `<wa-icon name="user">` fetches the SVG from Font Awesome's CDN (`https://ka-f.fontawesome.com/releases/v7.3.0/svgs/<family or variant>/<name>.svg`), another origin, at the time the icon renders; offline, or with that origin blocked, an icon that has not rendered yet stays an empty 16 by 16 `<svg>` and dispatches `wa-error`, and an unknown name looks the same, with no message. To serve the icons from the app, install the free icons at the version Web Awesome requests (`npm i @fortawesome/fontawesome-free@7.3.0`), copy the folders you use from `node_modules/@fortawesome/fontawesome-free/svgs/` (`solid`, `regular`, `brands`; 12 MB in all) into `public/fa-svgs/` keeping that layout, and set the path before the icons render: `import { setIconPath } from "@awesome.me/webawesome/dist/utilities/base-path.js"; setIconPath(import.meta.env.BASE_URL + "fa-svgs");` (`setBasePath` does not move icons; `import.meta.env` needs `/// <reference types="vite/client" />`). Then every icon request goes to the app's own origin, in the dev server and the build. `<wa-icon>` without `label` is `aria-hidden="true"`; with `label="Settings"` it is `role="img"` with that name, so an icon-only button gets its name from `label` on the icon or `aria-label` on the button.
+10. Not verified: Shoelace, Web Awesome Pro, the CDN and autoloader, translations, server-side rendering, styling parts with `::part()` from a template `<style>`, dark mode classes (`wa-dark`), and use inside a UI framework (for that, follow the framework's Skill for the Nativele side and Web Awesome's documentation for its side).
 
 ## Verify
 
@@ -236,8 +237,6 @@ In the browser, against the dev server and the build (`vite preview`):
 - opening and closing a `<wa-select>` inside a `<wa-dialog>` does not run the dialog's close logic;
 - a forwarded slot reaches the Web Awesome slot: `select.shadowRoot.querySelector("slot[name=hint]").assignedElements({ flatten: true })`;
 - no console errors, and in the build no warnings.
-
-A reference implementation of these checks is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-web-awesome/example/verify.mjs) of the example project, which does them with Playwright in the dev server and the build.
 
 ## Troubleshooting
 

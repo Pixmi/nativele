@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 export const TAGS_FILE = "ts-dom-tags.ts";
 
@@ -231,26 +231,42 @@ function readText(file: string): string | null {
   }
 }
 
+/** How many values of one kind a file keeps: one for its content on disk and one for an editor's unsaved buffer of it. */
+const KEPT = 2;
+const same = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+
 /**
- * Values computed from the content of a file, such as its module facts, kept between the runs of a host: one per file and kind, with the content it was computed from.
- * A value is used only while that content is still the file's, and a run that lists a folder drops the values of the files it no longer has.
+ * Values computed from the content of a file, such as its module facts, kept between the runs of a host: a few per file and kind, each with the content it was computed from, and used only while that content is still the file's.
+ * A run that builds an index sees every file whose values a later run can use; when the next run starts, the values of the files that no run has seen since the last such run are dropped.
  */
 export class Memo {
-  readonly #files = new Map<string, Map<string, { from: readonly unknown[]; value: unknown }>>();
+  readonly #files = new Map<string, Map<string, { from: readonly unknown[]; value: unknown }[]>>();
+  #seen = new Set<string>();
+  #indexed = false;
   /** The value of `kind` for `file`, when it was computed from `from`. */
   get(file: string, kind: string, from: readonly unknown[]): unknown {
-    const kept = this.#files.get(file)?.get(kind);
-    return kept && kept.from.length === from.length && kept.from.every((v, i) => v === from[i]) ? kept.value : undefined;
+    return this.#files.get(file)?.get(kind)?.find((kept) => same(kept.from, from))?.value;
   }
   set<T>(file: string, kind: string, from: readonly unknown[], value: T): T {
     let kinds = this.#files.get(file);
     if (!kinds) this.#files.set(file, (kinds = new Map()));
-    kinds.set(kind, { from, value });
+    kinds.set(kind, [{ from, value }, ...(kinds.get(kind) ?? []).filter((kept) => !same(kept.from, from))].slice(0, KEPT));
     return value;
   }
-  /** A listing of `dir` found `listed`: drop the values of the other files under it of the kind it lists (`covers`, outside node_modules and dist). */
-  listed(dir: string, listed: ReadonlySet<string>, covers: (file: string) => boolean): void {
-    for (const file of this.#files.keys()) if (file.startsWith(dir + sep) && covers(file) && !listed.has(file) && !/[\\/](?:node_modules|dist)[\\/]/.test(file.slice(dir.length))) this.#files.delete(file);
+  /** A new run starts. */
+  run(): void {
+    if (!this.#indexed) return;
+    for (const file of this.#files.keys()) if (!this.#seen.has(file)) this.#files.delete(file);
+    this.#seen = new Set();
+    this.#indexed = false;
+  }
+  /** The run reads `file`, or knows it as a template of its index. */
+  see(file: string): void {
+    this.#seen.add(file);
+  }
+  /** The run builds an index. */
+  indexed(): void {
+    this.#indexed = true;
   }
 }
 
@@ -261,16 +277,22 @@ export class Memo {
 export class Workspace implements Sources {
   readonly memo: Memo;
   readonly #files = new Map<string, string | null>();
-  readonly #listings = new Map<string, string[]>();
+  readonly #listings = new Map<(dir: string, ws: Workspace) => string[], Map<string, string[]>>();
   readonly #indexes = new Map<string, ComponentIndex>();
   #base: Workspace | undefined;
 
-  constructor(memo = new Memo()) {
+  constructor(memo = new Memo(), base?: Workspace) {
     this.memo = memo;
+    this.#base = base;
+    if (!base) memo.run();
   }
 
   text(file: string): string | null {
-    if (!this.#files.has(file)) this.#files.set(file, this.#base ? this.#base.text(file) : readText(file));
+    if (!this.#files.has(file)) {
+      const text = this.#base ? this.#base.text(file) : readText(file);
+      if (text !== null) this.memo.see(file);
+      this.#files.set(file, text);
+    }
     return this.#files.get(file) ?? null;
   }
   facts(file: string): ModuleFacts | undefined {
@@ -281,27 +303,30 @@ export class Workspace implements Sources {
   /** This run with `file` read as `text` (an editor's unsaved buffer): itself when the run reads that already, otherwise a workspace that shares the run's listings and other files and leaves the run as it was. */
   overlay(file: string, text: string): Workspace {
     if (this.text(file) === text) return this;
-    const view = new Workspace(this.memo);
-    view.#base = this;
+    const view = new Workspace(this.memo, this);
     view.#files.set(file, text);
+    this.memo.see(file);
     return view;
+  }
+  /** The files `find` lists under `dir`, listed once in the run. */
+  list(dir: string, find: (dir: string, ws: Workspace) => string[]): string[] {
+    if (this.#base) return this.#base.list(dir, find);
+    let lists = this.#listings.get(find);
+    if (!lists) this.#listings.set(find, (lists = new Map()));
+    let files = lists.get(dir);
+    if (!files) lists.set(dir, (files = find(dir, this)));
+    return files;
   }
   /** The index of the TypeScript files under `dirs`. */
   index(dirs: readonly string[]): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
     let index = this.#indexes.get(key);
-    if (!index) this.#indexes.set(key, (index = componentIndex(this.#listing(dirs, key), this)));
-    return index;
-  }
-  #listing(dirs: readonly string[], key: string): string[] {
-    if (this.#base) return this.#base.#listing(dirs, key);
-    let files = this.#listings.get(key);
-    if (!files) {
-      this.#listings.set(key, (files = dirs.flatMap(listTs)));
-      const all = new Set(files.map((f) => resolve(f)));
-      for (const d of dirs) this.memo.listed(resolve(d), all, isTs);
+    if (!index) {
+      this.#indexes.set(key, (index = componentIndex(dirs.flatMap((d) => this.list(d, listTs)), this)));
+      for (const file of [...index.byTemplate.keys(), ...index.importers.keys()]) this.memo.see(file);
+      this.memo.indexed();
     }
-    return files;
+    return index;
   }
 }
 

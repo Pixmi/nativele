@@ -293,7 +293,7 @@ npx ts-dom check src/nv --whitespace=collapse        # expect: ts-dom check: no 
 npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
 npx ngc -p tsconfig.app.json --noEmit                # expect: no output, exit code 0
 npm run build                # expect: Application bundle generation complete.
-npm test -- --watch=false    # expect: the specs pass
+npm test -- --watch=false    # expect: the specs pass; the starter's src/app/app.spec.ts checks the starter page (an h1 with "Hello"), so once app.html is replaced, rewrite that spec for the new page
 ```
 
 - `ts-dom check` runs `tsc` on the app's TypeScript through the references of the root `tsconfig.json`, so it reports a type error in `src/app/app.ts` too. It does not read Angular templates. `ngc` (or the build) is what type-checks the Angular templates, including the `EmitEvent` casts.

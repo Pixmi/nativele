@@ -4,7 +4,7 @@ description: "Test Nativele components in an app: component tests with Vitest an
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "vitest@5.1.0 happy-dom@21.0.4 jsdom@30.1.3 @vitest/browser-playwright@5.1.0 playwright@1.64.1 @playwright/test@1.64.1 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "vitest @playwright/test playwright"
@@ -35,7 +35,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 with Node 24 and Google Chrome 148, starting from `create-vite` 9.3.4 with the `vanilla-ts` template, with the example project in the Nativele repository (`skills/nativele-testing/example`). Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
+Verified on 2026-11-07 with Node 24 and Google Chrome 157, starting from `create-vite` 9.3.4 with the `vanilla-ts` template. Vitest 5 changed its configuration (`test.api`, `test.projects`, providers as separate packages); with Vitest 4 or older, or another major version of any tool above, treat every step as unverified.
 
 ## Set-up
 
@@ -312,7 +312,7 @@ test("the built page renders the components and they respond", async ({ page }) 
 });
 ```
 
-Playwright locators reach into open shadow roots, so `page.locator("shadow-panel h2")` finds the heading inside a `shadow: true` component; its text is the slot fallback, not what is shown (limitation 6).
+Playwright locators reach into open shadow roots, so `page.locator("shadow-panel h2")` finds the heading inside a `shadow: true` component; its text is the slot fallback, not what is shown (limitation 6). When the element put in the slot is an `<h2>` too, the same locator matches both, the slotted one first and then the one in the shadow root, and an assertion on one element fails with a strict mode violation: assert both (`toHaveText(["Shadow", "Untitled"])`) or find what is shown with `getByRole`.
 
 ## Known limitations
 

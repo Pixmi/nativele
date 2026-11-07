@@ -4,7 +4,7 @@ description: "Add Nativele to an existing Vite app without a UI framework, and s
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vite-plus@1.5.0"
   author: "Nativele maintainers"
   detects: "vite vite-plus"
@@ -30,7 +30,7 @@ metadata:
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 | vite-plus | 1.5.0 (checked by hand with `vp dev`, `vp build` and `vp lint`) |
 
-Verified on 2026-11-06 in Google Chrome 148 with the example project in the Nativele repository (`skills/nativele-vite/example`), and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. The example is a reference; it is not run in CI. With a different major version of Vite, treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of Vite, treat every step as unverified.
 
 ## Set-up
 
@@ -173,7 +173,7 @@ npm run build                 # expect: ts-dom check: no issues, then ✓ built,
 npx ts-dom doctor src/nv      # expect: ts-dom doctor: the set-up looks right
 ```
 
-Then run `npm run dev`, open every page and check that its components render and respond. Edit a template and check that the page reloads once and shows the change. A reference implementation is the [`verify.mjs`](https://github.com/Pixmi/nativele/blob/main/skills/nativele-vite/example/verify.mjs) of the trial's example project, which checks with Playwright that `vite build` alone writes the generated files, that both built pages work under `vite preview`, and every row of the table in Known limitations, restoring the files it edits.
+Then run `npm run dev`, open every page and check that its components render and respond. Edit a template and check that the page reloads once and shows the change.
 
 ## Troubleshooting
 
