@@ -180,6 +180,13 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
   const skip = new Set(ignore);
 
   const parsed: Parsed = new Map();
+  const slotsInLabel = new Map<string, boolean>();
+  const slotInLabelOf = (tag: string, slot: string) => {
+    const key = `${tag}\0${slot}`;
+    let found = slotsInLabel.get(key);
+    if (found === undefined) slotsInLabel.set(key, (found = slotInLabel(tag, slot, children, parsed)));
+    return found;
+  };
   const ids = new Map<string, number>();
   const labelFor: { id: string; el: Element }[] = [];
   const all: { el: Element; parent: Element | null; inList: boolean; inLabel: boolean }[] = [];
@@ -187,7 +194,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     const component = "tagName" in parent && isCustom(parent as Element) ? (parent as Element).tagName : undefined;
     for (const n of parent.childNodes) {
       if (!isEl(n)) continue;
-      const inLabel = around || (component !== undefined && slotInLabel(component, attr(n, "slot") ?? "", children, parsed));
+      const inLabel = around || (component !== undefined && slotInLabelOf(component, attr(n, "slot") ?? ""));
       const list = inList || (n.tagName === "template" && has(n, "data-each"));
       const label = inLabel || n.tagName === "label";
       all.push({ el: n, parent: domParent, inList, inLabel });
