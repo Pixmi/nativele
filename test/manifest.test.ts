@@ -398,7 +398,7 @@ describe("what a manifest leaves out", () => {
   const cem = (...declarations: object[]) => JSON.stringify({ schemaVersion: "1.0.0", modules: [{ path: "x.js", declarations }] });
   it("an element whose superclass is not in the manifest, with no inherited members, is open for attributes, events and slots", () => {
     const m = parseManifest(cem(decl("A", "x-a", { name: "Ext", package: "other" }, { attributes: [{ name: "a" }], events: [{ name: "a-ev" }], slots: [{ name: "s" }] }), decl("B", "x-b", { name: "HTMLElement" }, { events: [{ name: "b-ev" }], slots: [{ name: "" }] })), "p", "m.json");
-    expect(el(m, "x-a")).toMatchObject({ openAttrs: true, events: null, slots: null });
+    expect(el(m, "x-a")).toMatchObject({ openAttrs: true, events: null, listedEvents: ["a-ev"], slots: null });
   });
   it("one element with inherited members does not close the chain of another", () => {
     const m = parseManifest(cem(decl("A", "x-a", { name: "Base", module: "/src/base.js" }, { attributes: [{ name: "dir", inheritedFrom: { name: "Base" } }] }), decl("B", "x-b", { name: "Ext", package: "other" }, { attributes: [{ name: "b" }] })), "p", "m.json");
@@ -447,7 +447,7 @@ describe("unknown-native-event", () => {
   it("reports a misspelled native event on a native element, with the closest native name", () => {
     const issues = lint(fakeProject({ page }, { "src/kid.ts": kidEmitting(true) }, manifest)).filter((i) => i.rule === "unknown-native-event");
     expect(issues.map((i) => `${i.line}:${i.col}`)).toEqual(["1:7", "2:4"]);
-    expect(issues[0]?.message).toBe(`data-on-submt is on the native element <form>, but "submt" is not an event <form> fires, no component in the scanned folders emits it with bubbles: true, and no applicable custom elements manifest lists it, so go() never runs. Did you mean "submit"? Fix: correct the event name; if "submt" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <form>.`);
+    expect(issues[0]?.message).toBe(`data-on-submt is on the native element <form>, but "submt" is not an event <form> fires, nothing in the scanned folders emits or dispatches it with bubbles: true, no applicable custom elements manifest lists it, and the element holds nothing whose events lint cannot read, so go() never runs. Did you mean "submit"? Fix: correct the event name; if "submt" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <form>.`);
     expect(issues[1]?.message).toContain(`Did you mean "click"?`);
   });
   it("leaves out an event a child emits with bubbles: true, one a manifest lists, and a name far from every native event", () => {
@@ -455,6 +455,30 @@ describe("unknown-native-event", () => {
   });
   it("an event a child emits without bubbles: true is custom-event-on-native, not a misspelling", () => {
     expect(found(fakeProject({ page }, { "src/kid.ts": kidEmitting(false) }, manifest))).toEqual(["1:7 unknown-native-event", "2:4 unknown-native-event", "4:6 custom-event-on-native"]);
+  });
+  it("leaves out an event a manifest lists for an element whose superclass chain it may leave incomplete", () => {
+    const open = { ...MANIFEST, modules: [...MANIFEST.modules, { kind: "javascript-module", path: "components/menu/menu.js", declarations: [{ kind: "class", name: "FkMenu", customElement: true, tagName: "fk-menu", superclass: { name: "FkOutside", module: "/src/outside.js" }, attributes: [], events: [{ name: "selectd" }] }] }] };
+    expect(found(fakeProject({ page: `<div data-on-selectd="go"></div>\n<p data-on-clik="go"></p>\n` }, {}, open))).toEqual(["2:4 unknown-native-event"]);
+  });
+  it("leaves out an event a module in the scanned folders dispatches with bubbles: true", () => {
+    const fires = `export class Fires extends HTMLElement {\n  a(): void { this.dispatchEvent(new CustomEvent("changed", { detail: 1, bubbles: true })); }\n  b(): void { this.dispatchEvent(new Event('chnge', { bubbles: true, composed: true })); }\n  c(): void { this.dispatchEvent(new CustomEvent("submitt", { detail: { bubbles: true } })); }\n  d(): void { this.dispatchEvent(new CustomEvent("clickd")); }\n}\n`;
+    const page = `<div data-on-changed="go"></div>\n<div data-on-chnge="go"></div>\n<form data-on-submitt="go"></form>\n<p data-on-clickd="go"></p>\n`;
+    expect(found(fakeProject({ page }, { "src/fires.ts": fires }))).toEqual(["3:7 unknown-native-event", "4:4 unknown-native-event"]);
+  });
+  it("is not reported when the element holds content whose events lint cannot know", () => {
+    const wrap = { "src/wrap.html": `<div><sl-menu></sl-menu></div>\n`, "src/wrap.ts": `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./wrap.html.js";\nexport class Wrap extends Component(tpl) {}\ndefine("x-wrap", Wrap);\n` };
+    const page = [
+      `<div data-on-selectd="go"><span><sl-menu></sl-menu></span></div>`,
+      `<div data-on-selectd="go"><slot></slot></div>`,
+      `<div data-on-selectd="go"><x-wrap></x-wrap></div>`,
+      `<div data-on-selectd="go"><fk-tabs></fk-tabs></div>`,
+      `<div data-on-selectd="go"><template data-each="rows"><li><sl-menu></sl-menu></li></template></div>`,
+      `<div data-on-selectd="go"><x-kid></x-kid></div>`,
+      `<div data-on-selectd="go"><fk-button></fk-button></div>`,
+      `<div data-on-selectd="go"><span></span></div><sl-menu></sl-menu>`,
+    ].join("\n");
+    const tabs = { ...MANIFEST, modules: [...MANIFEST.modules, { kind: "javascript-module", path: "components/tabs/tabs.js", declarations: [{ kind: "class", name: "FkTabs", customElement: true, tagName: "fk-tabs", superclass: { name: "FkOutside", module: "/src/outside.js" }, attributes: [] }] }] };
+    expect(found(fakeProject({ page }, wrap, tabs))).toEqual(["6:6 unknown-native-event", "7:6 unknown-native-event", "8:6 unknown-native-event"]);
   });
   it("reports a name close to a native event that nothing declares, and follows the child's bubbles: true across runs", () => {
     const root = fakeProject({ page: `<div data-on-clicked="go"><x-kid></x-kid></div>\n<div data-on-selectd="go"></div>\n` });

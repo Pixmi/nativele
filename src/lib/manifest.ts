@@ -17,6 +17,8 @@ export interface ManifestElement {
   openAttrs: boolean;
   /** Event names, or null when the manifest does not say or may leave some out. */
   events: readonly string[] | null;
+  /** The event names the manifest lists for the element and the classes above it in the manifest, also when `events` is null. */
+  listedEvents: readonly string[];
   /** Slot names ("" is the default slot), or null when the manifest does not say or may leave some out. */
   slots: readonly string[] | null;
 }
@@ -124,7 +126,7 @@ export function parseManifest(text: string, pkg: string, file: string): Manifest
     }
     // The browser gives every form-associated custom element the form attribute, which manifests list as a property only.
     if (up.some((x) => list(x.members).some((m) => m.name === "formAssociated" && m.static === true)) && !attrs.has("form")) attrs.set("form", { name: "form", kind: "string" });
-    out.set(tag, { attrs, openAttrs, events: merged("events", hasEvents), slots: merged("slots", hasSlots) });
+    out.set(tag, { attrs, openAttrs, events: merged("events", hasEvents), listedEvents: [...new Set(up.flatMap((x) => names(x.events)))], slots: merged("slots", hasSlots) });
   }
   return { pkg, file, elements: out };
 }

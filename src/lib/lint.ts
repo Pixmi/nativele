@@ -1,4 +1,5 @@
 import { basename, dirname, relative, resolve } from "node:path";
+import type { DefaultTreeAdapterMap } from "parse5";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analysisIn, analyze, listHtml } from "./codegen.ts";
@@ -139,7 +140,7 @@ export const DATA_FLOW_RULES = {
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
   "unknown-event": "the child component does not emit this event",
-  "unknown-native-event": "the native element does not fire this event and nothing lint reads declares it as one that can reach it, while a native event is one or two letters away",
+  "unknown-native-event": "the native element does not fire this event, nothing lint reads declares it as one that can reach it, and the element holds nothing whose events lint cannot read, while a native event is one or two letters away",
   "unknown-slot": "the child component or library element has no slot of this name, so the element is not shown",
   "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
@@ -288,12 +289,15 @@ export class Contracts extends Map<string, { pkg: string; contract: Contract | n
   readonly manifests: (pkg: string) => ReturnType<typeof manifestsAt>;
   /** Tags the scanned TypeScript names without a define(): customElements.define("tag", ...) and HTMLElementTagNameMap keys. */
   readonly declared: ReadonlySet<string>;
-  constructor(packageOf: (dir: string) => string, cwd: string, manifests: (pkg: string) => ReturnType<typeof manifestsAt> = () => [], declared: ReadonlySet<string> = new Set()) {
+  /** The names of the events the scanned TypeScript dispatches with bubbles: true (see ModuleFacts.dispatched). */
+  readonly dispatched: ReadonlySet<string>;
+  constructor(packageOf: (dir: string) => string, cwd: string, manifests: (pkg: string) => ReturnType<typeof manifestsAt> = () => [], declared: ReadonlySet<string> = new Set(), dispatched: ReadonlySet<string> = new Set()) {
     super();
     this.packageOf = packageOf;
     this.cwd = cwd;
     this.manifests = manifests;
     this.declared = declared;
+    this.dispatched = dispatched;
   }
 }
 
@@ -305,7 +309,7 @@ interface PackageView {
   children: A11yChildren;
   known: ReadonlyMap<string, Known>;
   definitions: Map<string, string>;
-  /** The event names that can reach a native element from a descendant: those a component in the scanned folders emits with bubbles: true, and those an applicable manifest lists for any element. */
+  /** The event names that can reach a native element from a descendant: those a component in the scanned folders emits with bubbles: true, those the scanned TypeScript dispatches with bubbles: true, and those an applicable manifest lists for any element. */
   bubbling: ReadonlySet<string>;
 }
 
@@ -347,8 +351,8 @@ function declared(call: string): Declared {
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const pkgs = new Map<string, string>();
   const pkgOf = (dir: string) => pkgs.get(dir) ?? (pkgs.set(dir, packageOf(ws, resolve(dir))).get(dir) as string);
-  const declaredTags = new Set([...index.modules.values()].flatMap((m) => m.tags));
-  const out = new Contracts(pkgOf, cwd, (pkg) => (pkg ? manifestsAt(ws, pkg) : []), declaredTags);
+  const modules = [...index.modules.values()];
+  const out = new Contracts(pkgOf, cwd, (pkg) => (pkg ? manifestsAt(ws, pkg) : []), new Set(modules.flatMap((m) => m.tags)), new Set(modules.flatMap((m) => m.dispatched)));
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
@@ -417,7 +421,7 @@ function atPackage(all: Contracts, file: string): PackageView {
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
       else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
-    const bubbling = new Set([...all.values()].flatMap((defs) => defs.flatMap((d) => [...(d.contract?.bubbles ?? [])])));
+    const bubbling = new Set([...all.dispatched, ...[...all.values()].flatMap((defs) => defs.flatMap((d) => [...(d.contract?.bubbles ?? [])]))]);
     const fromManifests = new Map<string, { pkg: string; el: ManifestElement }[]>();
     const files = new Set<string>();
     for (const m of all.manifests(pkg)) {
@@ -425,7 +429,7 @@ function atPackage(all: Contracts, file: string): PackageView {
       files.add(m.file);
       for (const [tag, el] of m.elements) {
         fromManifests.set(tag, [...(fromManifests.get(tag) ?? []), { pkg: m.pkg, el }]);
-        for (const e of el.events ?? []) bubbling.add(e);
+        for (const e of el.listedEvents) bubbling.add(e);
       }
     }
     for (const [tag, found] of fromManifests) {
@@ -471,13 +475,45 @@ const suggest = (name: string, options: readonly string[]): string => {
 const manifestOf = (pkg: string) => `the custom elements manifest of ${pkg}`;
 const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the scanned folders" : k.from === "declared" ? "a customElements.define() or HTMLElementTagNameMap entry in the scanned TypeScript" : manifestOf(k.pkg));
 
+type Node = DefaultTreeAdapterMap["node"];
+type Element = DefaultTreeAdapterMap["element"];
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+const isEl = (n: Node): n is Element => "tagName" in n;
+const kids = (n: Node): Node[] => ("content" in n && n.nodeName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : "childNodes" in n ? n.childNodes : []);
+
+/** The element of `root` whose attribute `name` starts at `line`:`col`. */
+function elementAt(root: Node, name: string, line: number, col: number): Element | undefined {
+  for (const n of kids(root)) {
+    if (!isEl(n)) continue;
+    const at = n.sourceCodeLocation?.attrs?.[name];
+    if (at?.startLine === line && at.startCol === col) return n;
+    const found = elementAt(n, name, line, col);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Whether a `tag` inside a native element may dispatch events lint cannot know: it has no contract, its manifest may leave events out, or it is a component whose template cannot be read or holds such a tag. */
+function eventsUnknown(tag: string, contracts: ReadonlyMap<string, Contract>, seen: ReadonlySet<string>): boolean {
+  const c = contracts.get(tag);
+  if (!c || c.open?.events) return true;
+  if (c.manifest || seen.has(tag)) return false;
+  const template = c.template;
+  if (!template) return true;
+  return [...analyze(template.html).customTags].some((t) => eventsUnknown(t, contracts, new Set([...seen, tag])));
+}
+
+/** Whether the content of `el` holds an element whose events lint cannot know (see eventsUnknown), or a slot of the template, which the template's user fills. */
+const unknownInside = (el: Node, contracts: ReadonlyMap<string, Contract>): boolean =>
+  kids(el).some((n) => isEl(n) && (n.tagName === "slot" || (n.namespaceURI === HTML_NS && n.tagName.includes("-") && eventsUnknown(n.tagName, contracts, new Set())) || unknownInside(n, contracts)));
+
 /**
  * Data-flow checks (suggestions, not errors).
  * - prop-forwarding: a child's prop is assigned straight from one of this component's own props
  * - emit-forwarding: the handler of a child's event only emits the event again
  * - props-mutation: a prop is assigned inside the component
  * - custom-event-on-native: a custom event is written on a native element's data-on-*
- * - unknown-native-event: a native element's data-on-* names no event that can reach it and no element's native event, one or two letters from one of its own native events (`bubbling` holds the names that can; default: those `contracts` emit with bubbles: true)
+ * - unknown-native-event: a native element's data-on-* names no event that can reach it and no element's native event, one or two letters from one of its own native events, and holds no slot and no element whose events lint cannot know (`bubbling` holds the names that can; default: those `contracts` emit with bubbles: true)
  * - unknown-prop / invalid-prop-value / unknown-event / unknown-slot: the attributes, events and slot names written on a child tag do not match
  *   what the child component or the library element's manifest declares (needs `contracts`, see contractsFor)
  * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
@@ -500,10 +536,11 @@ export function dataFlow(
     const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
     if (!emitters.length) {
       const near = NATIVE_EVENTS.has(site.event) || bubbling.has(site.event) ? undefined : nearest(site.event, [...ELEMENT_EVENT_NAMES, ...(TAG_EVENTS.get(site.tag) ?? [])]);
-      if (near !== undefined)
+      const el = near === undefined ? undefined : elementAt(a.root, `data-on-${site.event}`, site.line, site.col);
+      if (near !== undefined && !(el && unknownInside(el, contracts)))
         report(
           "unknown-native-event",
-          `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is not an event <${site.tag}> fires, no component in the scanned folders emits it with bubbles: true, and no applicable custom elements manifest lists it, so ${site.method}() never runs. Did you mean "${near}"? Fix: correct the event name; if "${site.event}" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <${site.tag}>.`,
+          `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is not an event <${site.tag}> fires, nothing in the scanned folders emits or dispatches it with bubbles: true, no applicable custom elements manifest lists it, and the element holds nothing whose events lint cannot read, so ${site.method}() never runs. Did you mean "${near}"? Fix: correct the event name; if "${site.event}" is a custom event a child component emits, declare it with event<...>({ bubbles: true }) in that child's emits so lint knows it reaches <${site.tag}>.`,
           undefined,
           site,
         );
