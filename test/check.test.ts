@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mapTscErrors, parseTscOutput, runCheck } from "../src/lib/check.ts";
+
+const CLI = join(process.cwd(), "src/cli.ts");
+const REPO_TSCONFIG = join(process.cwd(), "tsconfig.json");
+const EMPTY = mkdtempSync(join(tmpdir(), "nativele-check-"));
+
+const project = (): string => {
+  const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
+  mkdirSync(join(dir, "node_modules"));
+  for (const name of ["typescript", "@types"]) symlinkSync(join(process.cwd(), "node_modules", name), join(dir, "node_modules", name));
+  return dir;
+};
 
 describe("ts-dom check: tsc output", () => {
   it("parses errors and joins indented continuation lines", () => {
@@ -19,7 +30,7 @@ describe("ts-dom check: tsc output", () => {
         { file: "x.ts", line: 2, col: 1, code: "TS2322", message: "Type '{ id: number; }' is not assignable to type '{ itemComponentClassNotExported: \"x-row\"; fix: \"...\" }'." },
         { file: "y.ts", line: 5, col: 3, code: "TS2304", message: "Cannot find name 'q'." },
       ],
-      process.cwd(),
+      EMPTY,
     );
     expect(issues.map((i) => i.rule)).toEqual(["item-class-not-exported", "tsc"]);
     expect(issues[0]?.message).toContain("Fix: export the class");
@@ -28,11 +39,9 @@ describe("ts-dom check: tsc output", () => {
 
 describe("ts-dom check on a project", () => {
   it("points a missing binding at the template, without follow-up errors (a missing handler waits until the class type checks)", () => {
-    const dir = join(process.cwd(), "check-fixture-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "broken.html"), `<p>{{ heading }}</p>\n<button type="button" data-on-click="save">Save</button>\n`);
       writeFileSync(
         join(dir, "broken.ts"),
@@ -40,14 +49,14 @@ describe("ts-dom check on a project", () => {
       );
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-fixture-tmp", "--project=check-fixture-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string }[] }).issues;
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([
-        ["check-fixture-tmp/broken.html", 1, 4, "missing-binding"],
-        ["check-fixture-tmp/broken.ts", 6, 20, "tsc"],
+        ["broken.html", 1, 4, "missing-binding"],
+        ["broken.ts", 6, 20, "tsc"],
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -57,24 +66,22 @@ describe("ts-dom check on a project", () => {
 
 describe("ts-dom check: missing-handler", () => {
   it("is reported once, at the template, when define() is in another file", () => {
-    const dir = join(process.cwd(), "check-handler-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "panel.html"), `<button type="button" data-on-click="save">Save</button>\n`);
       writeFileSync(join(dir, "panel.ts"), `import { Component } from "@nativele/ts-dom";\nimport tpl from "./panel.html.js";\nexport class Panel extends Component(tpl) {}\n`);
       writeFileSync(join(dir, "register.ts"), `import { define } from "@nativele/ts-dom";\nimport { Panel } from "./panel.ts";\ndefine("x-panel", Panel);\n`);
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-handler-tmp", "--project=check-handler-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
-      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/panel.html", 1, 1, "missing-handler"]]);
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["panel.html", 1, 1, "missing-handler"]]);
       expect(issues[0]?.message).toContain(`"save"`);
-      expect(issues[0]?.message).toContain("tsc at check-handler-tmp/register.ts:3:19");
+      expect(issues[0]?.message).toContain("tsc at register.ts:3:19");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -83,21 +90,19 @@ describe("ts-dom check: missing-handler", () => {
 
 describe("ts-dom check: unchecked-custom-elements", () => {
   it("is reported once for the whole run and --ignore leaves it out", () => {
-    const dir = join(process.cwd(), "check-unchecked-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       for (const name of ["one", "two"]) {
         writeFileSync(join(dir, `${name}.html`), `<vendor-picker></vendor-picker>\n<vendor-chart></vendor-chart>\n`);
         writeFileSync(join(dir, `${name}.ts`), `import { Component } from "@nativele/ts-dom";\nimport tpl from "./${name}.html.js";\nexport class C extends Component(tpl) {}\n`);
       }
       const check = (...flags: string[]) => {
-        const out = execFileSync(process.execPath, ["src/cli.ts", "check", "check-unchecked-tmp", "--project=check-unchecked-tmp/tsconfig.json", "--json", ...flags], { encoding: "utf8" });
+        const out = execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json", ...flags], { cwd: dir, encoding: "utf8" });
         return (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
       };
       const issues = check();
-      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-unchecked-tmp/one.html", 1, 1, "unchecked-custom-elements"]]);
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["one.html", 1, 1, "unchecked-custom-elements"]]);
       expect(issues[0]?.message).toContain("<vendor-picker>, <vendor-chart>: no define() in the scanned folders, and no custom elements manifest of the package or its dependencies.");
       expect(check("--ignore=unchecked-custom-elements")).toEqual([]);
     } finally {
@@ -108,11 +113,9 @@ describe("ts-dom check: unchecked-custom-elements", () => {
 
 describe("ts-dom check: handler parameter types", () => {
   it("points a handler whose parameter does not accept the bound event at its data-on-* attribute, and accepts the right types", () => {
-    const dir = join(process.cwd(), "check-handler-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "pick.html"), `<button type="button" data-on-click="pick">Pick</button>\n`);
       writeFileSync(
         join(dir, "pick.ts"),
@@ -125,12 +128,12 @@ describe("ts-dom check: handler parameter types", () => {
       );
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-handler-tmp", "--project=check-handler-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
-      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/list.html", 2, 13, "handler-event-type"]]);
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["list.html", 2, 13, "handler-event-type"]]);
       expect(issues[0]?.message).toContain("onPicked() is bound to data-on-item-picked on <x-picker>, which delivers CustomEvent<{ id: number; }>");
       expect(issues[0]?.message).toMatch(/Fix: type the first parameter as `CustomEvent<\{ id: number; \}>` \(for data-on-item-picked on <x-picker> that is `EmitEvent<Child, "item-picked">`/);
     } finally {
@@ -139,12 +142,10 @@ describe("ts-dom check: handler parameter types", () => {
   }, 30_000);
 
   it("types an event from the first source that declares it, leaves a name no source declares unchecked, and keeps checking an event typed Event", () => {
-    const dir = join(process.cwd(), "check-events-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
       const H = `import { Component, define, event } from "@nativele/ts-dom";\nimport type { EmitEvent } from "@nativele/ts-dom";\n`;
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "child.html"), `<button type="button" data-on-click="fire">Fire</button>\n`);
       writeFileSync(join(dir, "child.ts"), `${H}import tpl from "./child.html.js";\nexport class Child extends Component(tpl, { emits: { "child-picked": event<{ id: number }>({ bubbles: true }) } }) {\n  fire(): void {\n    this.emit("child-picked", { id: 1 });\n  }\n}\ndefine("x-child", Child);\n`);
       writeFileSync(join(dir, "page.html"), `<video data-ref="video" data-on-enterpictureinpicture="pip"></video>\n<div data-on-child-picked="picked"><x-child></x-child></div>\n<input aria-label="f" data-on-change="changed" />\n`);
@@ -154,12 +155,12 @@ describe("ts-dom check: handler parameter types", () => {
       );
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-events-tmp", "--project=check-events-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
-      expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([["check-events-tmp/page.html", 3, "handler-event-type"]]);
+      expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([["page.html", 3, "handler-event-type"]]);
       expect(issues[0]?.message).toMatch(/Fix: type the first parameter as `Event`\.$/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -198,12 +199,10 @@ describe("ts-dom check: handler parameter types", () => {
 
 describe("ts-dom check: any-in-contract", () => {
   it("points any in state, props, derive and emits at its declaration and an any handler parameter at its data-on-*, accepts unknown, and drops the follow-up errors", () => {
-    const dir = join(process.cwd(), "check-any-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
       const H = `import { Component, define, event } from "@nativele/ts-dom";\n`;
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "card.html"), `<p>{{ heading }}</p>\n<button type="button" data-on-click="onPick">Pick</button>\n`);
       writeFileSync(
         join(dir, "card.ts"),
@@ -213,18 +212,18 @@ describe("ts-dom check: any-in-contract", () => {
       );
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-any-tmp", "--project=check-any-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([
-        ["check-any-tmp/card.html", 2, 23, "any-in-contract"],
-        ["check-any-tmp/card.ts", 5, 25, "any-in-contract"],
-        ["check-any-tmp/card.ts", 6, 12, "any-in-contract"],
-        ["check-any-tmp/card.ts", 6, 31, "any-in-contract"],
-        ["check-any-tmp/card.ts", 7, 13, "any-in-contract"],
-        ["check-any-tmp/card.ts", 8, 12, "any-in-contract"],
+        ["card.html", 2, 23, "any-in-contract"],
+        ["card.ts", 5, 25, "any-in-contract"],
+        ["card.ts", 6, 12, "any-in-contract"],
+        ["card.ts", 6, 31, "any-in-contract"],
+        ["card.ts", 7, 13, "any-in-contract"],
+        ["card.ts", 8, 12, "any-in-contract"],
       ]);
       const message = (path: string) => issues.find((i) => i.message.includes(path))?.message;
       expect(message("props.item")).toMatch(/^props\.item is typed any, so tsc checks nothing that reads or assigns it.* Fix: declare a specific type .*or `unknown` and narrow it where it is read\.$/);
@@ -240,11 +239,9 @@ describe("ts-dom check: any-in-contract", () => {
 
 describe("ts-dom check: any-in-contract locations and causes", () => {
   it("walks the option literal for quoted, dotted and repeated keys, and names an any method and an any template", () => {
-    const dir = join(process.cwd(), "check-any2-tmp");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
-      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "card.html"), `<p>{{ heading }}</p>\n<input data-on-input="onInput" />\n`);
       writeFileSync(
         join(dir, "card.ts"),
@@ -255,20 +252,20 @@ describe("ts-dom check: any-in-contract locations and causes", () => {
       );
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-any2-tmp", "--project=check-any2-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
       const at = (start: string) => issues.filter((i) => i.message.startsWith(start)).map((i) => [i.file, i.line, i.col, i.rule]);
-      expect(at('state.user["a.b"] ')).toEqual([["check-any2-tmp/card.ts", 7, 50, "any-in-contract"]]);
-      expect(at("state.user.name ")).toEqual([["check-any2-tmp/card.ts", 7, 64, "any-in-contract"]]);
-      expect(at("state.other[0] ")).toEqual([["check-any2-tmp/card.ts", 7, 96, "any-in-contract"]]);
-      expect(issues.find((i) => i.message.startsWith("onInput,"))).toMatchObject({ file: "check-any2-tmp/card.html", line: 2, col: 8, rule: "any-in-contract" });
+      expect(at('state.user["a.b"] ')).toEqual([["card.ts", 7, 50, "any-in-contract"]]);
+      expect(at("state.user.name ")).toEqual([["card.ts", 7, 64, "any-in-contract"]]);
+      expect(at("state.other[0] ")).toEqual([["card.ts", 7, 96, "any-in-contract"]]);
+      expect(issues.find((i) => i.message.startsWith("onInput,"))).toMatchObject({ file: "card.html", line: 2, col: 8, rule: "any-in-contract" });
       expect(issues.find((i) => i.message.startsWith("onInput,"))?.message).toMatch(/^onInput, which data-on-input on <input> calls, is typed any, so tsc checks neither that it is a method nor which event it accepts .* Fix: declare it as a method/);
       expect(at("The template passed to Component()")).toEqual([
-        ["check-any2-tmp/card.ts", 14, 26, "any-in-contract"],
-        ["check-any2-tmp/card.ts", 15, 28, "any-in-contract"],
+        ["card.ts", 14, 26, "any-in-contract"],
+        ["card.ts", 15, 28, "any-in-contract"],
       ]);
       expect(issues.find((i) => i.message.startsWith("The template"))?.message).toMatch(/ Fix: import the template from its \.\/x\.html\.js module, which ts-dom gen types/);
       expect(issues.filter((i) => i.rule !== "any-in-contract")).toEqual([]);
@@ -343,8 +340,7 @@ describe("ts-dom check: more cases", () => {
   }, 30_000);
 
   it("a project that lists vue-tsc is checked with vue-tsc", () => {
-    const dir = join(process.cwd(), "check-fixture-vue");
-    rmSync(dir, { recursive: true, force: true });
+    const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
     mkdirSync(join(dir, "node_modules/vue-tsc/bin"), { recursive: true });
     try {
       writeFileSync(join(dir, "package.json"), `{ "type": "module", "devDependencies": { "vue-tsc": "*" } }`);
@@ -353,7 +349,7 @@ describe("ts-dom check: more cases", () => {
       writeFileSync(join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"), `console.log("App.vue(3,5): error TS2322: Reported by vue-tsc."); process.exit(2);\n`);
       let out = "";
       try {
-        execFileSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "check", ".", "--json"], { cwd: dir, encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
@@ -365,8 +361,7 @@ describe("ts-dom check: more cases", () => {
   }, 30_000);
 
   it("a project that does not list vue-tsc is checked with tsc even when vue-tsc resolves", () => {
-    const dir = join(process.cwd(), "check-fixture-vue-hoisted");
-    rmSync(dir, { recursive: true, force: true });
+    const dir = project();
     mkdirSync(join(dir, "node_modules/vue-tsc/bin"), { recursive: true });
     try {
       writeFileSync(join(dir, "package.json"), `{ "type": "module" }`);
@@ -376,7 +371,7 @@ describe("ts-dom check: more cases", () => {
       writeFileSync(join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"), `console.log("App.vue(3,5): error TS2322: Reported by vue-tsc."); process.exit(2);\n`);
       let out = "";
       try {
-        out = execFileSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "check", ".", "--json"], { cwd: dir, encoding: "utf8" });
+        out = execFileSync(process.execPath, [CLI, "check", ".", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
@@ -388,17 +383,15 @@ describe("ts-dom check: more cases", () => {
   }, 30_000);
 
   it("a solution-style tsconfig checks its referenced projects", () => {
-    const dir = join(process.cwd(), "check-fixture-solution");
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir);
+    const dir = project();
     try {
       writeFileSync(join(dir, "tsconfig.json"), `{ "files": [], "references": [{ "path": "./tsconfig.app.json" }] }`);
-      writeFileSync(join(dir, "tsconfig.app.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "tsconfig.app.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
       writeFileSync(join(dir, "broken.html"), `<p>{{ heading }}</p>\n`);
       writeFileSync(join(dir, "broken.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./broken.html.js";\nexport class Broken extends Component(tpl, { state: { count: 0 } }) {}\ndefine("x-broken-2", Broken);\n`);
       let out = "";
       try {
-        execFileSync(process.execPath, ["src/cli.ts", "check", "check-fixture-solution", "--project=check-fixture-solution/tsconfig.json", "--json"], { encoding: "utf8" });
+        execFileSync(process.execPath, [CLI, "check", ".", "--project=tsconfig.json", "--json"], { cwd: dir, encoding: "utf8" });
       } catch (e) {
         out = (e as { stdout: string }).stdout;
       }
@@ -415,7 +408,7 @@ describe("ts-dom check: more cases", () => {
         { file: "src/card.html.ts", line: 3, col: 1, code: "TS2307", message: "Cannot find module './card.js'." },
         { file: "src/old/ts-dom-tags.ts", line: 2, col: 1, code: "TS2717", message: "Subsequent property declarations must have the same type." },
       ],
-      process.cwd(),
+      EMPTY,
     );
     for (const i of issues) {
       expect(i.message).not.toContain("change the TypeScript");
@@ -424,7 +417,7 @@ describe("ts-dom check: more cases", () => {
   });
 
   it("a plain tsc error carries a Fix hint", () => {
-    const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], process.cwd());
+    const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], EMPTY);
     expect(issue?.message).toMatch(/Fix: /);
   });
 });
@@ -433,7 +426,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
   it("a tag declared with another class by a second tag map is a duplicate-define, not a request to regenerate", () => {
     const [issue] = mapTscErrors(
       [{ file: "lib/ts-dom-tags.ts", line: 6, col: 5, code: "TS2717", message: `Subsequent property declarations must have the same type.  Property '"hello-card"' must be of type 'HelloCard', but here has type 'HelloCard'.` }],
-      process.cwd(),
+      EMPTY,
     );
     expect(issue).toMatchObject({ rule: "duplicate-define", file: "lib/ts-dom-tags.ts", line: 6 });
     expect(issue?.message).toMatch(/^The tag <hello-card> is declared with another class by a second tag map.* Fix: rename the tag/);
@@ -443,7 +436,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
   it("an item component missing from the tag map names the tsconfig as a cause too", () => {
     const [issue] = mapTscErrors(
       [{ file: "src/board.ts", line: 25, col: 31, code: "TS2322", message: `Type 'readonly Task[]' is not assignable to type '{ itemComponentMissingFromTagMap: "task-row"; }'.` }],
-      process.cwd(),
+      EMPTY,
     );
     expect(issue?.rule).toBe("item-not-in-tag-map");
     expect(issue?.message).toMatch(/Fix: run ts-dom gen .*include or exclude leaves ts-dom-tags\.ts out of the program/);

@@ -1,9 +1,29 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 export const TAGS_FILE = "ts-dom-tags.ts";
 
 export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
+
+/** A folder or link that vanishes between listing its parent and reading it (a host that outlives the edit) counts as empty or as a file. */
+function readEntries(dir: string): { name: string; folder: boolean }[] {
+  const isFolder = (e: Dirent) => {
+    if (e.isDirectory()) return true;
+    if (!e.isSymbolicLink()) return false;
+    try {
+      return statSync(join(dir, e.name)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  try {
+    return readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: isFolder(e) }));
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    throw e;
+  }
+}
 
 export function listTs(dir: string, ws = new Workspace()): string[] {
   const out: string[] = [];
@@ -407,7 +427,7 @@ export class Workspace implements Sources {
   entries(dir: string): { name: string; folder: boolean }[] {
     if (this.#base) return this.#base.entries(dir);
     let found = this.#entries.get(dir);
-    if (!found) this.#entries.set(dir, (found = readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: e.isDirectory() || (e.isSymbolicLink() && statSync(join(dir, e.name)).isDirectory()) }))));
+    if (!found) this.#entries.set(dir, (found = readEntries(dir)));
     return found;
   }
   /** The files `find` lists under `dir`, listed once in the run. */

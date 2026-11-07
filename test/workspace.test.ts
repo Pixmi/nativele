@@ -525,3 +525,25 @@ describe("the memo a host keeps between runs", () => {
     expect([has(join(dir, "lib/u.tsx")), has(join(other, "o.ts"))]).toEqual([false, false]);
   });
 });
+
+describe("a folder that vanishes during a run", () => {
+  it("is listed as empty, and a link to nothing as a file, by lint and codegen", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const { listTs } = await import("../src/lib/components.ts");
+    const { listHtml } = await import("../src/lib/codegen.ts");
+    const root = mkdtempSync(join(tmpdir(), "nativele-vanish-"));
+    mkdirSync(join(root, "gone"));
+    mkdirSync(join(root, "kept"));
+    writeFileSync(join(root, "kept/a.ts"), "export {};\n");
+    writeFileSync(join(root, "kept/a.html"), "<p></p>\n");
+    symlinkSync(join(root, "nowhere"), join(root, "dangling"));
+    for (const list of [listTs, listHtml]) {
+      const ws = new Workspace();
+      ws.entries(root);
+      rmSync(join(root, "gone"), { recursive: true });
+      expect(list(root, ws).map((f) => f.slice(root.length + 1))).toEqual([list === listTs ? "kept/a.ts" : "kept/a.html"]);
+      mkdirSync(join(root, "gone"));
+    }
+    rmSync(root, { recursive: true });
+  });
+});
