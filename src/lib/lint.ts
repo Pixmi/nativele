@@ -21,6 +21,8 @@ const esc = (s: string) => s.replace(/[$]/g, "\\$&");
 /** Marker that ownerCode() adds when it sees `Component(tpl, { state | props | derive })`. */
 const STATEFUL_MARK = "/*ts-dom:stateful*/";
 
+const EMIT_NAME = /this\.emit\(\s*["']([^"']*)["']/g;
+
 const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
 
 export interface ComponentClass {
@@ -270,6 +272,17 @@ export class Contracts extends Map<string, { pkg: string; contract: Contract | n
   }
 }
 
+type Declared = Pick<Contract, "props" | "emits" | "bubbles">;
+
+function declared(call: string): Declared {
+  const emits = optionEntries(call, "emits");
+  return {
+    props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])),
+    emits: new Set(emits.map((e) => e.key)),
+    bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)),
+  };
+}
+
 /** The nearest folder at or above `dir` that holds a package.json, or "" when there is none. */
 function packageOf(ws: Workspace, dir: string): string {
   return ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, dirname(dir));
@@ -280,20 +293,18 @@ function packageOf(ws: Workspace, dir: string): string {
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
-  const pkgOf = (dir: string) => packageOf(ws, dir);
+  const pkgs = new Map<string, string>();
+  const pkgOf = (dir: string) => pkgs.get(dir) ?? (pkgs.set(dir, packageOf(ws, resolve(dir))).get(dir) as string);
   const out = new Contracts(pkgOf, cwd);
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
     const template = c?.template;
     if (c) {
-      const emits = optionEntries(c.call, "emits");
-      const own = template ? { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } } : undefined;
-      const unfollowed: Unread = { cause: "template-unfollowed", at: `${relative(cwd, c.file)}:${c.line}` };
+      const own = template ? { get file() { return relative(cwd, template); }, get html() { return ws.text(template) ?? ""; } } : undefined;
+      const unfollowed: Unread = { cause: "template-unfollowed", get at() { return `${relative(cwd, c.file)}:${c.line}`; } };
       contract = {
-        props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])),
-        emits: new Set(emits.map((e) => e.key)),
-        bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)),
+        ...((ws.memo.get(c.file, "declared", [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, "declared", [c.call], declared(c.call))),
         get template() {
           return template && ws.text(template) !== null ? own : undefined;
         },
@@ -303,7 +314,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
         },
       };
     }
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}` }]);
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(def.file)), contract, get at() { return `${relative(cwd, def.file)}:${def.line}`; } }]);
   }
   return out;
 }
@@ -324,7 +335,7 @@ export function childrenAt(all: Contracts, file: string): A11yChildren {
 
 /** The contracts and children at the package of `file`, and the text of what `children` holds for each tag (or all of it), as lintTemplate compares it. */
 function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> } {
-  const pkg = all.packageOf(dirname(resolve(file)));
+  const pkg = all.packageOf(dirname(file));
   let out = all.byPackage.get(pkg);
   if (!out) {
     const contracts = new Map<string, Contract>();
@@ -495,7 +506,7 @@ export function dataFlow(
       const fn = methodBody(body, site.method);
       if (!fn) continue;
       const inner = fn.slice(1, -1).trim();
-      const forwardsSame = new RegExp(`this\\.emit\\(\\s*["']${esc(site.event)}["']`).test(fn);
+      const forwardsSame = [...fn.matchAll(EMIT_NAME)].some((m) => m[1] === site.event);
       const pureRelay = /^this\.emit\([\s\S]*\);?$/.test(inner) && (inner.match(/this\.emit\(/g) ?? []).length === 1 && inner.split(";").filter((x) => x.trim()).length === 1;
       if (forwardsSame || pureRelay) {
         report(
