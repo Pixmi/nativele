@@ -179,7 +179,7 @@ try {
       console.error(e.message);
       failed = true;
     }
-    if (flags.has("--watch")) {
+    if (flags.has("--watch") && found.length) {
       console.log(`[ts-dom] watching ${found.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
       watchAll(found, {
         ...generate,

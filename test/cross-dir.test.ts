@@ -148,6 +148,13 @@ describe("a folder that does not exist", () => {
     expect(r.status).toBe(1);
     expect(existsSync(join(dir, "src/a.html.ts"))).toBe(true);
   });
+  it("gen --watch with no folder that exists exits instead of watching nothing", () => {
+    const r = spawnSync("node", [cli, "gen", "--watch", "nope"], { cwd: dir, encoding: "utf8", timeout: 5000 });
+    expect(r.error).toBeUndefined();
+    expect(r.stderr).toContain(expected);
+    expect(r.stdout).not.toContain("watching");
+    expect(r.status).toBe(1);
+  });
   it("lint --json lists it among the issues", () => {
     const r = run(["lint", "--json", "nope"], dir);
     expect((JSON.parse(r.stdout) as { issues: { rule: string }[] }).issues.map((i) => i.rule)).toEqual(["dir-not-found"]);
