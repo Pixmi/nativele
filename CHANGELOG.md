@@ -37,7 +37,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - `ts-dom gen --watch` parses only the files whose content changed, instead of every TypeScript file on each template save.
 - `ts-dom check` runs tsc with `--noErrorTruncation`, so a class missing many names still gets `missing-binding`, `missing-handler` and `handler-event-type` at the template, for every name.
 - `ts-dom lint` and `ts-dom gen` (also with `--check` and `--watch`) no longer crash with an uncaught ENOENT when a given folder does not exist: they report `dir-not-found` and go on with the folders that exist, as `ts-dom check` and `ts-dom doctor` do.
-- The `control-name` Fix hint no longer suggests a `<slot>` as a name.- `handler-event-type` no longer suggests "type the first parameter as `Event`, or as `Event`" when the event is `Event`.
+- The `control-name` Fix hint no longer suggests a `<slot>` as a name.
+- `handler-event-type` no longer suggests "type the first parameter as `Event`, or as `Event`" when the event is `Event`.
 - `form-label` no longer reports a control put in a slot that the component's template wraps in a `<label>` (`<x-field label="Name"><input></x-field>` with `<label>{{ label }} <slot></slot></label>`), also through a component inside that template.
 - `ts-dom check` keeps an error inside the body of a class with a contract error unless it follows from it (its message names the class, or it is a callback parameter that lost its type with it): an independent error there, such as `const s: string = 42`, is no longer dropped.
 - An error that names a class follows from the contract error of that class only when the name refers to it in the error's file: a class of the same name in another file no longer makes an unrelated error "follow from the contract error".

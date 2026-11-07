@@ -146,7 +146,7 @@ npx ts-dom doctor src/nv           # expect: no oxlint-plugin-missing
 npx ts-dom check src/nv            # expect: ts-dom check: no issues
 ```
 
-Then prove the linter runs the rules: add `<span data-ref="probe"></span>` to a template, run the project's lint command, and expect `error ts-dom(unused-markup): ./<name>.html.js:<line>:<col> [unused-ref] data-ref="probe" is never used by the component class.` on the template's import line (ESLint prints the same message under the `.ts` file); exit code 1. Remove it afterwards. If a11y or data-flow is on, an `<img>` without `alt` gives `[img-alt]`, and a misspelled attribute on a child tag gives `[unknown-prop]`, both as warnings.
+Then prove the linter runs the rules: add `<span data-ref="probe"></span>` to a template, run the project's lint command, and expect `error ts-dom(unused-markup): ./<name>.html.js:<line>:<col> [unused-ref] data-ref="probe" is never used by the component class.` on the template's import line (when the class gets its template through a barrel, the location is the template's path from the `.ts` file instead, such as `../templates/card.html:5:1`; ESLint prints the same message under the `.ts` file); exit code 1. Remove it afterwards. If a11y or data-flow is on, an `<img>` without `alt` gives `[img-alt]`, and a misspelled attribute on a child tag gives `[unknown-prop]`, both as warnings.
 
 ## Troubleshooting
 

@@ -78,7 +78,11 @@ function templatesThrough({ index }: LintProject, file: string, spec: string): {
   const named = TEMPLATE_SPEC.exec(spec)?.[1];
   const direct = named && resolve(dirname(file), named);
   if (direct && !index.byTemplate.has(direct) && index.importers.get(direct)?.some((i) => i.file === file)) out.set(direct, "");
-  return [...out.keys()].map((html) => ({ html, label: html === direct ? spec : `./${relative(dirname(file), html).split(sep).join("/")}` }));
+  const pathTo = (html: string) => {
+    const rel = relative(dirname(file), html).split(sep).join("/");
+    return rel.startsWith("../") ? rel : `./${rel}`;
+  };
+  return [...out.keys()].map((html) => ({ html, label: html === direct ? spec : pathTo(html) }));
 }
 
 /**
