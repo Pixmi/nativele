@@ -46,6 +46,7 @@ browser/            real Chrome tests and fixtures
 | `npm run test:browser` | Tests that run in real Chrome (see below) |
 | `npm run lint` | `vp lint`, including `ts-dom/unused-markup` |
 | `npm run lint:html` | The CLI version of the same checks |
+| `npm run bench:check` | Measure the lint and Vite hosts and tsc on synthetic projects against the budgets in `scripts/bench/budgets.json` (see below) |
 
 Examples in the repo point directly to `src/lib` through an alias in `vite.config.ts`, so no packing is needed first.
 
@@ -72,7 +73,12 @@ A pull request runs only the jobs its changed files need, and a push to `main` d
 | `test/`, `scripts/bench.ts`, `index.html` | types, unit tests and lint |
 | `browser/`, `examples/` | types, unit tests and lint, and the browser tests |
 | `scripts/consumer-smoke.sh`, `scripts/no-bundler-smoke.sh` | types, unit tests and lint, and that smoke test |
+| `scripts/bench/` | types, unit tests and lint, and the performance budgets |
 | `skills/`, `docs/`, the READMEs, `llms.txt` | the `SKILL.md` format check, which also checks their links (`skills.yml`) |
 | Other Markdown, `LICENSE`, `.gitignore`, other workflows | nothing |
 
 Every job reports on every pull request, skipped when not needed, so all of them are required checks for `main`.
+
+### Performance budgets
+
+`npm run bench:check` generates a 1000-component project, a three-package monorepo and a few small type projects, then measures what the hosts do: templates parsed, files read and folders listed by `ts-dom lint`, by the Vite plugin at build start and on each `.html` or `.ts` save, and by the oxlint plugin for a whole-project lint and a one-file re-lint; the memo entries a long editing session adds; and the type instantiations tsc reports (`--extendedDiagnostics`) for a chain of components, components whose state holds DOM objects, and a template with many custom elements of another library, with no tsc errors allowed. These counts do not depend on the machine, so their budgets sit at or just above the measured values. The only timings are two ratios of the same operation on 1000 and 50 components, measured in the same job, with wide margins. The script prints every value next to its budget and fails when one is over. When a change raises a value on purpose, update its number in `scripts/bench/budgets.json` in the same commit and say in the commit message why; lower a budget when a change brings its value down, so the gain is kept.

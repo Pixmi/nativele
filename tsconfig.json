@@ -14,5 +14,5 @@
     "types": ["node"],
     "paths": { "@nativele/ts-dom": ["./src/lib/index.ts"] }
   },
-  "include": ["src", "examples", "test", "browser", "vite.config.ts"]
+  "include": ["src", "examples", "test", "browser", "scripts", "vite.config.ts"]
 }

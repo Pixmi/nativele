@@ -18,6 +18,7 @@ jobs:
       browser: ${{ steps.diff.outputs.browser }}
       smoke: ${{ steps.diff.outputs.smoke }}
       nobundler: ${{ steps.diff.outputs.nobundler }}
+      bench: ${{ steps.diff.outputs.bench }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,12 +38,13 @@ jobs:
           has() { echo "$files" | grep -qE "$1"; }
           all=false
           if [ -z "$files" ] || has '^(src/|package(-lock)?\.json$|tsconfig\.json$|vite\.config\.ts$|\.github/workflows/ci\.yml$)'; then all=true; fi
-          check=$all; browser=$all; smoke=$all; nobundler=$all
+          check=$all; browser=$all; smoke=$all; nobundler=$all; bench=$all
           if echo "$files" | grep -qvE '(\.md$|^LICENSE$|^llms\.txt$|^\.gitignore$|^skills/|^\.github/)'; then check=true; fi
           if has '^(browser|examples)/'; then browser=true; fi
           if has '^scripts/consumer-smoke\.sh$'; then smoke=true; fi
           if has '^scripts/no-bundler-smoke\.sh$'; then nobundler=true; fi
-          { echo "check=$check"; echo "browser=$browser"; echo "smoke=$smoke"; echo "nobundler=$nobundler"; } | tee -a "$GITHUB_OUTPUT"
+          if has '^scripts/bench/'; then bench=true; fi
+          { echo "check=$check"; echo "browser=$browser"; echo "smoke=$smoke"; echo "nobundler=$nobundler"; echo "bench=$bench"; } | tee -a "$GITHUB_OUTPUT"
 
   check:
     name: Types, unit tests and lint (Node ${{ matrix.node }})
@@ -120,3 +122,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run smoke
+
+  bench:
+    name: Performance budgets
+    needs: changes
+    if: needs.changes.outputs.bench == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run bench:check

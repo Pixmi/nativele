@@ -72,7 +72,8 @@
     "verify:pack": "vp pack --publint --attw",
     "smoke": "bash scripts/consumer-smoke.sh",
     "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh",
-    "bench": "node scripts/bench.ts"
+    "bench": "node scripts/bench.ts",
+    "bench:check": "node scripts/bench/check.ts"
   },
   "dependencies": {
     "parse5": "^8.1.0"
