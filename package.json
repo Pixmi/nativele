@@ -27,7 +27,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "ts-dom": "./dist/cli.mjs"
+    "ts-dom": "dist/cli.mjs"
   },
   "exports": {
     ".": {
