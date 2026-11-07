@@ -2,7 +2,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 import type { DefaultTreeAdapterMap } from "parse5";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
-import { analysisIn, analyze, listHtml } from "./codegen.ts";
+import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
@@ -376,7 +376,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
         get() {
           const text = template && ws.text(template);
           if (!template || text === null || text === undefined) return undefined;
-          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], analysisIn(ws, text).slots);
+          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], analyze(text).slots);
         },
       });
     }
@@ -828,7 +828,7 @@ const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknow
  * so the workspace's memo keeps them for the template with all of these, and they are used again while each is the same in the run that asks.
  * `parse` is how the template is analyzed when the memo does not have its findings.
  */
-export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = (t: string) => analysisIn(p.ws, t)): TemplateFindings {
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
   const file = resolve(html);
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));

@@ -514,31 +514,26 @@ export class CodegenError extends Error {
   }
 }
 
-const analyses = new WeakMap<Workspace, Map<string, Analysis>>();
-
-/** The analysis of the template text `html`, parsed once in the run of `ws`. */
-export function analysisIn(ws: Workspace, html: string): Analysis {
-  let run = analyses.get(ws);
-  if (!run) analyses.set(ws, (run = new Map()));
-  let a = run.get(html);
-  if (!a) run.set(html, (a = analyze(html)));
-  return a;
-}
-
 /** The error diagnostics and the custom element tags of the template `file` with the text `html`; `parse` analyzes it when the memo does not have them. */
-function shapeOf(file: string, html: string, ws: Workspace, parse = () => analysisIn(ws, html)): { errors: Diagnostic[]; tags: ReadonlySet<string> } {
+function shapeOf(file: string, html: string, ws: Workspace, parse = () => analyze(html)): { errors: Diagnostic[]; tags: ReadonlySet<string> } {
   const kept = ws.memo.get(file, "shape", [html]) as { errors: Diagnostic[]; tags: ReadonlySet<string> } | undefined;
   if (kept) return kept;
   const a = parse();
   return ws.memo.set(file, "shape", [html], { errors: a.diagnostics.filter((d) => d.severity === "error"), tags: a.customTags });
 }
 
-/** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. */
-export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace()): { out: string; next: string } {
+/** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. When it parses the template, it adds the analysis to `parsed` under the template's path. */
+export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace(), parsed?: Map<string, Analysis>): { out: string; next: string } {
   const file = resolve(htmlPath);
   const html = ws.text(file) ?? readFileSync(htmlPath, "utf8");
   if (options.whitespace === undefined) options = { ...options, whitespace: recordedWhitespace(modulePathFor(htmlPath)) };
-  const parse = () => analysisIn(ws, html);
+  let analysis: Analysis | undefined;
+  const parse = () => {
+    if (analysis) return analysis;
+    analysis = analyze(html);
+    parsed?.set(file, analysis);
+    return analysis;
+  };
   const { errors, tags } = shapeOf(file, html, ws, parse);
   if (errors.length) throw new CodegenError(formatDiagnostics(htmlPath, errors));
   const known = typeof defs === "string" ? scanDefines(defs, ws) : (defs ?? []);
@@ -555,8 +550,8 @@ export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs
  * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
  * are imported automatically from the modules that define them.
  */
-export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace): string | null {
-  const { out, next } = renderFile(htmlPath, options, defs, dir, ws);
+export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace, parsed?: Map<string, Analysis>): string | null {
+  const { out, next } = renderFile(htmlPath, options, defs, dir, ws, parsed);
   return update(out, next) ? out : null;
 }
 
@@ -735,9 +730,9 @@ function orphans(dir: string, scanned: readonly string[], ws: Workspace, top = t
 /**
  * Generate every `x.html.ts` (and the tag map) under a directory and delete the orphans; returns the files it rewrote, and collects all errors and throws them together with those files.
  * `defs` are the define() calls templates import child components from (default: those under `dir`).
- * With `changed`, only the templates that use one of these tags are generated.
+ * With `changed`, only the templates that use one of these tags are generated. The templates it parses are added to `parsed` (see renderFile).
  */
-export function generateAll(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace(), changed?: ReadonlySet<string>): string[] {
+export function generateAll(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace(), changed?: ReadonlySet<string>, parsed?: Map<string, Analysis>): string[] {
   const known = defs ?? scanDefines(dir, ws);
   const written: string[] = [];
   const errors: string[] = [];
@@ -748,7 +743,7 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
   for (const f of changed?.size === 0 ? [] : listHtml(dir, ws)) {
     if (!isSelected(dir, f, options) || (changed && !uses(f))) continue;
     try {
-      const out = generateFile(f, options, known, dir, ws);
+      const out = generateFile(f, options, known, dir, ws, parsed);
       if (out) written.push(out);
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
@@ -771,14 +766,14 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
  * `generateAll` for every directory, with the define() calls of all of them: a template imports a child component defined in another directory.
  * With `before`, the define() calls of the last generation, only the templates that use a tag whose definition changed since are generated.
  */
-export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}, ws = new Workspace(), before?: readonly DefineDef[]): string[] {
+export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}, ws = new Workspace(), before?: readonly DefineDef[], parsed?: Map<string, Analysis>): string[] {
   const defs = scanDefines(dirs, ws);
   const changed = before && changedTags(before, defs);
   const written: string[] = [];
   const errors: string[] = [];
   for (const dir of dirs) {
     try {
-      written.push(...generateAll(dir, options, defs, dirs, ws, changed));
+      written.push(...generateAll(dir, options, defs, dirs, ws, changed, parsed));
     } catch (e) {
       if (!(e instanceof CodegenError)) throw e;
       errors.push(e.message);
