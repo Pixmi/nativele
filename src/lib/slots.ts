@@ -14,7 +14,7 @@ const slotOf = (n: Node): string | null =>
  */
 export class LightSlots {
   #slots: Slot[] = [];
-  #own = new Set<Node>();
+  #own = new WeakSet<Node>();
   #observer: MutationObserver;
 
   constructor(
@@ -33,9 +33,15 @@ export class LightSlots {
       const end = document.createComment(`/slot:${name}`);
       this.#own.add(start).add(end);
       const fallback = [...el.childNodes];
+      for (const f of fallback) this.#own.add(f);
       el.replaceWith(start, ...(nodes.length ? nodes : fallback), end);
       this.#slots.push({ name, end, fallback, assigned: new Set(nodes) });
     }
+  }
+
+  /** A node the component creates later, such as a list item, is its own and never a user child. */
+  own(n: Node): void {
+    this.#own.add(n);
   }
 
   /** Like the native slot.assignedNodes(): the nodes currently assigned to the slot (fallback content excluded). */
@@ -85,8 +91,7 @@ export class LightSlots {
         continue;
       }
       for (const n of r.removedNodes) {
-        if (n.parentNode) continue; // it was only moved, not really removed
-        for (const s of this.#slots) if (s.assigned.has(n)) this.#unassign(n, s, changed);
+        for (const s of this.#slots) if (s.assigned.has(n) && n.parentNode !== s.end.parentNode) this.#unassign(n, s, changed);
       }
       if (r.target !== this.host) continue;
       for (const n of r.addedNodes) {

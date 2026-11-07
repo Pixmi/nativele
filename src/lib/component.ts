@@ -378,7 +378,10 @@ export function Component(
       const given = shadow ? [] : [...this.childNodes];
       if (!shadow) this.replaceChildren();
       const frag = content.cloneNode(true) as DocumentFragment;
-      const mounted = mountTemplate(frag, (el) => this.#register(el));
+      const mounted = mountTemplate(frag, (el) => {
+        this.#register(el);
+        this.#slots?.own(el);
+      });
       this.lists = mounted.lists;
       this.refs = mounted.refs;
       this.#register(frag);

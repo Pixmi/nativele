@@ -15,6 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixes
 
+- In a Light DOM component, a `<template data-each>` at the top level of the template keeps the items added or reordered after the first render (`replace()`, `upsert()`, `items =`, also while the element is disconnected): they were taken for children the user added, so with no slot they disappeared and with a slot they were moved into it, returned by `assignedNodes()` and reported by `slotchange`.
+- A top-level `<slot>`'s fallback content that comes back when its last assigned node is removed is no longer taken for user content: `assignedNodes()` is empty, `slotchange` runs once, and the fallback goes away again when a child is added. An assigned node moved from the element to another parent is unassigned, with `slotchange`, instead of staying in `assignedNodes()`.
 - A folder deleted while a run is under way (between listing its parent and reading it) is treated as empty, and a symbolic link whose target is gone as a file, instead of failing the run with `ENOENT`: `ts-dom gen --watch`, the Vite plugin and `oxlint --lsp` keep running when a folder is removed.
 
 ## 0.7.2
