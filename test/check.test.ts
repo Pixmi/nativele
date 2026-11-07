@@ -416,6 +416,18 @@ describe("ts-dom check: more cases", () => {
     }
   });
 
+  it("a missing ./x.html.js says to generate it from a scanned folder; another missing module keeps the plain hint", () => {
+    const [template, other] = mapTscErrors(
+      [
+        { file: "src/card.ts", line: 1, col: 17, code: "TS2307", message: "Cannot find module './card.html.js' or its corresponding type declarations." },
+        { file: "src/card.ts", line: 2, col: 17, code: "TS2307", message: "Cannot find module './util.js' or its corresponding type declarations." },
+      ],
+      EMPTY,
+    );
+    expect(template?.message).toMatch(/Fix: run ts-dom gen \(or ts-dom check without --no-write\), and make sure the folder that holds the \.html file is among the scanned folders\.$/);
+    expect(other?.message).toContain("Fix: change the TypeScript at this location");
+  });
+
   it("a plain tsc error carries a Fix hint", () => {
     const [issue] = mapTscErrors([{ file: "y.ts", line: 1, col: 1, code: "TS2304", message: "Cannot find name 'q'." }], EMPTY);
     expect(issue?.message).toMatch(/Fix: /);

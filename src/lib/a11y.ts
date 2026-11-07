@@ -64,6 +64,7 @@ const IMPLICIT_ROLE: Record<string, string> = {
   aside: "complementary", form: "form", table: "table", article: "article", hr: "separator", dialog: "dialog",
   h1: "heading", h2: "heading", h3: "heading", h4: "heading", h5: "heading", h6: "heading",
 };
+const BY_TS = "; if TypeScript sets it, give the element a data-ref, and lint leaves it to TypeScript.";
 const NO_LABEL_INPUT = new Set(["hidden", "submit", "reset", "button", "image"]);
 
 /** The rules that judge composed content: what an element fails with, and the fix that needs no content lint cannot read. */
@@ -271,10 +272,10 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       return false;
     };
 
-    if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el, `<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt="description", or alt="" if the image is purely decorative.`);
+    if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el, `<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt="description", or alt="" if the image is purely decorative${BY_TS}`);
 
     if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && fails("control-name", (u) => !content(el, u))) {
-      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, aria-label or aria-labelledby.`);
+      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, aria-label or aria-labelledby${BY_TS}`);
     }
 
     if (
@@ -283,13 +284,13 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     ) {
       const id = attr(el, "id");
       if (!(nonEmpty(id) && labelFor.some((l) => l.id === id))) {
-        report("form-label", el, `<${tag}> has no label. Fix: wrap it in a <label>, add <label for="id"> with a matching id, or add aria-label.`);
+        report("form-label", el, `<${tag}> has no label. Fix: wrap it in a <label>, add <label for="id"> with a matching id, or add aria-label${BY_TS}`);
       }
     }
 
-    if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el, "<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content.");
-    if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el, "<dialog> has no accessible name. Fix: add aria-label or aria-labelledby.");
-    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && fails("heading-empty", (u) => !content(el, u))) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
+    if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el, `<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content${BY_TS}`);
+    if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el, `<dialog> has no accessible name. Fix: add aria-label or aria-labelledby${BY_TS}`);
+    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && fails("heading-empty", (u) => !content(el, u))) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element${BY_TS}`);
 
     if (role !== undefined && !ROLES.has(role) && !role.startsWith("doc-") && !role.startsWith("graphics-")) {
       report("aria-role", el, `role="${role}" is not a valid ARIA role. Fix: check the spelling against the WAI-ARIA roles.`);
