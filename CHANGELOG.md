@@ -13,9 +13,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## 0.7.2 (not published)
 
+### New checks
+
+- Lint reads the Custom Elements Manifest that a package names in the `customElements` field of its `package.json` (schema 1.x and 2.x; Web Awesome ships one): for each template, that of its own package and those of the package's installed `dependencies`, `devDependencies`, `peerDependencies` and `optionalDependencies`, found as `node_modules/<name>/package.json` up to the workspace root (pnpm and workspace links followed by their real path; `node_modules` is never listed). A tag a manifest defines and no `define()` in the scanned folders does is checked like a Nativele component: `unknown-prop` for an attribute the manifest does not list (not for an element whose manifest may leave attributes out), `unknown-event` for an event it does not list and no element fires natively, with "Did you mean" for both. The manifest is parsed again only when its text changes, and costs nothing when no dependency declares one.
+- `invalid-prop-value` checks attribute values: a value outside a manifest attribute typed as string literals (`<wa-button variant="brandd">`, with "Did you mean"), `="false"` on a manifest boolean attribute (true whenever present; a Nativele boolean prop still reads `"false"` as false and is not reported), and a value that is not a number on a number attribute, of a manifest or of a Nativele component's props (which warns at run time and keeps the default).
+- `unknown-slot` (data-flow, warning): a direct child's `slot="name"` that the element has no slot for, so it is not shown: checked against a Nativele component's template (its `<slot name>` elements) and a manifest's `slots`; the default slot is not checked (`ts-dom rules --explain=unknown-slot`).
+- `unknown-custom-element` (data-flow, warning): a tag that no `define()` in the scanned folders, no `customElements.define("tag", ...)` or `HTMLElementTagNameMap` entry in the scanned TypeScript and no applicable manifest defines, while a known tag with the same prefix is one or two edits away (`<wa-buton>`), reported at its first use in each template with "Did you mean"; other unknown tags stay with `unchecked-custom-elements` (`ts-dom rules --explain=unknown-custom-element`).
+- `ts-dom doctor` reports `custom-elements-manifest` (warning): a manifest that the project's package or an installed dependency names in `customElements` and that is missing, not valid JSON, not an object or of another schema version, which lint then treats as absent.
+
 ### Changed
 
+- `unchecked-custom-elements` no longer lists a tag that an applicable manifest defines, or one reported as `unknown-custom-element`; a tag defined by two manifests of a package's dependencies is listed as defined in several packages. Its "no define()" cause now reads "no define() in the scanned folders, and no custom elements manifest of the package or its dependencies", and its fix says that another library's elements are checked when their package declares a manifest; `unchecked-content` uses the same words.
+- With `--a11y`, an element of a manifest is content lint cannot read, with its own cause in `unchecked-content` ("an element of a package whose custom elements manifest declares its attributes, events and slots but not what it renders", fix: check by hand that the element around it is operable or named); `data-on-click` on such an element itself is still not reported.
 - `engines.node` is `>=22`, the versions CI tests (22 and 24): Node 20 reached its end of life in April 2026 and is no longer supported; Node 22 is supported until its end of life in April 2027.
+
+### Skills
+
+- nativele-web-awesome: lint reads Web Awesome's custom elements manifest, so limitations 1 and 7, the troubleshooting rows and Verify describe `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot` and `unknown-custom-element` on `wa-` tags instead of `unchecked-custom-elements`; a forgotten import is still not reported.
+- nativele-linting: the contract ids include `unknown-slot` and `unknown-custom-element`, and check library elements that ship a manifest.
 
 ## 0.7.1
 

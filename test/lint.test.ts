@@ -444,9 +444,9 @@ describe("a tag defined more than once under the scanned folders", () => {
     expect(found).toHaveLength(1);
     const [d] = found;
     expect([d?.file.endsWith(join("app", "other.html")), d?.line, d?.col, d?.severity]).toEqual([true, 1, 18, "warning"]);
-    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders. <x-item> (");
+    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders, and no custom elements manifest of the package or its dependencies. <x-item> (");
     expect(d?.message).toContain("): defined in several packages, and not exactly once in the template's package.");
-    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders; for <x-item>, keep one define() of a tag per package.");
+    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders (another library's elements are checked when their package declares a custom elements manifest, the customElements field of its package.json); for <x-item>, keep one define() of a tag per package.");
     expect(d?.message).toContain("(unknown-prop, invalid-prop-value, unknown-event)");
     expect(d?.message).toContain("(click-semantics)");
     expect(d?.message).not.toContain("x-known");

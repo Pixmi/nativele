@@ -76,8 +76,8 @@ export interface Analysis {
   eventSites: { event: string; method: string; tag: string; attrs: string[]; line: number; col: number }[];
   /** Custom element tags used by the template; codegen imports the modules that define them. */
   customTags: Set<string>;
-  /** Attributes of every custom element occurrence (used by prop/event contract checks). */
-  customUses: { tag: string; attrs: string[]; events: string[]; line: number; col: number }[];
+  /** Attributes (names and values, by index) of every custom element occurrence, and its child elements with a slot attribute (used by the prop, event and slot contract checks). */
+  customUses: { tag: string; attrs: string[]; values: string[]; events: string[]; slotted: { name: string; line: number; col: number }[]; line: number; col: number }[];
   /**
    * First source location of each marker, keyed by kind and name:
    * `ref:name`, `if:name`, `text:name`, `each:name`, `event:method`, and for list items `ref:list/name`, `if:list/name`, `text:list/name`.
@@ -254,7 +254,8 @@ export function analyze(html: string): Analysis {
         }
       }
       if (isCustom) {
-        a.customUses.push({ tag, attrs: n.attrs.map((x) => x.name), events: handlers, ...locOf(n) });
+        const slotted = n.childNodes.flatMap((c) => (isEl(c) && attr(c, "slot") !== undefined ? [{ name: attr(c, "slot") as string, ...locOf(c) }] : []));
+        a.customUses.push({ tag, attrs: n.attrs.map((x) => x.name), values: n.attrs.map((x) => x.value), events: handlers, slotted, ...locOf(n) });
       }
       const ref = attr(n, "data-ref");
       if (ref !== undefined) {

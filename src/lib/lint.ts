@@ -1,4 +1,6 @@
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { parseFragment } from "parse5";
+import type { DefaultTreeAdapterMap } from "parse5";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
@@ -6,7 +8,9 @@ import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex } from "./components.ts";
-import { NOT_DEFINED, UNREAD, detailOf, unreadFixes } from "./unread.ts";
+import { manifestsAt } from "./manifest.ts";
+import type { ManifestElement } from "./manifest.ts";
+import { NOT_DEFINED, UNREAD, and, detailOf, unreadFixes } from "./unread.ts";
 import type { Unread } from "./unread.ts";
 
 export type { Diagnostic };
@@ -137,6 +141,8 @@ export const DATA_FLOW_RULES = {
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
   "unknown-event": "the child component does not emit this event",
+  "unknown-slot": "the child component or library element has no slot of this name, so the element is not shown",
+  "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
@@ -236,13 +242,24 @@ function methodBody(body: string, name: string): string | null {
 
 // ---- child component contracts (declared props and emitted events) ----
 
-export type PropKind = "string" | "number" | "boolean" | "other";
+/** `any` is an attribute a custom elements manifest declares with a type lint does not check, which can still be set from HTML; `other` is a Nativele prop that cannot. */
+export type PropKind = "string" | "number" | "boolean" | "other" | "any";
 
 export interface Contract {
   props: Map<string, PropKind>;
+  /** The string literals a prop allows: all of its values for kind string, and those allowed beside numbers for kind number. */
+  values?: ReadonlyMap<string, readonly string[]>;
+  /** The attribute name of each prop, as the manifest writes it. */
+  attrs?: ReadonlyMap<string, string>;
   emits: Set<string>;
   /** The emitted events declared with `bubbles: true`. */
   bubbles: Set<string>;
+  /** The slot names ("" is the default slot); undefined when lint cannot know them. */
+  readonly slots?: ReadonlySet<string> | null;
+  /** The package whose custom elements manifest the contract is read from. */
+  readonly manifest?: string;
+  /** What the manifest may leave out: attributes, events, or both, which are then not reported as unknown. */
+  readonly open?: { props: boolean; events: boolean };
   /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists: path relative to the `cwd` given to contractsFor, and its current text. */
   readonly template?: { file: string; readonly html: string };
   /** Why there is no `template`, when there is none. */
@@ -260,16 +277,66 @@ function kindOf(valueText: string): PropKind {
 /** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
 export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
   /** What contractsAt and childrenAt have worked out for each package. */
-  readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> }>();
+  readonly byPackage = new Map<string, PackageView>();
   /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
   readonly packageOf: (dir: string) => string;
   /** The folder the paths in messages are relative to. */
   readonly cwd: string;
-  constructor(packageOf: (dir: string) => string, cwd: string) {
+  /** The custom elements manifests that apply to the templates of a package (see manifestsAt). */
+  readonly manifests: (pkg: string) => ReturnType<typeof manifestsAt>;
+  /** Tags the scanned TypeScript names without a define(): customElements.define("tag", ...) and HTMLElementTagNameMap keys. */
+  readonly declared: ReadonlySet<string>;
+  constructor(packageOf: (dir: string) => string, cwd: string, manifests: (pkg: string) => ReturnType<typeof manifestsAt> = () => [], declared: ReadonlySet<string> = new Set()) {
     super();
     this.packageOf = packageOf;
     this.cwd = cwd;
+    this.manifests = manifests;
+    this.declared = declared;
   }
+}
+
+/** Where a tag a template may use is known from: define() in the scanned folders, a declaration in the scanned TypeScript, or the manifest of a package. */
+type Known = { from: "folders" } | { from: "declared" } | { from: "manifest"; pkg: string };
+
+interface PackageView {
+  contracts: ReadonlyMap<string, Contract>;
+  children: A11yChildren;
+  known: ReadonlyMap<string, Known>;
+  definitions: Map<string, string>;
+}
+
+const manifestContracts = new WeakMap<ManifestElement, Contract>();
+
+function manifestContract(el: ManifestElement, pkg: string): Contract {
+  let c = manifestContracts.get(el);
+  if (c) return c;
+  const props = new Map<string, PropKind>();
+  const values = new Map<string, readonly string[]>();
+  const attrs = new Map<string, string>();
+  for (const a of el.attrs.values()) {
+    const key = camel(a.name);
+    props.set(key, a.kind);
+    attrs.set(key, a.name);
+    if (a.values) values.set(key, a.values);
+  }
+  const emits = new Set(el.events ?? []);
+  c = { props, values, attrs, emits, bubbles: emits, slots: el.slots ? new Set(el.slots) : null, manifest: pkg, ...(el.openAttrs || !el.events ? { open: { props: el.openAttrs, events: !el.events } } : {}), unread: { cause: "third-party", pkg } };
+  manifestContracts.set(el, c);
+  return c;
+}
+
+type Element = DefaultTreeAdapterMap["element"];
+const slotNames = (html: string): Set<string> => {
+  const out = new Set<string>();
+  const walk = (nodes: DefaultTreeAdapterMap["childNode"][]) => {
+    for (const n of nodes) {
+      if (!("tagName" in n)) continue;
+      if (n.tagName === "slot") out.add((n as Element).attrs.find((a) => a.name === "name")?.value ?? "");
+      walk(n.tagName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : n.childNodes);
+    }
+  };
+  walk(parseFragment(html).childNodes);
+  return out;
 }
 
 type Declared = Pick<Contract, "props" | "emits" | "bubbles">;
@@ -295,7 +362,8 @@ function packageOf(ws: Workspace, dir: string): string {
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const pkgs = new Map<string, string>();
   const pkgOf = (dir: string) => pkgs.get(dir) ?? (pkgs.set(dir, packageOf(ws, resolve(dir))).get(dir) as string);
-  const out = new Contracts(pkgOf, cwd);
+  const declaredTags = new Set([...index.modules.values()].flatMap((m) => m.tags));
+  const out = new Contracts(pkgOf, cwd, (pkg) => (pkg ? manifestsAt(ws, pkg) : []), declaredTags);
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
@@ -314,6 +382,14 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
           return ws.text(template) === null ? { cause: "template-missing", file: relative(cwd, template) } : undefined;
         },
       };
+      // Not enumerable: the memo compares contracts by their content, which the template's text already holds.
+      Object.defineProperty(contract, "slots", {
+        get() {
+          const text = template && ws.text(template);
+          if (!template || text === null || text === undefined) return undefined;
+          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], slotNames(text));
+        },
+      });
     }
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(def.file)), contract, get at() { return `${relative(cwd, def.file)}:${def.line}`; } }]);
   }
@@ -334,13 +410,19 @@ export function childrenAt(all: Contracts, file: string): A11yChildren {
   return atPackage(all, file).children;
 }
 
-/** The contracts and children at the package of `file`, and the text of what `children` holds for each tag (or all of it), as lintTemplate compares it. */
-function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> } {
+/**
+ * The contracts, children and known tags at the package of `file`, and the text of what `children` and `known` hold for each tag (or all of it), as lintTemplate compares it.
+ * A tag defined in the scanned folders uses that definition; a tag only an applicable manifest defines uses the manifest's.
+ */
+function atPackage(all: Contracts, file: string): PackageView {
   const pkg = all.packageOf(dirname(file));
   let out = all.byPackage.get(pkg);
   if (!out) {
     const contracts = new Map<string, Contract>();
     const children = new Map<string, A11yChild>();
+    const known = new Map<string, Known>();
+    for (const tag of all.keys()) known.set(tag, { from: "folders" });
+    for (const tag of all.declared) if (!known.has(tag)) known.set(tag, { from: "declared" });
     for (const [tag, defs] of all) {
       const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
       const one = here.length === 1 ? here[0] : undefined;
@@ -350,7 +432,24 @@ function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<strin
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
       else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
-    all.byPackage.set(pkg, (out = { contracts, children, definitions: new Map() }));
+    const fromManifests = new Map<string, { pkg: string; el: ManifestElement }[]>();
+    const files = new Set<string>();
+    for (const m of all.manifests(pkg)) {
+      if (!("elements" in m) || files.has(m.file)) continue;
+      files.add(m.file);
+      for (const [tag, el] of m.elements) fromManifests.set(tag, [...(fromManifests.get(tag) ?? []), { pkg: m.pkg, el }]);
+    }
+    for (const [tag, found] of fromManifests) {
+      if (!known.has(tag)) known.set(tag, { from: "manifest", pkg: (found[0] as { pkg: string }).pkg });
+      if (all.has(tag)) continue;
+      const one = found.length === 1 ? found[0] : undefined;
+      if (one) {
+        const c = manifestContract(one.el, one.pkg);
+        contracts.set(tag, c);
+        children.set(tag, c);
+      } else children.set(tag, { unread: { cause: "ambiguous", packages: found.map((f) => f.pkg) } });
+    }
+    all.byPackage.set(pkg, (out = { contracts, children, known, definitions: new Map() }));
   }
   return out;
 }
@@ -372,10 +471,16 @@ function distance(a: string, b: string): number {
   }
   return (d[a.length] as number[])[b.length] as number;
 }
-const suggest = (name: string, options: string[]): string => {
+const nearest = (name: string, options: readonly string[]): string | undefined => {
   const best = options.map((o) => ({ o, d: distance(name, o) })).sort((x, y) => x.d - y.d)[0];
-  return best && best.d <= 2 ? ` Did you mean "${best.o}"?` : "";
+  return best && best.d <= 2 ? best.o : undefined;
 };
+const suggest = (name: string, options: readonly string[]): string => {
+  const best = nearest(name, options);
+  return best === undefined ? "" : ` Did you mean "${best}"?`;
+};
+const manifestOf = (pkg: string) => `the custom elements manifest of ${pkg}`;
+const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the scanned folders" : k.from === "declared" ? "a customElements.define() or HTMLElementTagNameMap entry in the scanned TypeScript" : manifestOf(k.pkg));
 
 /**
  * Data-flow checks (suggestions, not errors).
@@ -383,14 +488,16 @@ const suggest = (name: string, options: string[]): string => {
  * - emit-forwarding: the handler of a child's event only emits the event again
  * - props-mutation: a prop is assigned inside the component
  * - custom-event-on-native: a custom event is written on a native element's data-on-*
- * - unknown-prop / invalid-prop-value / unknown-event: the attributes and events written on a child tag do not match
- *   what the child component declares (needs `contracts`, see contractsFor)
+ * - unknown-prop / invalid-prop-value / unknown-event / unknown-slot: the attributes, events and slot names written on a child tag do not match
+ *   what the child component or the library element's manifest declares (needs `contracts`, see contractsFor)
+ * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
  */
 export function dataFlow(
   html: string,
   classes: ComponentClass[],
   contracts: ReadonlyMap<string, Contract> = new Map(),
   a: Analysis = analyze(html),
+  known: ReadonlyMap<string, Known> = new Map(),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const report = (rule: keyof typeof DATA_FLOW_RULES, message: string, key?: string, loc?: { line: number; col: number }) => {
@@ -409,15 +516,45 @@ export function dataFlow(
     );
   }
 
+  const unknownTags = new Set<string>();
   for (const use of a.customUses) {
     const contract = contracts.get(use.tag);
-    if (!contract) continue;
+    if (!contract) {
+      if (unknownTags.has(use.tag) || known.has(use.tag)) continue;
+      unknownTags.add(use.tag);
+      const prefix = use.tag.slice(0, use.tag.indexOf("-") + 1);
+      const near = nearest(use.tag, [...known.keys()].filter((t) => t.startsWith(prefix)));
+      if (near === undefined) continue;
+      const manifests = [...new Set([...known.values()].flatMap((k) => (k.from === "manifest" ? [manifestOf(k.pkg)] : [])))];
+      report(
+        "unknown-custom-element",
+        `<${use.tag}> is not defined in the scanned folders${manifests.length ? ` or by ${and(manifests)}` : ""}, so the browser leaves it an undefined element that shows only its children; <${near}>, defined by ${knownBy(known.get(near) as Known)}, is close to it. Did you mean "${near}"? Fix: correct the tag name; if another package defines it, import that package (it is not in this package's dependencies, or declares no custom elements manifest).`,
+        undefined,
+        use,
+      );
+      continue;
+    }
+    const lib = contract.manifest;
+    const nameOf = (p: string) => contract.attrs?.get(p) ?? kebab(p);
     const propNames = [...contract.props.keys()];
-    for (const attrName of use.attrs) {
-      if (attrName.startsWith("data-") || attrName.startsWith("aria-") || attrName.startsWith("on") || GLOBAL_ATTRS.has(attrName)) continue;
+    use.attrs.forEach((attrName, i) => {
+      if (attrName.startsWith("data-") || attrName.startsWith("aria-") || attrName.startsWith("on") || GLOBAL_ATTRS.has(attrName)) return;
       const prop = camel(attrName);
       const kind = contract.props.get(prop);
+      const value = use.values[i] ?? "";
+      const allowed = contract.values?.get(prop);
       if (kind === undefined) {
+        if (contract.open?.props) return;
+        if (lib) {
+          const names = propNames.map(nameOf);
+          report(
+            "unknown-prop",
+            `<${use.tag} ${attrName}> is not an attribute ${manifestOf(lib)} declares for <${use.tag}>. ${names.length ? `Attributes: ${names.join(", ")}.` : "It declares no attributes."}${suggest(attrName, names)} Fix: correct the attribute name, or set the property from TypeScript (this.refs.x.name = value) if it has no attribute.`,
+            undefined,
+            use,
+          );
+          return;
+        }
         const declared = propNames.length ? `Declared props: ${propNames.map((p) => kebab(p)).join(", ")}.` : "It declares no props.";
         report(
           "unknown-prop",
@@ -432,16 +569,59 @@ export function dataFlow(
           undefined,
           use,
         );
+      } else if (value.includes("{{")) {
+        return;
+      } else if (kind === "boolean" && lib && value.trim().toLowerCase() === "false") {
+        report(
+          "invalid-prop-value",
+          `<${use.tag} ${attrName}="${value}"> sets ${attrName} to true: a boolean attribute of a library element is true whenever it is present, whatever its value. Fix: remove the attribute, or set the property from TypeScript (this.refs.x.${prop} = false).`,
+          undefined,
+          use,
+        );
+      } else if (kind === "number" && Number.isNaN(Number(value)) && !allowed?.includes(value)) {
+        const also = allowed?.length ? `, or one of ${allowed.map((v) => `"${v}"`).join(", ")}` : "";
+        report(
+          "invalid-prop-value",
+          lib
+            ? `<${use.tag} ${attrName}="${value}">: ${manifestOf(lib)} declares ${attrName} a number${also}, and "${value}" is not, so the element reads it as NaN. Fix: write a number, such as ${attrName}="5"${also}.`
+            : `<${use.tag} ${attrName}="${value}">: the prop "${prop}" is a number, and "${value}" is not one, so the component warns at run time and keeps the default value. Fix: write a number, such as ${attrName}="5".`,
+          undefined,
+          use,
+        );
+      } else if (kind === "string" && allowed && !allowed.includes(value)) {
+        report(
+          "invalid-prop-value",
+          `<${use.tag} ${attrName}="${value}">: "${value}" is not a value ${lib ? manifestOf(lib) : `<${use.tag}>`} declares for ${attrName}: ${allowed.join(", ")}.${suggest(value, allowed)} Fix: use one of the listed values.`,
+          undefined,
+          use,
+        );
+      }
+    });
+    if (!contract.open?.events) {
+      for (const ev of use.events) {
+        if (contract.emits.has(ev) || NATIVE_EVENTS.has(ev)) continue;
+        const emitted = [...contract.emits];
+        report(
+          "unknown-event",
+          lib
+            ? `The custom elements manifest of ${lib} lists no event "${ev}" for <${use.tag}>, so data-on-${ev} will never fire. ${emitted.length ? `Events: ${emitted.join(", ")}.` : "It lists no events for it."}${suggest(ev, emitted)} Fix: correct the event name.`
+            : `<${use.tag}> does not emit "${ev}", so data-on-${ev} will never fire. ${emitted.length ? `It emits: ${emitted.join(", ")}.` : "It declares no events."}${suggest(ev, emitted)} Fix: declare the event in the child's emits option (emits: { "${ev}": event<...>() }), or fix the name.`,
+          undefined,
+          use,
+        );
       }
     }
-    for (const ev of use.events) {
-      if (contract.emits.has(ev) || NATIVE_EVENTS.has(ev)) continue;
-      const emitted = [...contract.emits];
+    const slots = use.slotted.length ? contract.slots : undefined;
+    if (!slots) continue;
+    const named = [...slots].filter((n) => n);
+    const source = lib ? manifestOf(lib) : `its template (${contract.template?.file})`;
+    for (const s of use.slotted) {
+      if (!s.name || slots.has(s.name)) continue;
       report(
-        "unknown-event",
-        `<${use.tag}> does not emit "${ev}", so data-on-${ev} will never fire. ${emitted.length ? `It emits: ${emitted.join(", ")}.` : "It declares no events."}${suggest(ev, emitted)} Fix: declare the event in the child's emits option (emits: { "${ev}": event<...>() }), or fix the name.`,
+        "unknown-slot",
+        `<${use.tag}> has no slot "${s.name}" in ${source}, so this element is not shown. ${named.length ? `Slots: ${named.join(", ")}.` : "It has no named slots."}${suggest(s.name, named)} Fix: use one of the slot names, or remove the slot attribute.`,
         undefined,
-        use,
+        s,
       );
     }
   }
@@ -590,10 +770,14 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
   const importers = (p.index.importers.get(file) ?? []).map((i) => p.ws.text(i.file) ?? "");
-  const { contracts, children, definitions } = atPackage(p.contracts, file);
-  const definition = (tag: string): string => {
-    let d = definitions.get(tag);
-    if (d === undefined) definitions.set(tag, (d = contents(tag === ALL ? [...children] : [children.get(tag)])));
+  const { contracts, children, known, definitions } = atPackage(p.contracts, file);
+  // A key in `known` starts with a character no tag starts with.
+  const definition = (key: string): string => {
+    let d = definitions.get(key);
+    if (d === undefined) {
+      const [map, tag] = key.startsWith("\0") ? [known, key.slice(1)] : [children, key];
+      definitions.set(key, (d = contents(tag === ALL ? [...map] : [map.get(tag)])));
+    }
     return d;
   };
   const kind = `findings:${[...groups].sort().join(",")}`;
@@ -601,17 +785,19 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
   const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
   if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
   const tags = new Set<string>();
+  const knownTags = new Set<string>();
   const analysis = parse(text);
   const uses = new Map<string, { tag: string; line: number; col: number }>();
   for (const u of analysis.customUses) if (!uses.has(u.tag)) uses.set(u.tag, { tag: u.tag, line: u.line, col: u.col });
   const value: TemplateFindings = {
     diagnostics: analysis.diagnostics,
     usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
-    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis) : [],
+    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis, recording(known, knownTags)) : [],
     a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
     uses: [...uses.values()],
   };
-  return p.ws.memo.set(file, kind, from, { definitions: [...tags].map((tag) => [tag, definition(tag)]), value }).value;
+  const keys = [...tags, ...[...knownTags].map((tag) => `\0${tag}`)];
+  return p.ws.memo.set(file, kind, from, { definitions: keys.map((key) => [key, definition(key)]), value }).value;
 }
 
 /** `unchecked-custom-elements`: the tags the templates use that `contracts` has no contract of, reported once at the first use. */
@@ -675,7 +861,8 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
       else for (const d of r.usage) usage.push({ file, ...d });
       for (const d of r.flow) flow.push({ file, ...d });
       for (const d of r.a11y) checks.push({ file, ...d });
-      found.push({ file, html, uses: r.uses });
+      const typos = r.flow.filter((d) => d.rule === "unknown-custom-element");
+      found.push({ file, html, uses: typos.length ? r.uses.filter((u) => !typos.some((d) => d.line === u.line && d.col === u.col)) : r.uses });
     }
   }
   if (groups.includes("data-flow")) flow.push(...uncheckedTags(found, p.contracts));
