@@ -80,6 +80,16 @@ describe("dynamic access", () => {
     const d = unusedMarkup(html, `const { a } = this.refs; a.focus(); this.text.x = 1; this.lists.l; y`);
     expect(d.map((x) => x.message.match(/data-ref="(\w)"/)?.[1])).toEqual(["b"]);
   });
+  it("counts the keys destructured from any .refs, renamed or nested, and still reports a ref no one names", () => {
+    const html = `<b data-ref="a"></b><i data-ref="b"></i><s data-ref="c"></s>`;
+    const unused = (code: string) => unusedMarkup(html, code).map((x) => x.message.match(/data-ref="(\w)"/)?.[1]);
+    expect(unused(`const { a, b } = tpl.instantiate().refs;`)).toEqual(["c"]);
+    expect(unused(`const inst = tpl.instantiate();\nconst { a } = inst.refs;`)).toEqual(["b", "c"]);
+    expect(unused(`const { a: x, "b": y } = this.refs;`)).toEqual(["c"]);
+    expect(unused(`const { refs: { c } } = tpl.instantiate();`)).toEqual(["a", "b"]);
+    expect(unused(`const { a = null } = this.refs?.x;`)).toEqual(["a", "b", "c"]);
+    expect(unused(`const { a, ...rest } = this.refs;`)).toEqual([]);
+  });
 });
 
 describe("lintUsage", () => {

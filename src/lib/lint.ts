@@ -59,6 +59,22 @@ export const UNUSED_MARKUP_RULES = {
 
 const at = (a: Analysis, key: string) => a.locs.get(key) ?? { line: 1, col: 1 };
 
+const REFS_PATTERN = new RegExp(String.raw`\{([^{}]*)\}\s*=\s*(?:[\w$]+(?:\??\.[\w$]+|\([^()]*\)|!)*\??\.)?refs(?!\s*(?:[\w$.\[(]|\?\.))|\brefs\s*:\s*\{([^{}]*)\}`, "g");
+
+/** The keys that `code` destructures from a `.refs` object (`const { a, b: x } = inst.refs`, `const { refs: { a } } = ...`); null when a rest element (`...rest`) takes them all. */
+function refsDestructured(code: string): Set<string> | null {
+  const keys = new Set<string>();
+  for (const m of code.matchAll(REFS_PATTERN)) {
+    for (const entry of (m[1] ?? m[2] ?? "").split(",")) {
+      const e = entry.trim();
+      if (e.startsWith("...")) return null;
+      const key = /^["']?([\w$]+)["']?\s*(?:[:=]|$)/.exec(e)?.[1];
+      if (key) keys.add(key);
+    }
+  }
+  return keys;
+}
+
 /** Markup that the HTML declares but `code` (the component class text) does not use. `a` is the template's analysis when the caller already has it. */
 export function unusedMarkup(html: string, code: string, a: Analysis = analyze(html)): Diagnostic[] {
   const used = (re: string) => new RegExp(re).test(code);
@@ -67,7 +83,8 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
     out.push({ rule, severity: "error", message, ...at(a, key) });
   // Dynamic access (refs[k], text[k], lists[k]) or an alias (const r = this.refs) hides which names are used: treat everything as used.
   const dynamic = (obj: string) => used(`\\b${obj}\\[\\s*[^"'\\s\\]]`) || used(`[\\w$]\\s*=\\s*this\\.${obj}\\s*[;,)\\n]|[(,]\\s*this\\.${obj}\\s*[,)]`);
-  const dynRefs = dynamic("refs");
+  const destructured = refsDestructured(code);
+  const dynRefs = dynamic("refs") || destructured === null;
   const dynText = dynamic("text");
   const dynLists = dynamic("lists");
   // With a state/props/derive option, {{ }} and data-if bind to same-named fields (names are checked by tsc),
@@ -75,7 +92,7 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   const stateful = code.includes(STATEFUL_MARK);
 
   for (const n of dynRefs ? [] : a.scope.refs.keys()) {
-    if (!used(`refs\\.${esc(n)}\\b|refs\\[\\s*["']${esc(n)}["']|\\b${esc(n)}\\b\\s*[,}][^;]*=\\s*this\\.refs`)) {
+    if (!destructured?.has(n) && !used(`refs\\.${esc(n)}\\b|refs\\[\\s*["']${esc(n)}["']`)) {
       add("unused-ref", `data-ref="${n}" is never used by the component class. Fix: use this.refs.${n}, or remove the attribute if the element needs no TypeScript access.`, `ref:${n}`);
     }
   }
