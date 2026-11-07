@@ -258,7 +258,7 @@ function kindOf(valueText: string): PropKind {
 /** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
 export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
   /** What contractsAt and childrenAt have worked out for each package. */
-  readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren }>();
+  readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> }>();
   /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
   readonly packageOf: (dir: string) => string;
   /** The folder the paths in messages are relative to. */
@@ -322,7 +322,8 @@ export function childrenAt(all: Contracts, file: string): A11yChildren {
   return atPackage(all, file).children;
 }
 
-function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren } {
+/** The contracts and children at the package of `file`, and the text of what `children` holds for each tag (or all of it), as lintTemplate compares it. */
+function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> } {
   const pkg = all.packageOf(dirname(resolve(file)));
   let out = all.byPackage.get(pkg);
   if (!out) {
@@ -337,7 +338,7 @@ function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<strin
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
       else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
-    all.byPackage.set(pkg, (out = { contracts, children }));
+    all.byPackage.set(pkg, (out = { contracts, children, definitions: new Map() }));
   }
   return out;
 }
@@ -540,12 +541,11 @@ export function lintProject(ws: Workspace, dirs: readonly string[], cwd = proces
   return { ws, index, contracts: contractsFor([...dirs], cwd, ws, index), cwd };
 }
 
-/** A view of `map` that adds each key it is asked about to `uses`. */
+const ALL = "*";
+
+/** A view of `map` that adds each key it is asked about to `uses`, and ALL when it is read whole. */
 function recording<V>(map: ReadonlyMap<string, V>, uses: Set<string>): ReadonlyMap<string, V> {
-  const all = () => {
-    for (const k of map.keys()) uses.add(k);
-    return map;
-  };
+  const all = () => (uses.add(ALL), map);
   return {
     get: (k) => (uses.add(k), map.get(k)),
     has: (k) => (uses.add(k), map.has(k)),
@@ -564,7 +564,7 @@ const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknow
 
 /**
  * The findings of one template for `groups`. They depend only on the template's text, the code of the classes and modules that use it, and the definitions of the tags they look up,
- * so they are kept in the workspace's memo by all of these: by the text of the first two, and by what the definitions of the tags that were looked up hold, compared again on each look.
+ * so the workspace's memo keeps them for the template with all of these, and they are used again while each is the same in the run that asks.
  * `parse` is how the template is analyzed when the memo does not have its findings.
  */
 export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
@@ -572,12 +572,16 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
   const importers = (p.index.importers.get(file) ?? []).map((i) => p.ws.text(i.file) ?? "");
-  const contracts = contractsAt(p.contracts, file);
-  const children = childrenAt(p.contracts, file);
-  const definitions = (tags: readonly string[]) => contents(tags.map((tag) => [tag, contracts.get(tag), children.get(tag)]));
-  const key = contents([groups, text, classes, importers]);
-  const kept = p.ws.memo.get("findings", key) as { tags: string[]; definitions: string; value: TemplateFindings } | undefined;
-  if (kept && definitions(kept.tags) === kept.definitions) return kept.value;
+  const { contracts, children, definitions } = atPackage(p.contracts, file);
+  const definition = (tag: string): string => {
+    let d = definitions.get(tag);
+    if (d === undefined) definitions.set(tag, (d = contents(tag === ALL ? [...children] : [children.get(tag)])));
+    return d;
+  };
+  const kind = `findings:${groups.join(",")}`;
+  const from = [text, classes.length, ...classes.flatMap((c) => [c.call, c.body]), ...importers];
+  const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
+  if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
   const tags = new Set<string>();
   const analysis = parse(text);
   const uses = new Map<string, { tag: string; line: number; col: number }>();
@@ -589,8 +593,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
     uses: [...uses.values()],
   };
-  p.ws.memo.set("findings", key, { tags: [...tags], definitions: definitions([...tags]), value });
-  return value;
+  return p.ws.memo.set(file, kind, from, { definitions: [...tags].map((tag) => [tag, definition(tag)]), value }).value;
 }
 
 /** `unchecked-custom-elements`: the tags the templates use that `contracts` has no contract of, reported once at the first use. */

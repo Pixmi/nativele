@@ -14,10 +14,12 @@ vi.mock("parse5", async (importOriginal) => {
   return { ...real, parseFragment: (...args: Parameters<typeof real.parseFragment>) => (parses.n++, real.parseFragment(...args)) };
 });
 const reads = vi.hoisted(() => new Map<string, number>());
+const listings = vi.hoisted(() => ({ n: 0 }));
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
   const readFileSync = ((file: string, ...rest: [never]) => (reads.set(String(file), (reads.get(String(file)) ?? 0) + 1), real.readFileSync(file, ...rest))) as typeof real.readFileSync;
-  return { ...real, default: { ...real, readFileSync }, readFileSync };
+  const readdirSync = ((...args: Parameters<typeof real.readdirSync>) => (listings.n++, real.readdirSync(...args))) as typeof real.readdirSync;
+  return { ...real, default: { ...real, readFileSync, readdirSync }, readFileSync, readdirSync };
 });
 
 /** How many times `fn` reads each file. */
@@ -109,6 +111,29 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     oxlint(dir, "plain.ts", ["a11y", "data-flow"]);
     expect(parsed(() => oxlint(dir, "page.ts", ["data-flow", "unused-markup"]))).toBe(1);
   });
+  it("keeps the findings of a file while the editor lints another one", async () => {
+    const dir = project({
+      "x-a.html": `<p data-ref="note">A</p>\n`,
+      "x-a.ts": component("A", "x-a"),
+      "x-b.html": `<p data-ref="note">B</p>\n`,
+      "x-b.ts": component("B", "x-b"),
+    });
+    await turn();
+    oxlint(dir, "x-a.ts", ["unused-markup", "a11y"]);
+    await turn();
+    oxlint(dir, "x-b.ts", ["unused-markup", "a11y"]);
+    await turn();
+    expect(parsed(() => expect(oxlint(dir, "x-a.ts", ["unused-markup", "a11y"])).toEqual(["unused-ref"]))).toBe(0);
+  });
+  it("lists the folders once in a run that also lints an unsaved buffer", async () => {
+    const dir = project({ "x-a.html": `<p data-ref="note">A</p>\n`, "x-a.ts": component("A", "x-a"), "sub/x-b.ts": component("B", "x-b") });
+    await turn();
+    const before = listings.n;
+    oxlint(dir, "sub/x-b.ts", ["unused-markup"]);
+    const saved = listings.n - before;
+    expect(oxlint(dir, "x-a.ts", ["unused-markup"], `${component("A", "x-a")}// unsaved\n`)).toEqual(["unused-ref"]);
+    expect(listings.n - before).toBe(saved);
+  });
 });
 
 describe("a long-lived Vite plugin (the dev server)", () => {
@@ -133,7 +158,8 @@ describe("a long-lived Vite plugin (the dev server)", () => {
       const n = parsed(() => p.handleHotUpdate({ file: join(dir, "src", name), server }));
       return { parses: n, warned: warned.map((w) => /([\w-]+\.html):(\d+):\d+ warning \[([\w-]+)\]/.exec(w)?.slice(1).join(" ")) };
     };
-    return { save, warned, dir };
+    const hook = (file: string) => p.handleHotUpdate({ file, server });
+    return { save, hook, warned, dir };
   };
   it("checks the parent template again when a child template it uses changes", () => {
     const { save, warned } = dev(3);
@@ -146,6 +172,13 @@ describe("a long-lived Vite plugin (the dev server)", () => {
     writeFileSync(join(dir, "src/new.html"), `<div>New</div>\n`);
     writeFileSync(join(dir, "src/new.ts"), component("New", "x-new").replace("./x-new.html.js", "./new.html.js"));
     expect(save("page.html", `<x-new data-on-click="go"></x-new>\n`).warned).toEqual(["page.html 1 click-semantics"]);
+  });
+  it("keeps what it worked out through the hooks of a generated module and of a file outside its folders", () => {
+    const { save, hook, dir } = dev(4);
+    const alone = save("c1.html", `<div>C1, no button</div>\n`).parses;
+    hook(join(dir, "src/c1.html.ts"));
+    hook(join(dir, "style.css"));
+    expect(save("c1.html", `<button type="button">C1 again</button>\n`).parses).toBe(alone);
   });
   it("parses the same number of templates for a save whatever the size of the project", () => {
     const small = dev(4, 2).save("c1.html", `<div>C1, no button</div>\n`).parses;
@@ -290,13 +323,20 @@ describe("the runs of a host", () => {
 });
 
 describe("the memo a host keeps between runs", () => {
-  it("drops what the last run did not use", () => {
+  it("keeps one value of each kind for a file, used while the file has the content it was computed from", () => {
     const memo = new Memo();
-    memo.set("k", "a", 1);
-    memo.set("k", "b", 2);
-    memo.next();
-    expect(memo.get("k", "a")).toBe(1);
-    memo.next();
-    expect([memo.get("k", "a"), memo.get("k", "b")]).toEqual([1, undefined]);
+    memo.set("/p/a.ts", "k", ["a"], 1);
+    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"])]).toEqual([1, undefined]);
+    memo.set("/p/a.ts", "k", ["b"], 2);
+    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"])]).toEqual([undefined, 2]);
+  });
+  it("drops the values of the files a listing no longer has", () => {
+    const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
+    const src = join(dir, "src");
+    const memo = new Memo();
+    new Workspace(memo).index([src]);
+    rmSync(join(src, "b.ts"));
+    new Workspace(memo).index([src]);
+    expect([memo.get(join(src, "a.ts"), "facts", [component("A", "x-a")]), memo.get(join(src, "b.ts"), "facts", [component("B", "x-b")])].map((v) => v !== undefined)).toEqual([true, false]);
   });
 });

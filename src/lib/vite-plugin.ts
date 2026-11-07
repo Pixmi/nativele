@@ -46,7 +46,6 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
   // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
   const shown = new Map<string, string>();
-  // Each hook is one run: it starts a workspace, which reads the files again, on the memo the plugin keeps.
   const memo = new Memo();
   let ws = new Workspace(memo);
   const existing = () => dirs.filter((d) => existsSync(d));
@@ -59,9 +58,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
   const templates = () => existing().flatMap((d) => listHtml(d, ws).filter((f) => isSelected(d, f, generate)).map((f) => resolve(f)));
 
-  // The a11y warnings last printed for each template.
   const printed = new Map<string, string>();
-  /** Print the a11y warnings of every template, or, after a save, those of the saved file and those that changed. */
   const warnA11y = (warn: (m: string) => void, saved?: string) => {
     if (!a11y) return;
     const p = lintProject(ws, existing(), process.cwd());
@@ -158,8 +155,10 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       server.watcher.on("unlink", (f) => {
         ws = new Workspace(memo);
         const file = resolve(f);
-        if (file.endsWith(".html")) removeGenerated(file);
-        else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
+        if (file.endsWith(".html")) {
+          removeGenerated(file);
+          printed.delete(file);
+        } else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
         if (dirOf(file)) recheck(file, logger);
       });
     },

@@ -536,12 +536,18 @@ export function generateFile(htmlPath: string, options: GenerateOptions = {}, de
 }
 
 export function listHtml(dir: string, ws = new Workspace()): string[] {
+  const out = htmlUnder(dir, ws);
+  ws.memo.listed(resolve(dir), new Set(out.map((f) => resolve(f))), (f) => f.endsWith(".html"));
+  return out;
+}
+
+function htmlUnder(dir: string, ws: Workspace): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const name = entry.name;
     if (name === "node_modules" || name === "dist") continue;
     const full = join(dir, name);
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...listHtml(full, ws));
+    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...htmlUnder(full, ws));
     else if (name.endsWith(".html") && !isFullPage(ws.text(resolve(full)) ?? "")) out.push(full);
   }
   return out;

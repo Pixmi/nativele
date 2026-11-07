@@ -28,10 +28,10 @@ const ignoreSchema = [
 const memo = new Memo();
 
 /**
- * The lints oxlint makes in one turn of the event loop (in the editor, those that one change starts; on the command line, a batch of files) are one run: they read each file once, and the projects they need are built once from it.
+ * The lints oxlint makes in one turn of the event loop (in the editor, those that one change starts; on the command line, a batch of files) are one run: they read each file once, and the project they need is built once from it.
  * The linted file is read as oxlint gives it, which in the editor can be an unsaved buffer.
  */
-let run: { ws: Workspace; projects: Map<string, LintProject>; nodes: WeakMap<object, Through> } | undefined;
+let run: { ws: Workspace; p?: LintProject; nodes: WeakMap<object, Through> } | undefined;
 
 interface Through {
   file: string;
@@ -43,15 +43,13 @@ interface Through {
 /** The templates the import `node` brings into `file`, with `text` as the file's content, and the project they are linted in. The rules of one lint of the file visit the same node, so they share it, and parse each template at most once. */
 function through(node: ImportNode, file: string, text: string): Through {
   if (!run) {
-    run = { ws: new Workspace(memo), projects: new Map(), nodes: new WeakMap() };
+    run = { ws: new Workspace(memo), nodes: new WeakMap() };
     setImmediate(() => (run = undefined));
   }
   const known = run.nodes.get(node);
   if (known?.file === file) return known;
-  const ws = run.ws.with(file, text);
-  const key = ws === run.ws ? process.cwd() : `${process.cwd()}\0${file}\0${text}`;
-  let p = run.projects.get(key);
-  if (!p) run.projects.set(key, (p = lintProject(ws, [process.cwd()], process.cwd())));
+  if (run.ws.overlay(file, text)) delete run.p;
+  const p = (run.p ??= lintProject(run.ws, [process.cwd()], process.cwd()));
   const parsed = new Map<string, Analysis>();
   const parse = (t: string) => parsed.get(t) ?? (parsed.set(t, analyze(t)).get(t) as Analysis);
   const found = { file, p, templates: templatesThrough(p, file, node.source.value), parse };
