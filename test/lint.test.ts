@@ -506,6 +506,15 @@ describe("data-flow: unguarded-input-value", () => {
     expect(await rules(`  override render(v) {\n    this.refs.name.valueAsNumber = v.n;\n  }`)).toEqual(["unguarded-input-value"]);
     expect(await rules(`  override render(v) {\n    this.refs.name.valueAsDate = v.d;\n  }`)).toEqual(["unguarded-input-value"]);
   });
+  it("counts as the guard only a comparison that gates the write", async () => {
+    expect(await rules(`  override render(v) {\n    if (v.name !== this.refs.name.value) { this.refs.name.value = v.name; }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value != v.name) {\n      this.refs.name.value = v.name;\n    }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    for (const x of v.xs) {\n      if (this.refs.name.value == x) continue;\n      this.refs.name.value = x;\n    }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value === v.prev) log();\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.prev) return;\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.value = v.name; if (this.refs.name.value !== v.name) log();\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    const same = this.refs.name.value === v.name;\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+  });
   it("leaves event handlers and elements that are not form controls alone", async () => {
     expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);
   });

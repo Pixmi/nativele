@@ -302,7 +302,7 @@ inc() { this.count = this.count + 1; }`,
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
   "unguarded-input-value": {
-    why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs. value, valueAsNumber and valueAsDate count as one: a write to any of them is checked, and a comparison of any of them on the same ref is the guard.",
+    why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs. value, valueAsNumber and valueAsDate count as one: a write to any of them is checked, and a comparison of any of them on the same ref guards it when it gates the write: if (<value> !== next) before the write on the same line, or on the line before with nothing but { after it, or if (<value> === next) return; (or continue) on the line before. A comparison whose if does not decide whether the write runs is not a guard.",
     bad: `// form.ts
 override render(view: { name: string }) {
   this.refs.name.value = view.name;

@@ -507,6 +507,26 @@ function eventsUnknown(tag: string, contracts: ReadonlyMap<string, Contract>, se
 const unknownInside = (el: Node, contracts: ReadonlyMap<string, Contract>): boolean =>
   kids(el).some((n) => isEl(n) && (n.tagName === "slot" || (n.namespaceURI === HTML_NS && n.tagName.includes("-") && eventsUnknown(n.tagName, contracts, new Set())) || unknownInside(n, contracts)));
 
+const VALUE = String.raw`(?:value|valueAsNumber|valueAsDate)\b`;
+
+/**
+ * Whether `line` has an `if` whose condition compares the value of the form control `ref` and that gates a write after it: with "differs", `if (<value> !== x)` (or `!=`) followed by the write, at `at` on the
+ * same line or the next one when nothing but `{` follows the condition; with "same", `if (<value> === x) return;` (or `==`, `continue`) on the line before the write.
+ */
+function gates(line: string, ref: string, test: "differs" | "same", at?: number): boolean {
+  const value = String.raw`refs\.${esc(ref)}\.${VALUE}`;
+  const op = test === "differs" ? "!==?" : "(?<![!=<>])===?";
+  const compares = new RegExp(String.raw`${value}\s*${op}|${op}\s*(?:this\.)?${value}`);
+  for (const m of line.matchAll(/\bif\s*\(/g)) {
+    const open = m.index + m[0].length - 1;
+    const close = matchClose(line, open, "(", ")");
+    if (close < 0 || !compares.test(line.slice(open, close + 1))) continue;
+    const rest = line.slice(close + 1);
+    if (test === "same" ? /^\s*\{?\s*(?:return|continue)\b/.test(rest) : at === undefined ? /^\s*\{?\s*$/.test(rest) : at > close) return true;
+  }
+  return false;
+}
+
 /**
  * Data-flow checks (suggestions, not errors).
  * - prop-forwarding: a child's prop is assigned straight from one of this component's own props
@@ -685,8 +705,7 @@ export function dataFlow(
         const ref = m[1] as string;
         const prop = m[2] as string;
         if (!formControls.has(ref)) continue;
-        const guarded = [line, lines[i - 1] ?? ""].some((l) => new RegExp(`refs\\.${esc(ref)}\\.(?:value|valueAsNumber|valueAsDate)\\s*[!=]==?`).test(l));
-        if (guarded) continue;
+        if (gates(line, ref, "differs", m.index) || gates(lines[i - 1] ?? "", ref, "differs") || gates(lines[i - 1] ?? "", ref, "same")) continue;
         report(
           "unguarded-input-value",
           `render() assigns this.refs.${ref}.${prop} without comparing it first. Writing a form control's value while the user types moves the caret to the end. Fix: if (this.refs.${ref}.${prop} !== next) this.refs.${ref}.${prop} = next;`,
