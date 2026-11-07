@@ -55,6 +55,7 @@ Check first, then change only what the task needs. Keep the user's plugins, rule
 | unused-markup (errors) | all 7 ids, including `no-importer` | all 7 ids, including `no-importer` | 6 ids; `no-importer` does not exist here |
 | data-flow (warnings) | always | always | when `ts-dom/data-flow` or a single id is on |
 | a11y (warnings) | with `--a11y` | with `--a11y` | when `ts-dom/a11y` or a single id is on |
+| `unchecked-custom-elements` (warning: tags lint has no single definition of, such as another library's) | once per run | once per run | not reported (it would repeat in every file) |
 | Also runs | nothing else; needs no generated files and writes nothing | codegen (writes the generated files unless `--no-write`) and `tsc` | the project's other rules |
 | Severity and ignore | fixed: unused-markup is an error, the rest warnings; no per-id switch (filter `--json` if needed) | the same | per rule in the config, `ignore` on the three groups |
 | Where a finding points | `src/nv/card.html:3:3 error [unused-ref] ...` | the same | the template's `import` line in the `.ts` file, with the HTML location first: `src/nv/card.ts:2:1: error ts-dom(unused-markup): ./card.html.js:3:3 [unused-ref] ...` |
