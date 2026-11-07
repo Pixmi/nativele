@@ -313,7 +313,7 @@ override render(view: { name: string }) {
 }`,
   },
   "unchecked-custom-elements": {
-    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned
 npx ts-dom lint src/pages`,
     good: `npx ts-dom lint src/pages src/ui
@@ -330,7 +330,7 @@ npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
 </div>`,
   },
   "unknown-prop": {
-    why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing. On another library's element the attributes come from its custom elements manifest; when the manifest may leave some out (a base class it does not resolve, an attribute it could not describe), unknown attributes are not reported for that element. A manifest lists the attributes the element's class reads; one that only the library's styles read and its manifest leaves out (Web Awesome 3.14's <wa-page disable-sticky>) is reported too: ignore that finding with --ignore=unknown-prop or the plugin's ignore option if the project needs it.",
+    why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing. On another library's element the attributes come from its custom elements manifest; when the manifest may leave some out (a class above the element that the manifest leaves out and does not copy the members of, an attribute it could not describe), unknown attributes are not reported for that element. Global attributes such as inputmode, aria-*, data-* and inline event handlers such as onclick are never props. A manifest lists the attributes the element's class reads; one that only the library's styles read and its manifest leaves out (Web Awesome 3.14's <wa-page disable-sticky>) is reported too: ignore that finding with --ignore=unknown-prop or the plugin's ignore option if the project needs it.",
     bad: `<x-kid lable="hi"></x-kid>
 <wa-input lable="Title"></wa-input>`,
     good: `<x-kid label="hi"></x-kid>
@@ -350,7 +350,7 @@ this.refs.list.items = ["a", "b"];
 <wa-button variant="brand">Save</wa-button>`,
   },
   "unknown-event": {
-    why: "The child does not declare this event in emits (or another library's element does not list it in its custom elements manifest) and it is not a native event, so the handler could never run. The check catches typos and removed events. An element whose manifest lists no events for any element is not checked, since the manifest then does not say.",
+    why: "The child does not declare this event in emits (or another library's element does not list it in its custom elements manifest) and it is not a native event, so the handler could never run. The check catches typos and removed events. An element whose manifest lists no events for any element is not checked, since the manifest then does not say, and neither is one whose manifest may leave inherited events out (a class above it that the manifest leaves out and does not copy the members of).",
     bad: `<qty-input data-on-quantity-chnage="update"></qty-input>
 <wa-dialog data-on-wa-hidden="closed"></wa-dialog>`,
     good: `<qty-input data-on-quantity-change="update"></qty-input>
@@ -358,7 +358,7 @@ this.refs.list.items = ["a", "b"];
 <wa-dialog data-on-wa-after-hide="closed"></wa-dialog>`,
   },
   "unknown-slot": {
-    why: "A child put in a named slot the element does not have is not rendered, whether the element is a Nativele component (its template's <slot name> elements) or another library's (the slots of its custom elements manifest). Only the slot attribute of direct children is checked, not the default slot, and not an element whose template lint cannot read or whose manifest does not list slots.",
+    why: "A child put in a named slot the element does not have is not rendered, whether the element is a Nativele component (its template's <slot name> elements) or another library's (the slots of its custom elements manifest). Only the slot attribute of direct children is checked, not the default slot, and not an element whose template lint cannot read or whose manifest does not list slots or may leave inherited ones out.",
     bad: `<wa-dialog label="Delete?">
   <wa-button slot="foter">Cancel</wa-button>
 </wa-dialog>`,

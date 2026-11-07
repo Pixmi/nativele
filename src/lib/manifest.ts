@@ -13,11 +13,11 @@ export interface ManifestAttr {
 export interface ManifestElement {
   /** By attribute name, lowercased as the HTML parser reads it. */
   attrs: Map<string, ManifestAttr>;
-  /** The manifest may leave attributes out (an inherited class it does not resolve, an attribute it could not read): only the values of those listed are checked. */
+  /** The manifest may leave attributes out (a class above it that the manifest leaves out, an attribute it could not read): only the values of those listed are checked. */
   openAttrs: boolean;
-  /** Event names, or null when the manifest does not say. */
+  /** Event names, or null when the manifest does not say or may leave some out. */
   events: readonly string[] | null;
-  /** Slot names ("" is the default slot), or null when the manifest does not say. */
+  /** Slot names ("" is the default slot), or null when the manifest does not say or may leave some out. */
   slots: readonly string[] | null;
 }
 
@@ -80,7 +80,6 @@ export function parseManifest(text: string, pkg: string, file: string): Manifest
       if (d && !tags.has(d)) tags.set(d, e.name);
     }
   }
-  const resolved = modules.some((m) => list(m.declarations).some((d) => list(d.attributes).some((a) => "inheritedFrom" in a)));
   const elements = [...tags.keys()];
   const hasEvents = elements.some((d) => Array.isArray(d.events));
   const hasSlots = elements.some((d) => Array.isArray(d.slots));
@@ -92,22 +91,30 @@ export function parseManifest(text: string, pkg: string, file: string): Manifest
     const same = byName.get(s.name) ?? [];
     return found ?? (same.length === 1 ? same[0] : undefined);
   };
-  /** The attributes and events of `d` with those of the classes it extends in the manifest, whether that chain ends at a known base class, and whether the element is form-associated. */
-  const chain = (d: Json, seen: Set<Json>): { attrs: Json[]; events: string[] | null; complete: boolean; form: boolean } => {
-    seen.add(d);
-    const own = { attrs: list(d.attributes), events: Array.isArray(d.events) ? names(d.events) : null, form: list(d.members).some((m) => m.name === "formAssociated" && m.static === true) };
-    const up = superOf(d);
-    if (resolved || up === "base") return { ...own, complete: true };
-    if (!up || seen.has(up)) return { ...own, complete: false };
-    const parent = chain(up, seen);
-    return { attrs: [...own.attrs, ...parent.attrs], events: own.events || parent.events ? [...(own.events ?? []), ...(parent.events ?? [])] : null, complete: parent.complete, form: own.form || parent.form };
+  const inherits = (d: Json, name: unknown) => ["attributes", "members", "events", "slots"].some((k) => list(d[k]).some((i) => isObject(i.inheritedFrom) && i.inheritedFrom.name === name));
+  /**
+   * The declaration of `d` and those of the classes it extends in the manifest, and whether nothing above them is left out: the chain ends at a known base class,
+   * or at a class outside the manifest whose members the analyzer copied into the chain (their inheritedFrom names it).
+   */
+  const chain = (d: Json): { decls: Json[]; known: boolean } => {
+    const decls: Json[] = [];
+    for (let c: Json | "base" | undefined = d; c !== "base"; c = superOf(c)) {
+      if (!c || decls.includes(c)) {
+        const last = decls[decls.length - 1] as Json;
+        const name = !c && isObject(last.superclass) ? last.superclass.name : undefined;
+        return { decls, known: name !== undefined && decls.some((x) => inherits(x, name)) };
+      }
+      decls.push(c);
+    }
+    return { decls, known: true };
   };
   const out = new Map<string, ManifestElement>();
   for (const [d, tag] of tags) {
-    const { attrs: found, events, complete, form } = chain(d, new Set());
+    const { decls: up, known } = chain(d);
+    const merged = (key: string, any: boolean) => (!known ? null : up.some((x) => Array.isArray(x[key])) ? [...new Set(up.flatMap((x) => names(x[key])))] : any ? [] : null);
     const attrs = new Map<string, ManifestAttr>();
-    let openAttrs = !complete;
-    for (const a of found) {
+    let openAttrs = !known;
+    for (const a of up.flatMap((x) => list(x.attributes))) {
       if (typeof a.name !== "string" || !a.name) {
         openAttrs = true;
         continue;
@@ -116,8 +123,8 @@ export function parseManifest(text: string, pkg: string, file: string): Manifest
       if (!attrs.has(name)) attrs.set(name, { name, ...attrType(isObject(a.type) ? a.type.text : undefined) });
     }
     // The browser gives every form-associated custom element the form attribute, which manifests list as a property only.
-    if (form && !attrs.has("form")) attrs.set("form", { name: "form", kind: "string" });
-    out.set(tag, { attrs, openAttrs, events: events ?? (hasEvents ? [] : null), slots: Array.isArray(d.slots) ? names(d.slots) : hasSlots ? [] : null });
+    if (up.some((x) => list(x.members).some((m) => m.name === "formAssociated" && m.static === true)) && !attrs.has("form")) attrs.set("form", { name: "form", kind: "string" });
+    out.set(tag, { attrs, openAttrs, events: merged("events", hasEvents), slots: merged("slots", hasSlots) });
   }
   return { pkg, file, elements: out };
 }
@@ -152,16 +159,23 @@ const factsOf = (ws: Workspace, file: string): PackageFacts | undefined => {
   return (ws.memo.get(file, "package", [text]) as PackageFacts | undefined) ?? ws.memo.set(file, "package", [text], packageFacts(text));
 };
 
-/** `dir` and the folders above it up to the workspace root (pnpm-workspace.yaml, a package.json with workspaces, or a git root), never above the home directory; only `dir` when there is none. */
-function upToRoot(ws: Workspace, dir: string): string[] {
+/** `dir` and the folders above it up to the workspace root: the nearest folder with a pnpm-workspace.yaml or a package.json "workspaces" field, else the git root. Only `dir` when neither is found below the home directory or the filesystem root. */
+export function upToWorkspaceRoot(ws: Workspace, dir: string): string[] {
+  const start = resolve(dir);
   const home = homedir();
   const chain: string[] = [];
-  for (let d = dir; ; d = dirname(d)) {
-    if (d === home && d !== dir) return [dir];
+  for (let d = start; ; d = dirname(d)) {
+    // A home directory managed as a git repository (dotfiles) is not the root of the projects inside it.
+    if (d === home && d !== start) return [start];
     chain.push(d);
     if (ws.text(join(d, "pnpm-workspace.yaml")) !== null || factsOf(ws, join(d, "package.json"))?.workspaces || existsSync(join(d, ".git"))) return chain;
-    if (dirname(d) === d) return [dir];
+    if (dirname(d) === d) return [start];
   }
+}
+
+/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none. */
+export function packageOf(ws: Workspace, dir: string): string {
+  return ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, dirname(dir));
 }
 
 const real = (file: string): string => {
@@ -189,7 +203,7 @@ export function manifestsAt(ws: Workspace, dir: string): Manifest[] {
   if (!own) return [];
   const out: Manifest[] = own.customElements ? [manifestOf(ws, pkgJson, own.name ?? ".", own.customElements)] : [];
   if (!own.dependencies.length) return out;
-  const roots = upToRoot(ws, dir);
+  const roots = upToWorkspaceRoot(ws, dir);
   for (const name of own.dependencies) {
     for (const root of roots) {
       const file = join(root, "node_modules", name, "package.json");

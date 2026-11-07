@@ -1,6 +1,4 @@
-import { basename, dirname, join, relative, resolve } from "node:path";
-import { parseFragment } from "parse5";
-import type { DefaultTreeAdapterMap } from "parse5";
+import { basename, dirname, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analysisIn, analyze, listHtml } from "./codegen.ts";
@@ -8,7 +6,7 @@ import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex } from "./components.ts";
-import { manifestsAt } from "./manifest.ts";
+import { manifestsAt, packageOf } from "./manifest.ts";
 import type { ManifestElement } from "./manifest.ts";
 import { NOT_DEFINED, UNREAD, and, detailOf, unreadFixes } from "./unread.ts";
 import type { Unread } from "./unread.ts";
@@ -166,10 +164,13 @@ const TAG_EVENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map(Object.entr
 const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...Object.values(TAG_EVENT_NAMES).flat()]);
 const firesNatively = (tag: string, name: string) => ELEMENT_EVENTS.has(name) || !!TAG_EVENTS.get(tag)?.has(name);
 
-/** Attributes that are valid on any element and are never props. */
-const GLOBAL_ATTRS = new Set(
-  "class id style slot title hidden lang dir tabindex role contenteditable draggable inert part exportparts is translate spellcheck autofocus accesskey nonce popover itemprop itemscope itemtype itemid".split(" "),
-);
+/**
+ * The attributes every HTML element has, which are never props: the global attributes of the HTML standard, class, id and slot of DOM, part and exportparts of CSS Shadow Parts, and role of ARIA
+ * (aria-*, data-* and the inline event handlers are told by their names). test/global-attrs-types.ts proves it holds the attribute of every property of HTMLElement in lib.dom that one reflects.
+ */
+export const GLOBAL_ATTRIBUTES = ["accesskey", "autocapitalize", "autocorrect", "autofocus", "class", "contenteditable", "dir", "draggable", "enterkeyhint", "exportparts", "headingoffset", "headingreset", "hidden", "id", "inert", "inputmode", "is", "itemid", "itemprop", "itemref", "itemscope", "itemtype", "lang", "nonce", "part", "popover", "role", "slot", "spellcheck", "style", "tabindex", "title", "translate", "writingsuggestions"] as const;
+const GLOBAL_ATTRS: ReadonlySet<string> = new Set(GLOBAL_ATTRIBUTES);
+const notProp = (name: string) => name.startsWith("data-") || name.startsWith("aria-") || GLOBAL_ATTRS.has(name) || (name.startsWith("on") && ELEMENT_EVENTS.has(name.slice(2)));
 
 interface Entry {
   key: string;
@@ -325,20 +326,6 @@ function manifestContract(el: ManifestElement, pkg: string): Contract {
   return c;
 }
 
-type Element = DefaultTreeAdapterMap["element"];
-const slotNames = (html: string): Set<string> => {
-  const out = new Set<string>();
-  const walk = (nodes: DefaultTreeAdapterMap["childNode"][]) => {
-    for (const n of nodes) {
-      if (!("tagName" in n)) continue;
-      if (n.tagName === "slot") out.add((n as Element).attrs.find((a) => a.name === "name")?.value ?? "");
-      walk(n.tagName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : n.childNodes);
-    }
-  };
-  walk(parseFragment(html).childNodes);
-  return out;
-}
-
 type Declared = Pick<Contract, "props" | "emits" | "bubbles">;
 
 function declared(call: string): Declared {
@@ -348,11 +335,6 @@ function declared(call: string): Declared {
     emits: new Set(emits.map((e) => e.key)),
     bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)),
   };
-}
-
-/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none. */
-function packageOf(ws: Workspace, dir: string): string {
-  return ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, dirname(dir));
 }
 
 /**
@@ -387,7 +369,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
         get() {
           const text = template && ws.text(template);
           if (!template || text === null || text === undefined) return undefined;
-          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], slotNames(text));
+          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], analysisIn(ws, text).slots);
         },
       });
     }
@@ -538,7 +520,7 @@ export function dataFlow(
     const nameOf = (p: string) => contract.attrs?.get(p) ?? kebab(p);
     const propNames = [...contract.props.keys()];
     use.attrs.forEach((attrName, i) => {
-      if (attrName.startsWith("data-") || attrName.startsWith("aria-") || attrName.startsWith("on") || GLOBAL_ATTRS.has(attrName)) return;
+      if (notProp(attrName)) return;
       const prop = camel(attrName);
       const kind = contract.props.get(prop);
       const value = use.values[i] ?? "";
@@ -838,13 +820,15 @@ export interface LintOptions {
   groups?: readonly Group[];
   index?: ComponentIndex;
   contracts?: Contracts;
+  /** The rule ids whose warnings the caller leaves out: unchecked-custom-elements then lists the tags unknown-custom-element would report, which are otherwise left to it. */
+  ignore?: readonly string[];
 }
 
 /**
  * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
  * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
-export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
   const index = given.index ?? ws.index(dirs);
   const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, index);
   const usage: LintIssue[] = [];
@@ -852,6 +836,7 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
   const checks: LintIssue[] = [];
   const found: { file: string; html: string; uses: TemplateFindings["uses"] }[] = [];
   const templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] = [];
+  const typosReported = !ignore.includes("unknown-custom-element");
   for (const dir of dirs) {
     for (const html of listHtml(dir, ws)) {
       const file = relative(cwd, html);
@@ -861,7 +846,7 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
       else for (const d of r.usage) usage.push({ file, ...d });
       for (const d of r.flow) flow.push({ file, ...d });
       for (const d of r.a11y) checks.push({ file, ...d });
-      const typos = r.flow.filter((d) => d.rule === "unknown-custom-element");
+      const typos = typosReported ? r.flow.filter((d) => d.rule === "unknown-custom-element") : [];
       found.push({ file, html, uses: typos.length ? r.uses.filter((u) => !typos.some((d) => d.line === u.line && d.col === u.col)) : r.uses });
     }
   }

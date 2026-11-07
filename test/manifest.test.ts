@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -18,7 +19,7 @@ const write = (root: string, files: Record<string, string>): string => {
 };
 const tmp = () => mkdtempSync(join(tmpdir(), "ts-dom-cem-"));
 
-/** A manifest shaped like Web Awesome's: module paths relative to the manifest's folder, inheritance resolved (inheritedFrom), a tag only on the export, a missing events array. */
+/** A manifest shaped like Web Awesome's: module paths relative to the manifest's folder, a base class outside the manifest whose members it copies (inheritedFrom), a tag only on the export, a missing events array. */
 const MANIFEST = {
   schemaVersion: "1.0.0",
   modules: [
@@ -54,6 +55,7 @@ const MANIFEST = {
           kind: "class",
           name: "FkDialog",
           customElement: true,
+          superclass: { name: "HTMLElement" },
           attributes: [{ name: "open", type: { text: "boolean" } }, { name: "label", type: { text: "string" } }],
           events: [{ name: "fk-show" }, { name: "fk-hide" }],
           slots: [{ name: "" }, { name: "label" }, { name: "footer" }],
@@ -70,6 +72,8 @@ const MANIFEST = {
           name: "FkRating",
           customElement: true,
           tagName: "fk-rating",
+          superclass: { name: "FkElement", module: "/src/internal/fk-element.js" },
+          members: [{ kind: "field", name: "dir", inheritedFrom: { name: "FkElement", module: "src/internal/fk-element.ts" } }],
           attributes: [{ name: "max", type: { text: "number" } }, { name: "precision", type: { text: "number | 'any'" } }, { name: "value" }],
         },
       ],
@@ -382,5 +386,54 @@ describe("ts-dom doctor: custom-elements-manifest", () => {
   it("is silent for a readable manifest", () => {
     const root = fakeProject({});
     expect(runDoctor({ dirs: ["src"], cwd: root }).map((i) => i.rule)).not.toContain("custom-elements-manifest");
+  });
+});
+
+describe("what a manifest leaves out", () => {
+  const el = (m: ReturnType<typeof parseManifest>, tag: string): ManifestElement => {
+    if (!("elements" in m)) throw new Error(m.error);
+    return m.elements.get(tag) as ManifestElement;
+  };
+  const decl = (name: string, tag: string | undefined, sup: object | undefined, extra: object = {}) => ({ name, ...(tag ? { customElement: true, tagName: tag } : {}), ...(sup ? { superclass: sup } : {}), ...extra });
+  const cem = (...declarations: object[]) => JSON.stringify({ schemaVersion: "1.0.0", modules: [{ path: "x.js", declarations }] });
+  it("an element whose superclass is not in the manifest, with no inherited members, is open for attributes, events and slots", () => {
+    const m = parseManifest(cem(decl("A", "x-a", { name: "Ext", package: "other" }, { attributes: [{ name: "a" }], events: [{ name: "a-ev" }], slots: [{ name: "s" }] }), decl("B", "x-b", { name: "HTMLElement" }, { events: [{ name: "b-ev" }], slots: [{ name: "" }] })), "p", "m.json");
+    expect(el(m, "x-a")).toMatchObject({ openAttrs: true, events: null, slots: null });
+  });
+  it("one element with inherited members does not close the chain of another", () => {
+    const m = parseManifest(cem(decl("A", "x-a", { name: "Base", module: "/src/base.js" }, { attributes: [{ name: "dir", inheritedFrom: { name: "Base" } }] }), decl("B", "x-b", { name: "Ext", package: "other" }, { attributes: [{ name: "b" }] })), "p", "m.json");
+    expect(el(m, "x-a").openAttrs).toBe(false);
+    expect(el(m, "x-b").openAttrs).toBe(true);
+  });
+  it("merges the slots of a superclass in the manifest", () => {
+    const m = parseManifest(cem(decl("Base", undefined, { name: "LitElement" }, { slots: [{ name: "footer" }] }), decl("D", "x-d", { name: "Base" }, { slots: [{ name: "" }] })), "p", "m.json");
+    expect(el(m, "x-d").slots).toEqual(["", "footer"]);
+  });
+  it("lint reports nothing on an open element, and accepts slots and events inherited in the manifest", () => {
+    const manifest = { schemaVersion: "1.0.0", modules: [{ path: "x.js", declarations: [
+      decl("A", "fk-open", { name: "Ext", package: "other" }, { attributes: [{ name: "a", type: { text: "string" } }] }),
+      decl("Base", undefined, { name: "LitElement" }, { slots: [{ name: "footer" }], events: [{ name: "fk-close" }] }),
+      decl("D", "fk-dlg", { name: "Base" }, { slots: [{ name: "" }], events: [{ name: "fk-open" }] }),
+    ] }] };
+    const root = fakeProject({ page: `<fk-open b="x" data-on-fk-thing="go"><p slot="any">x</p></fk-open>\n<fk-dlg data-on-fk-close="go"><p slot="footer">x</p></fk-dlg>\n` }, {}, manifest);
+    expect(lint(root)).toEqual([]);
+  });
+});
+
+describe("attributes every element has", () => {
+  it("global attributes and inline handlers are not props, and an attribute starting with on is checked like any other", () => {
+    const root = fakeProject({ page: `<fk-button inputmode="numeric" enterkeyhint="go" autocapitalize="off" autocorrect="on" writingsuggestions="false" itemref="a" onclick="x" onblur="y"></fk-button>\n<fk-dialog open="false"></fk-dialog>\n<fk-button onfoo="x"></fk-button>\n` });
+    expect(lint(root).map((i) => `${i.line} ${i.rule}`)).toEqual(["2 invalid-prop-value", "3 unknown-prop"]);
+  });
+});
+
+describe("unknown-custom-element ignored", () => {
+  it("a likely typo is listed by unchecked-custom-elements when unknown-custom-element is ignored", () => {
+    const root = fakeProject({ page: `<fk-buton></fk-buton>\n` });
+    const issues = lintRun([join(root, "src")], { cwd: root, ignore: ["unknown-custom-element"] }).issues.filter((i) => i.rule !== "unknown-custom-element");
+    expect(rulesOf(issues)).toEqual(["unchecked-custom-elements"]);
+    expect(issues[0]?.message).toContain("<fk-buton>");
+    const cli = (cmd: string) => (JSON.parse(execFileSync(process.execPath, [join(process.cwd(), "src/cli.ts"), cmd, "src", "--ignore=unknown-custom-element", "--json"], { cwd: root, encoding: "utf8" })) as { issues: { rule: string; message: string }[] }).issues.filter((i) => i.rule === "unchecked-custom-elements");
+    expect(cli("lint")[0]?.message).toContain("<fk-buton>");
   });
 });

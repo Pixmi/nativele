@@ -1,11 +1,10 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { splitDirs } from "./check.ts";
 import { listHtml, scanTags, staleGenerated } from "./codegen.ts";
 import { listTs, scanDefines, templateImports, Workspace } from "./components.ts";
-import { manifestsAt } from "./manifest.ts";
+import { manifestsAt, packageOf, upToWorkspaceRoot } from "./manifest.ts";
 import { installedCopies, listSkills, skillsRoot } from "./skills.ts";
 import { leftOutBy, projectConfigs, readTsConfig } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
@@ -101,7 +100,6 @@ interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   prettier?: unknown;
-  workspaces?: unknown;
 }
 
 const readPackageJson = (file: string): PackageJson => {
@@ -111,20 +109,6 @@ const readPackageJson = (file: string): PackageJson => {
     return {};
   }
 };
-
-/** `cwd` and the folders above it up to the workspace root: the nearest folder with a package.json "workspaces" field or a pnpm-workspace.yaml, else the git root. Only `cwd` when neither is found below the home directory or the filesystem root. */
-export function upToWorkspaceRoot(cwd: string): string[] {
-  const start = resolve(cwd);
-  const home = homedir();
-  const chain: string[] = [];
-  for (let dir = start; ; dir = dirname(dir)) {
-    // A home directory managed as a git repository (dotfiles) is not the root of the projects inside it.
-    if (dir === home && dir !== start) return [start];
-    chain.push(dir);
-    if (existsSync(join(dir, "pnpm-workspace.yaml")) || "workspaces" in readPackageJson(join(dir, "package.json")) || existsSync(join(dir, ".git"))) return chain;
-    if (dirname(dir) === dir) return [start];
-  }
-}
 
 const SCRIPT_EXTENSIONS = ["js", "cjs", "mjs", "ts", "cts", "mts"];
 const OXFMT_CONFIGS = [".oxfmtrc.json", ".oxfmtrc.jsonc", ...SCRIPT_EXTENSIONS.map((e) => `oxfmt.config.${e}`)];
@@ -271,7 +255,8 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     add("vite-plugin-missing", "warning", `${rel(vitestConfig)} replaces the Vite config for Vitest and does not use the ts-dom plugin, so the templates are not generated when the tests start and a clean checkout fails to resolve ./x.html.js. Fix: add tsDom() to its plugins, or merge the Vite config into it: mergeConfig(viteConfig, defineConfig({ test: { ... } })) with viteConfig imported from "./vite.config".`, { file: rel(vitestConfig) });
   }
 
-  const workspace = upToWorkspaceRoot(cwd);
+  const ws = new Workspace();
+  const workspace = upToWorkspaceRoot(ws, cwd);
   const nearest = (names: readonly string[]) => workspace.flatMap((d) => names.map((n) => join(d, n))).find((f) => existsSync(f));
   const oxlintrc = nearest([".oxlintrc.json", ".oxlintrc.jsonc", "oxlintrc.json", "oxlint.config.ts", "oxlint.config.mts"]);
   const lintConfigs = [oxlintrc ? readText(oxlintrc) : null, vite && /\blint\s*:/.test(vite) ? vite : null].filter((t): t is string => t !== null);
@@ -335,13 +320,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
     add("formatter-whitespace", "warning", 'A formatter (oxfmt or Prettier) is set up, and templates keep their whitespace as written, so reformatting a template can change the spacing on the page. Fix: generate with whitespace "collapse" (ts-dom gen --whitespace=collapse, or tsDom({ whitespace: "collapse" })).', { file: rel(formatter) });
   }
 
-  const ws = new Workspace();
-  const packages = new Set([cwd, ...dirs].map((d) => {
-    for (let dir = resolve(d); ; dir = dirname(dir)) {
-      if (existsSync(join(dir, "package.json"))) return dir;
-      if (dirname(dir) === dir) return "";
-    }
-  }));
+  const packages = new Set([cwd, ...dirs].map((d) => packageOf(ws, resolve(d))));
   const reported = new Set<string>();
   for (const pkgDir of packages) {
     for (const m of pkgDir ? manifestsAt(ws, pkgDir) : []) {
