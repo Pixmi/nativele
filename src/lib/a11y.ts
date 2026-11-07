@@ -194,10 +194,10 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     const tabindex = attr(el, "tabindex");
+    const interactiveRole = !!role && INTERACTIVE_ROLES.has(role);
     // A control inside a label, clicked or activated by keyboard, reaches the label's handler.
-    const unoperableClick = has(el, "data-on-click") && !clickable(el) && !(tag === "label" && descendants(kids(el)).some(clickable));
-    // role-tabindex has the same fix as click-semantics, so an element click-semantics reports is not reported twice.
-    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed && !unoperableClick) {
+    const unoperableClick = has(el, "data-on-click") && !interactiveRole && !clickable(el) && !(tag === "label" && descendants(kids(el)).some(clickable));
+    if (interactiveRole && !focusable(el) && tabindex === undefined && !managed) {
       report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);

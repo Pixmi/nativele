@@ -393,7 +393,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button aria-pressed="true">bold</button>`,
   },
   "role-tabindex": {
-    why: "An element with an interactive role promises keyboard use, but a non-focusable element cannot be reached with the keyboard.",
+    why: "An element with an interactive role promises keyboard use, but a non-focusable element cannot be reached with the keyboard. This rule owns such an element, with or without data-on-click; click-semantics is about elements without an interactive role.",
     bad: `<div role="button" data-on-click="save">save</div>`,
     good: `<button data-on-click="save">save</button>`,
   },
@@ -469,7 +469,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button>save</button>`,
   },
   "click-semantics": {
-    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control, or a component with one, is fine: a click on the control, by keyboard too, reaches the label's handler. An element this rule reports is not reported again by role-tabindex, which has the same fix. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control, or a component with one, is fine: a click on the control, by keyboard too, reaches the label's handler. An element with an interactive role is role-tabindex's to report, so each element is judged by one of the two rules, whichever of them is on. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
     bad: `<div data-on-click="open">open</div>
 <!-- x-card.html: <div class="card"><span>{{ title }}</span></div> -->
 <x-card data-on-click="open"></x-card>`,

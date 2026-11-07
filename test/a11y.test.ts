@@ -98,10 +98,11 @@ describe("click-semantics", () => {
     expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><p contenteditable data-on-click="go">x</p>`)).toEqual([]);
     expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
   });
-  it("data-on-click on an interactive role without tabindex gets one warning, click-semantics, whatever the other rule's setting", () => {
-    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
-    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
-    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual(["click-semantics"]);
+  it("an interactive role without tabindex is reported by role-tabindex, with data-on-click too and whatever click-semantics's setting; click-semantics leaves it alone", () => {
+    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["role-tabindex"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["click-semantics"])).toEqual(["role-tabindex"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual([]);
+    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual([]);
     expect(rules(`<div role="button">x</div>`)).toEqual(["role-tabindex"]);
   });
   it("role-tabindex still reports a custom element whose click click-semantics accepts", () => {

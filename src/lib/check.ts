@@ -121,9 +121,9 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
     }
     return undefined;
   };
-  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file.
+  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file, and their messages name the class.
   // In its own file those follow-up errors repeat the first one and are dropped; in other files they are kept, pointing at the error they follow from.
-  // Inside the body of such a class `this` has no usable type either, so errors there (a bind callback's parameter without a type, say) follow from it as well.
+  // Inside its body a callback passed to a member of `this` loses its contextual type, so an implicitly any parameter there follows from it as well.
   const brokenClasses = new Map<string, { name: string; cause: TscError }>();
   const classKey = (file: string, name?: string) => `${file}\0${name ?? ""}`;
   const brokenBodies: { file: string; from: number; to: number }[] = [];
@@ -210,7 +210,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
   return out.flatMap((i) => {
     const file = resolve(cwd, i.file);
     const cls = i.rule === "tsc" ? brokenIn(i.message, file) : undefined;
-    if (i.rule === "tsc" && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
+    if (i.rule === "tsc" && /^TS70(06|31): /.test(i.message) && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
     if (cls === undefined) return [i];
     if (cls.own || /(^|[\\/])node_modules[\\/]/.test(i.file)) return [];
     const first = firstIssueOf.get(cls.cause);

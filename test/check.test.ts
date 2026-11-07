@@ -196,7 +196,7 @@ describe("ts-dom check: more cases", () => {
     expect(issues.map((i) => i.rule).sort()).toEqual(["missing-binding", "reserved-prop"]);
   });
 
-  it("errors inside the body of a class with a contract error follow from it and are left out; errors after the class are kept", async () => {
+  it("inside the body of a class with a contract error, only the errors that follow from it are left out; independent errors there and after the class are kept", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
@@ -207,13 +207,16 @@ describe("ts-dom check: more cases", () => {
     const issues = mapTscErrors(
       [
         { file: "c.ts", line: 1, col: 27, code: "TS2507", message: `Type '{ missingStateKeys: "nope"; }' is not a constructor function type.` },
+        { file: "c.ts", line: 4, col: 10, code: "TS2339", message: "Property 'bind' does not exist on type 'Card'." },
         { file: "c.ts", line: 4, col: 23, code: "TS7006", message: "Parameter 's' implicitly has an 'any' type." },
+        { file: "c.ts", line: 5, col: 13, code: "TS2322", message: "Type 'number' is not assignable to type 'string'." },
         { file: "c.ts", line: 9, col: 20, code: "TS2339", message: "Property 'lenght' does not exist on type '{ a: number; }'." },
       ],
       dir,
     );
     expect(issues.map((i) => [i.rule, i.line])).toEqual([
       ["missing-binding", 1],
+      ["tsc", 5],
       ["tsc", 9],
     ]);
   });
