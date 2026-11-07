@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -489,5 +489,32 @@ describe("unknown-native-event", () => {
   });
   it("an event native to another element is not a misspelling", () => {
     expect(found(fakeProject({ page: `<div data-on-unload="go"></div>\n<div data-on-encrypted="go"></div>\n` }))).toEqual([]);
+  });
+});
+
+describe("lint --json", () => {
+  const emitter = `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./emitter.html.js";\nexport class Emitter extends Component(tpl, { emits: { "kid-done": event() } }) {}\ndefine("x-emitter", Emitter);\n`;
+  const page = [
+    `<form data-on-submt="go"></form>`,
+    `<div data-on-kid-done="go"><x-emitter></x-emitter></div>`,
+    `<x-kid data-ref="kid" bogus="1" count="many" data-on-nope="go"><span slot="nosuch"></span></x-kid>`,
+    `<x-kidd></x-kidd>`,
+    `<sl-other></sl-other>`,
+    `<input data-ref="name"><p data-ref="unused"></p><img src="a.png">`,
+    `<x-emitter data-on-kid-done="relay"></x-emitter>`,
+    `<x-emitter data-on-kid-done="relay"></x-emitter>`,
+  ].join("\n");
+  const code = `import { Component, event } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class P extends Component(tpl, { props: { label: "" }, emits: { "kid-done": event() } }) {\n  go(): void { this.label = "x"; }\n  relay(e: Event): void { this.emit("kid-done", e); }\n  override render(v: { label: string }): void {\n    this.refs.name.value = v.label;\n    this.refs.kid.label = this.props.label;\n  }\n}\n`;
+  const root = () => fakeProject({}, { "src/emitter.html": `<p></p>\n`, "src/emitter.ts": emitter, "src/page.html": `${page}\n`, "src/page.ts": code, "src/orphan.html": `<p></p>\n` });
+  const issues = (dir: string) => (JSON.parse(spawnSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "lint", "src", "--a11y", "--json"], { cwd: dir, encoding: "utf8" }).stdout) as { issues: Record<string, unknown>[] }).issues;
+
+  it("prints every issue with exactly the documented keys: file, line, col, severity, rule, message", () => {
+    const found = issues(root());
+    for (const i of found) expect(Object.keys(i).sort()).toEqual(["col", "file", "line", "message", "rule", "severity"]);
+    const rules = new Set(found.map((i) => i.rule));
+    for (const rule of ["unknown-native-event", "custom-event-on-native", "unknown-prop", "invalid-prop-value", "unknown-event", "unknown-slot", "unknown-custom-element", "unchecked-custom-elements", "unguarded-input-value", "emit-forwarding", "props-mutation", "prop-forwarding", "unused-ref", "no-importer", "img-alt"]) expect(rules).toContain(rule);
+  });
+  it("emit-forwarding points at each data-on-* it reports, also when one method handles several of them", () => {
+    expect(issues(root()).filter((i) => i.rule === "emit-forwarding").map((i) => `${i.line}:${i.col}`)).toEqual(["7:12", "8:12"]);
   });
 });

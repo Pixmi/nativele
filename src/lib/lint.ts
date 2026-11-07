@@ -528,7 +528,8 @@ export function dataFlow(
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const report = (rule: keyof typeof DATA_FLOW_RULES, message: string, key?: string, loc?: { line: number; col: number }) => {
-    out.push({ rule, severity: "warning", message, ...(loc ?? (key ? at(a, key) : { line: 1, col: 1 })) });
+    const { line, col } = loc ?? (key ? at(a, key) : { line: 1, col: 1 });
+    out.push({ rule, severity: "warning", message, line, col });
   };
 
   for (const site of a.eventSites) {
@@ -740,7 +741,8 @@ export function dataFlow(
         report(
           "emit-forwarding",
           `${site.method}() only forwards the "${site.event}" event of <${site.tag}>. Re-emitting events level by level hides where they are handled. Fix: handle the event in this component, or let the component that needs it subscribe to a shared store instead.`,
-          `event:${site.method}`,
+          undefined,
+          site,
         );
       }
     }
