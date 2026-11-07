@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
-import { defineDefs, Memo, Workspace } from "./components.ts";
+import { defineDefs, isTs, Memo, Workspace } from "./components.ts";
 import { lintProject, lintTemplate } from "./lint.ts";
 
 export interface TsDomPluginOptions {
@@ -147,7 +147,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         ws = new Workspace(memo);
         const file = resolve(f);
         if (file.endsWith(".html")) regenerate(file, logger);
-        else if (dirOf(file) && isSourceTs(file)) {
+        else if (dirOf(file) && isTs(file)) {
           if (ws.text(file)?.includes("define(")) regenerateAll(logger);
           recheck(file, logger);
         }
@@ -178,12 +178,10 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         if (regenerate(file, logger)) reload(ctx.server, `${file}.ts`);
         return [];
       }
-      if (!dirOf(file) || !isSourceTs(file)) return;
+      if (!dirOf(file) || !isTs(file)) return;
       if (ws.text(file)?.includes("define(") || isDefineFile(file)) regenerateAll(logger);
       recheck(file, logger);
       return;
     },
   };
 }
-
-const isSourceTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && !file.endsWith(`${sep}ts-dom-tags.ts`);

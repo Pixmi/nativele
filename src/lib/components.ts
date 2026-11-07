@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 
 export const TAGS_FILE = "ts-dom-tags.ts";
 
-const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
+export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
 
 export function listTs(dir: string): string[] {
   const out: string[] = [];
@@ -263,13 +263,14 @@ export class Workspace implements Sources {
   readonly #files = new Map<string, string | null>();
   readonly #listings = new Map<string, string[]>();
   readonly #indexes = new Map<string, ComponentIndex>();
+  #base: Workspace | undefined;
 
   constructor(memo = new Memo()) {
     this.memo = memo;
   }
 
   text(file: string): string | null {
-    if (!this.#files.has(file)) this.#files.set(file, readText(file));
+    if (!this.#files.has(file)) this.#files.set(file, this.#base ? this.#base.text(file) : readText(file));
     return this.#files.get(file) ?? null;
   }
   facts(file: string): ModuleFacts | undefined {
@@ -277,27 +278,30 @@ export class Workspace implements Sources {
     if (text === null) return undefined;
     return (this.memo.get(file, "facts", [text]) as ModuleFacts | undefined) ?? this.memo.set(file, "facts", [text], moduleFacts(text));
   }
-  /** Read `file` as `text` (an editor's unsaved buffer) for the rest of this run; returns whether that changes what the run read. */
-  overlay(file: string, text: string): boolean {
-    if (this.text(file) === text) return false;
-    this.#files.set(file, text);
-    this.#indexes.clear();
-    return true;
+  /** This run with `file` read as `text` (an editor's unsaved buffer): itself when the run reads that already, otherwise a workspace that shares the run's listings and other files and leaves the run as it was. */
+  overlay(file: string, text: string): Workspace {
+    if (this.text(file) === text) return this;
+    const view = new Workspace(this.memo);
+    view.#base = this;
+    view.#files.set(file, text);
+    return view;
   }
   /** The index of the TypeScript files under `dirs`. */
   index(dirs: readonly string[]): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
     let index = this.#indexes.get(key);
-    if (!index) {
-      let files = this.#listings.get(key);
-      if (!files) {
-        this.#listings.set(key, (files = dirs.flatMap(listTs)));
-        const all = new Set(files.map((f) => resolve(f)));
-        for (const d of dirs) this.memo.listed(resolve(d), all, isTs);
-      }
-      this.#indexes.set(key, (index = componentIndex(files, this)));
-    }
+    if (!index) this.#indexes.set(key, (index = componentIndex(this.#listing(dirs, key), this)));
     return index;
+  }
+  #listing(dirs: readonly string[], key: string): string[] {
+    if (this.#base) return this.#base.#listing(dirs, key);
+    let files = this.#listings.get(key);
+    if (!files) {
+      this.#listings.set(key, (files = dirs.flatMap(listTs)));
+      const all = new Set(files.map((f) => resolve(f)));
+      for (const d of dirs) this.memo.listed(resolve(d), all, isTs);
+    }
+    return files;
   }
 }
 

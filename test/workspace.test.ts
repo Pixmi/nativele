@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { watchAll } from "../src/lib/codegen.ts";
 import { Memo, Workspace } from "../src/lib/components.ts";
-import { lintRun } from "../src/lib/lint.ts";
+import { lintProject, lintRun, lintTemplate } from "../src/lib/lint.ts";
+import type { Group } from "../src/lib/lint.ts";
 import plugin from "../src/lib/oxlint-plugin.ts";
 import { tsDom } from "../src/lib/vite-plugin.ts";
 
@@ -98,6 +99,20 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     const buffer = component("A", "x-a").replace(" {}", " {\n  override connectedCallback(): void {\n    this.refs.note.hidden = true;\n  }\n}");
     expect(oxlint(dir, "x-a.ts", ["unused-markup"], buffer)).toEqual([]);
     expect(oxlint(dir, "x-a.ts", ["unused-markup"])).toEqual(["unused-ref"]);
+  });
+  it("reads an unsaved buffer only in the lint of its file: the other lints of the same turn read the disk", async () => {
+    const dir = project({
+      "x-card.html": `<div><span>{{ title }}</span></div>\n`,
+      "a.ts": component("Card", "x-card"),
+      "page.html": `<x-card data-on-click="go"></x-card>\n`,
+      "page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+    });
+    await turn();
+    const fromDisk = oxlint(dir, "page.ts", ["a11y", "data-flow"]);
+    expect(fromDisk).toEqual(["click-semantics"]);
+    await turn();
+    oxlint(dir, "a.ts", ["a11y", "data-flow"], component("Card", "x-card").replace(`define("x-card", Card);\n`, ""));
+    expect(oxlint(dir, "page.ts", ["a11y", "data-flow"])).toEqual(fromDisk);
   });
   it("computes only the groups of the rules that are on", async () => {
     const dir = project({
@@ -232,6 +247,14 @@ describe("the runs of a host", () => {
     const run = () => lintRun([src], { ws: new Workspace(memo), a11y: true, cwd: dir }).issues.map((i) => `${i.file} ${i.rule}`);
     const first = run();
     expect(parsed(() => expect(run()).toEqual(first))).toBe(0);
+  });
+  it("keeps one findings entry for a set of groups, whatever their order", () => {
+    const dir = project({ "src/a.html": `<p data-ref="a">A</p>\n`, "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js") });
+    const src = join(dir, "src");
+    const memo = new Memo();
+    const findings = (groups: Group[]) => lintTemplate(lintProject(new Workspace(memo), [src], dir), join(src, "a.html"), groups);
+    const first = findings(["a11y", "data-flow"]);
+    expect(parsed(() => expect(findings(["data-flow", "a11y"])).toEqual(first))).toBe(0);
   });
   it("sees a deleted or renamed module on the next run", () => {
     const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });

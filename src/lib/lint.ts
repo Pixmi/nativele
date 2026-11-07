@@ -578,7 +578,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     if (d === undefined) definitions.set(tag, (d = contents(tag === ALL ? [...children] : [children.get(tag)])));
     return d;
   };
-  const kind = `findings:${groups.join(",")}`;
+  const kind = `findings:${[...groups].sort().join(",")}`;
   const from = [text, classes.length, ...classes.flatMap((c) => [c.call, c.body]), ...importers];
   const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
   if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
