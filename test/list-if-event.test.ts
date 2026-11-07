@@ -17,7 +17,7 @@ it("a data-on-* inside a data-if block of a list item fires once the block is sh
   const r = document.createElement("t-if-rows") as IfRows;
   document.body.append(r);
   r.lists.rows.replace(["x"], (s) => s, (_s, { show }) => show("on", true));
-  r.querySelector("b")?.click();
-  r.querySelector("button")?.click();
+  r.querySelector<HTMLElement>(".always")?.click();
+  r.querySelector<HTMLElement>(".shown")?.click();
   expect(hits).toEqual(["always", "shown"]);
 });
