@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { A11Y_RULES } from "../src/lib/a11y.ts";
 import { CHECK_RULES } from "../src/lib/check.ts";
@@ -10,11 +11,13 @@ import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES } from "../src/lib/lint.ts";
 import { listSkills, parseSkill, skillsRoot } from "../src/lib/skills.ts";
 import type { Skill } from "../src/lib/skills.ts";
 import {
+  accept,
   affected,
   comment,
   fixtureFiles,
   globToRegExp,
   judge,
+  nextRound,
   readFixture,
   renderPrompt,
   scanSandbox,
@@ -171,6 +174,35 @@ describe("Trial records", () => {
     errors: [],
     result: "pending",
     ...over,
+  });
+
+  it("numbers the round after the last accepted record, ordering r10 after r2", () => {
+    const dir = mkdtempSync(join(tmpdir(), "trial-rounds-"));
+    try {
+      const put = (name: string, result: string) => writeFileSync(join(dir, name), JSON.stringify({ result }));
+      put("2026-11-08-r1.json", "gaps");
+      put("2026-11-08-r2.json", "accepted");
+      for (let r = 3; r <= 10; r++) put(`2026-11-08-r${r}.json`, "gaps");
+      put("2026-11-09-r1.json", "gaps");
+      expect(nextRound(dir)).toBe(10);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing when the output an accept needs is missing", () => {
+    const work = mkdtempSync(join(tmpdir(), "trial-accept-"));
+    try {
+      const out = join(work, "app", ".trial", "out");
+      mkdirSync(out, { recursive: true });
+      writeFileSync(join(work, "trial.json"), JSON.stringify({ skill: "nativele-vue", kind: "agent", project: "app", nativele: {} }));
+      writeFileSync(join(out, "record.json"), JSON.stringify(record({})));
+      writeFileSync(join(out, "package.json"), "{}");
+      expect(() => accept(work)).toThrow(/agent\.patch is missing/);
+      expect(existsSync(join(TRIALS, "nativele-vue", "results", "2026-11-08-r1.json"))).toBe(false);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
   });
 
   it("accepts only when every check passed and nothing is a gap, after everything is classified", () => {

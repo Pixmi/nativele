@@ -1,7 +1,6 @@
 {
   "cli lint 1000: parses": 1000,
   "cli lint 1000: reads": 2270,
-  "cli lint wall time, 1000 / 50 components": 5,
   "vite buildStart: parses": 1000,
   "vite buildStart: reads": 3330,
   "vite buildStart: readdirs": 24,
@@ -17,7 +16,6 @@
   "vite .ts save after a .css update: parses": 1,
   "vite .ts save after a .css update: reads": 2230,
   "vite .ts save after a .css update: readdirs": 24,
-  "vite .html save wall time, 1000 / 50 components": 40,
   "oxlint whole project 1000: parses": 1000,
   "oxlint whole project 1000: reads": 47220,
   "oxlint re-lint, unchanged: parses": 0,

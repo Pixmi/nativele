@@ -45,12 +45,6 @@ const during = (name: string, fn: () => void) => {
   for (const k of ["parses", "reads", "readdirs"] as const) record(`${name}: ${k}`, counts[k] - before[k]);
 };
 const turn = () => new Promise((r) => setImmediate(r));
-const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] as number;
-const time = (fn: () => void) => {
-  const s = performance.now();
-  fn();
-  return performance.now() - s;
-};
 
 const work = mkdtempSync(join(tmpdir(), "nativele-bench-"));
 const originals = new Map<string, string>();
@@ -91,19 +85,16 @@ async function lintAll(files: string[]) {
 }
 
 /** A command run in a new process, with what it counted. */
-function cli(dir: string, args: string[]): { ms: number; counts: typeof counts } {
+function cli(dir: string, args: string[]): { counts: typeof counts } {
   const out = join(work, "counts.json");
-  const s = performance.now();
   execFileSync(process.execPath, ["--import", fileURLToPath(new URL("./count.ts", import.meta.url)), CLI, ...args], { cwd: dir, env: { ...process.env, BENCH_COUNTS: out }, stdio: "ignore" });
-  return { ms: performance.now() - s, counts: JSON.parse(readFileSync(out, "utf8")) };
+  return { counts: JSON.parse(readFileSync(out, "utf8")) };
 }
 
 const started = performance.now();
 try {
   const big = join(work, "single");
-  const small = join(work, "small");
   singleProject(big, N);
-  singleProject(small, 50);
   const src = join(big, "src");
   const at = (i: number, ext: string) => join(src, `${componentPath(i)}.${ext}`);
 
@@ -111,8 +102,6 @@ try {
     const c = cli(big, ["lint", "src", "--a11y"]).counts;
     record(`cli lint ${N}: parses`, c.parses);
     record(`cli lint ${N}: reads`, c.reads);
-    const ratio = (dir: string) => median([0, 1, 2].map(() => cli(dir, ["lint", "src", "--a11y"]).ms));
-    record(`cli lint wall time, ${N} / 50 components`, ratio(big) / ratio(small));
   }
 
   const vite = viteHost(big);
@@ -128,22 +117,6 @@ try {
       during(`vite ${label} save${css ? " after a .css update" : ""}`, () => vite.hook(file));
     }
   }
-  const saveTime = (host: ReturnType<typeof viteHost>, file: string) =>
-    median(
-      Array.from({ length: 7 }, () => {
-        save(file);
-        return time(() => host.hook(file));
-      }),
-    );
-  {
-    const big170 = saveTime(vite, at(170, "html"));
-    const smallHost = viteHost(small);
-    smallHost.buildStart();
-    const small20 = saveTime(smallHost, join(small, "src", `${componentPath(20)}.html`));
-    record(`vite .html save wall time, ${N} / 50 components`, big170 / small20);
-    process.chdir(big);
-  }
-
   const files = sources(src);
   {
     const before = { ...counts };

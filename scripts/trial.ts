@@ -1,7 +1,7 @@
 // Skill trials: a fixed project, a fixed task and independent checks around one agent run (skills/README.md, "How a Skill pull request is accepted").
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
@@ -284,14 +284,16 @@ export function replayPrepare(skill: string, workFlag?: string): string {
   must(fixture.start.command, work);
   const project = join(work, fixture.start.dir);
   copyFileSync(join(last, "package.json"), join(project, "package.json"));
-  const lock = readJson<{ packages: Record<string, { version?: string; integrity?: string }> }>(join(last, "package-lock.json"));
-  const entry = lock.packages["node_modules/@nativele/ts-dom"];
-  if (entry) {
-    delete entry.integrity;
-    entry.version = nativele.version;
-  }
-  writeJson(join(project, "package-lock.json"), lock);
-  must("npm ci", project);
+  if (existsSync(join(last, "package-lock.json"))) {
+    const lock = readJson<{ packages: Record<string, { version?: string; integrity?: string }> }>(join(last, "package-lock.json"));
+    const entry = lock.packages["node_modules/@nativele/ts-dom"];
+    if (entry) {
+      delete entry.integrity;
+      entry.version = nativele.version;
+    }
+    writeJson(join(project, "package-lock.json"), lock);
+    must("npm ci", project);
+  } else must("npm install", project);
   finishProject(project, fixture);
   const applied = git(project, `apply --whitespace=nowarn ${JSON.stringify(join(last, "agent.patch"))}`);
   if (applied.status !== 0) throw new Error(`the stored agent output no longer applies to the starter (a fixture change: run an agent trial):\n${applied.output}`);
@@ -482,7 +484,11 @@ export function nextRound(resultsDir: string): number {
   if (!existsSync(resultsDir)) return 1;
   const records = readdirSync(resultsDir)
     .filter((f) => f.endsWith(".json"))
-    .sort()
+    .sort((a, b) => {
+      const [, da = "", ra = "0"] = /^(.*)-r(\d+)\.json$/.exec(a) ?? [];
+      const [, db = "", rb = "0"] = /^(.*)-r(\d+)\.json$/.exec(b) ?? [];
+      return da.localeCompare(db) || Number(ra) - Number(rb) || a.localeCompare(b);
+    })
     .map((f) => readJson<TrialRecord>(join(resultsDir, f)));
   const last = records.map((r) => r.result).lastIndexOf("accepted");
   return records.length - last;
@@ -512,6 +518,7 @@ export function accept(work: string): string {
   const record = readJson<TrialRecord>(join(out, "record.json"));
   if (record.kind !== "agent") throw new Error("only an agent trial can be accepted; a replay is not stored");
   if (record.sandbox === "violated") throw new Error(`the agent used forbidden sources, so this trial cannot be accepted; run it again:\n${record.violations?.join("\n")}`);
+  for (const f of ["agent.patch", "package.json"]) if (!existsSync(join(out, f))) throw new Error(`${join(out, f)} is missing; run check again`);
   record.result = judge(record);
   const skillFile = join(skillsRoot(), record.skill, "SKILL.md");
   const skill = parseSkill(readFileSync(skillFile, "utf8"), dirname(skillFile));
@@ -524,15 +531,17 @@ export function accept(work: string): string {
   record.round = nextRound(resultsDir);
   const file = join(resultsDir, `${record.date}-r${record.round}.json`);
   if (existsSync(file)) throw new Error(`${relative(REPO, file)} already exists`);
-  writeJson(file, record);
-  say(`stored ${relative(REPO, file)} (${record.result})`);
   if (record.result === "accepted") {
     const last = join(fixtureDir(record.skill), "last-pass");
     mkdirSync(last, { recursive: true });
-    for (const f of ["agent.patch", "package.json", "package-lock.json"]) copyFileSync(join(out, f), join(last, f));
+    for (const f of ["agent.patch", "package.json"]) copyFileSync(join(out, f), join(last, f));
+    if (existsSync(join(out, "package-lock.json"))) copyFileSync(join(out, "package-lock.json"), join(last, "package-lock.json"));
+    else rmSync(join(last, "package-lock.json"), { force: true });
     writeFileSync(skillFile, stampSkill(readFileSync(skillFile, "utf8"), record.date, record.nativele.version));
     say(`updated ${relative(REPO, last)}/ and the verified date of ${relative(REPO, skillFile)}`);
   }
+  writeJson(file, record);
+  say(`stored ${relative(REPO, file)} (${record.result})`);
   return file;
 }
 
