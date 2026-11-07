@@ -226,7 +226,14 @@ interface FileEntry {
   /** Changes with the content, so a result can tell whether a file it read is still the same. */
   rev: number;
   facts?: ModuleFacts;
+  /** The size, times and inode of the file as it was read; none for an overlay. */
+  stamp?: string;
+  /** The file had not changed for longer than TIMESTAMP_GRANULARITY when it was read, so a later rewrite changes `stamp`. */
+  settled?: boolean;
 }
+
+// FAT keeps modification times in 2 s steps, and a rewrite within one step keeps the size and the times.
+const TIMESTAMP_GRANULARITY = 2000;
 
 function readText(file: string): string | undefined {
   try {
@@ -236,12 +243,21 @@ function readText(file: string): string | undefined {
   }
 }
 
+function statOf(file: string) {
+  try {
+    return statSync(file, { throwIfNoEntry: false });
+  } catch {
+    return undefined;
+  }
+}
+
 /** The revision of each file something was computed from as it read it, 0 for a file that did not exist. */
 type Deps = Map<string, number>;
 
 /**
- * The source files that runs read, and what is derived from them. A file is read again on each look, since its size and mtime cannot tell
- * a rewrite of the same size within one mtime tick (coarse on some file systems), and its revision changes only when its content does.
+ * The source files that runs read, and what is derived from them. A look at a file reads it again unless it has the size, times and inode it had when it was read
+ * and had not changed for longer than the timestamp granularity then (git's racy timestamp check), since a rewrite of the same size soon after a read can keep the times;
+ * its revision changes only when its content does. A computation that looks at a file again is given the content it read first.
  * A derived result (see `result`) and an index record the revision of each file they read, also of one that did not exist, and are computed again when one of them changes.
  * It keeps texts, module facts and results such as diagnostics, never parse trees, and forgets a file that no longer exists.
  * A command line run starts with an empty one; the Vite and oxlint plugins keep theirs while they run.
@@ -251,19 +267,35 @@ export class Workspace implements Sources {
   readonly #overlay = new Map<string, string>();
   readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: Deps; value: unknown }>();
   #reading: Deps | null = null;
-  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean; derived: Map<string, unknown> }>();
+  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean; derived: Map<string, { value: unknown; deps: Deps }> }>();
   #rev = 0;
 
   #entry(file: string): FileEntry | undefined {
-    const text = this.#overlay.get(file) ?? readText(file);
     const known = this.#files.get(file);
-    if (known?.text === text) return known;
+    if (this.#reading?.has(file)) return known;
+    let text = this.#overlay.get(file);
+    let stamp: string | undefined;
+    let settled = false;
+    if (text === undefined) {
+      const readAt = Date.now();
+      const st = statOf(file);
+      if (st?.isFile()) {
+        stamp = `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
+        if (known?.settled && known.stamp === stamp) return known;
+        text = readText(file);
+        settled = readAt - Math.max(st.mtimeMs, st.ctimeMs) > TIMESTAMP_GRANULARITY;
+      }
+    }
+    if (known?.text === text) {
+      if (known && stamp !== undefined) Object.assign(known, { stamp, settled });
+      return known;
+    }
     for (const i of this.#indexes.values()) if (i.deps.has(file)) i.stale = true;
     if (text === undefined) {
       this.#files.delete(file);
       return undefined;
     }
-    const entry: FileEntry = { text, rev: ++this.#rev };
+    const entry: FileEntry = { text, rev: ++this.#rev, stamp, settled };
     this.#files.set(file, entry);
     return entry;
   }
@@ -343,16 +375,15 @@ export class Workspace implements Sources {
   derived<T>(index: ComponentIndex, key: string, compute: () => T): T {
     const entry = [...this.#indexes.values()].find((i) => i.index === index);
     if (!entry) return compute();
-    if (entry.derived.has(key)) return entry.derived.get(key) as T;
-    const outer = this.#reading;
-    this.#reading = entry.deps;
-    try {
-      const value = compute();
-      entry.derived.set(key, value);
-      return value;
-    } finally {
-      this.#reading = outer;
+    const kept = entry.derived.get(key);
+    if (kept) {
+      this.#reuse(kept.deps);
+      return kept.value as T;
     }
+    const { value, deps } = this.#recording(compute);
+    for (const [f, rev] of deps) if (!entry.deps.has(f)) entry.deps.set(f, rev);
+    entry.derived.set(key, { value, deps });
+    return value;
   }
 
   /**

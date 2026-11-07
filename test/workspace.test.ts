@@ -13,6 +13,28 @@ vi.mock("parse5", async (importOriginal) => {
   const real = await importOriginal<typeof import("parse5")>();
   return { ...real, parseFragment: (...args: Parameters<typeof real.parseFragment>) => (parses.n++, real.parseFragment(...args)) };
 });
+const reads = vi.hoisted(() => new Map<string, number>());
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const readFileSync = ((file: string, ...rest: [never]) => (reads.set(String(file), (reads.get(String(file)) ?? 0) + 1), real.readFileSync(file, ...rest))) as typeof real.readFileSync;
+  return { ...real, default: { ...real, readFileSync }, readFileSync };
+});
+
+/** How many times `fn` reads each file. */
+function readsDuring(fn: () => void): Map<string, number> {
+  reads.clear();
+  fn();
+  return new Map(reads);
+}
+/** Run `fn` with the clock `ms` ahead, so the files on disk look that much older than any read of them. */
+function later<T>(ms: number, fn: () => T): T {
+  vi.useFakeTimers({ now: Date.now() + ms, toFake: ["Date"] });
+  try {
+    return fn();
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 const H = `import { Component, define, event } from "@nativele/ts-dom";\n`;
 const component = (cls: string, tag: string, options = "") => `${H}import tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl${options}) {}\ndefine("${tag}", ${cls});\n`;
@@ -86,8 +108,17 @@ describe("a long-lived Vite plugin (the dev server)", () => {
       const n = parsed(() => p.handleHotUpdate({ file: join(dir, "src", name), server }));
       return { parses: n, warned: warned.map((w) => /([\w-]+\.html):(\d+):\d+ warning \[([\w-]+)\]/.exec(w)?.slice(1).join(" ")) };
     };
-    return { save, warned };
+    return { save, warned, dir };
   };
+  it("reads only the saved file again when the others did not change", () => {
+    later(10_000, () => {
+      const { save, dir } = dev(8);
+      for (const name of ["c1.html", "c2.ts"]) {
+        const read = [...readsDuring(() => save(name, readFileSync(join(dir, "src", name), "utf8") + "\n")).keys()].filter((f) => !f.endsWith(".html.ts") && !f.endsWith("ts-dom-tags.ts"));
+        expect(read).toEqual([join(dir, "src", name)]);
+      }
+    });
+  });
   it("checks the parent template again when a child template it uses changes", () => {
     const { save, warned } = dev(3);
     expect(warned).toEqual([]);
@@ -163,6 +194,49 @@ describe("what the workspace's cache depends on", () => {
     rewriteInOneTick(ts, readFileSync(ts, "utf8").replace(`"x-a"`, `"x-b"`));
     expect([...ws.index([join(dir, "src")]).byTag.keys()]).toEqual(["x-b"]);
   });
+  it("reads a file that has not changed since it was read only once, and looks for one that does not exist without reading it", () => {
+    const dir = project({ "a.txt": "one" });
+    const f = join(dir, "a.txt");
+    const none = join(dir, "none.txt");
+    later(10_000, () => {
+      const ws = new Workspace();
+      expect(readsDuring(() => ws.text(f)).get(f)).toBe(1);
+      expect(readsDuring(() => [ws.text(f), ws.rev(f), ws.text(none), ws.rev(none)]).size).toBe(0);
+      writeFileSync(f, "two");
+      expect(ws.text(f)).toBe("two");
+    });
+  });
+  it("reads a file again on each look while it changed too shortly before the last read for its timestamps to tell a later rewrite", () => {
+    const dir = project({ "a.txt": "one" });
+    const f = join(dir, "a.txt");
+    const ws = new Workspace();
+    ws.text(f);
+    expect(readsDuring(() => ws.text(f)).get(f)).toBe(1);
+  });
+  it("gives one computation the same content of a file each time it looks", () => {
+    const dir = project({ "f.txt": "one" });
+    const f = join(dir, "f.txt");
+    const ws = new Workspace();
+    const { value } = ws.result("r", f, () => "", () => {
+      const first = ws.text(f);
+      writeFileSync(f, "two");
+      return [first, ws.text(f)];
+    });
+    expect(value).toEqual(["one", "one"]);
+    expect(ws.text(f)).toBe("two");
+  });
+  it("gives a result that uses a value kept with the index the files that value read", () => {
+    const dir = project({ "src/a.ts": "", "f.txt": "one" });
+    const f = join(dir, "f.txt");
+    const ws = new Workspace();
+    const value = () => {
+      const index = ws.index([join(dir, "src")]);
+      return ws.result("r", f, () => "", () => ws.derived(index, "k", () => ws.text(f))).value;
+    };
+    expect(value()).toBe("one");
+    writeFileSync(f, "two");
+    expect(value()).toBe("two");
+  });
   it("lists the folders again within maxAge once it has seen a module it read deleted", () => {
     const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
     const src = join(dir, "src");
@@ -218,6 +292,26 @@ describe("what the workspace's cache depends on", () => {
     writeFileSync(join(src, "b/package.json"), "{}");
     expect(rules()).toEqual(["unknown-prop"]);
   });
+  it("finds the package of a template again once a package.json between it and its package is removed", () => {
+    const dir = project({
+      "src/a/package.json": "{}",
+      "src/b/package.json": "{}",
+      "src/a/kid.ts": component("Kid", "x-kid"),
+      "src/b/kid.ts": component("Kid", "x-kid"),
+      "src/a/x/package.json": "{}",
+      "src/a/x/page.html": `<x-kid foo="1"></x-kid>\n`,
+      "src/a/x/page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {}\n`,
+    });
+    const src = join(dir, "src");
+    const ws = new Workspace();
+    const rules = () => {
+      lintRun([src], { ws, cwd: dir });
+      return lintRun([src], { ws, cwd: dir, a11y: true }).issues.filter((i) => i.file.endsWith("page.html")).map((i) => i.rule);
+    };
+    expect(rules()).toEqual(["unchecked-custom-elements"]);
+    rmSync(join(src, "a/x/package.json"));
+    expect(rules()).toEqual(["unknown-prop"]);
+  });
   it("the oxlint plugin computes only the groups of the rules that are on", () => {
     const dir = project({
       "x-kid.html": `<button type="button">Kid</button>\n`,
@@ -238,5 +332,38 @@ describe("what the workspace's cache depends on", () => {
     } finally {
       process.chdir(cwd);
     }
+  });
+  it("the oxlint plugin computes for a file only the groups of the rules that are on for that file", () => {
+    const dir = project({
+      "x-kid.html": `<button type="button">Kid</button>\n`,
+      "x-kid.ts": component("Kid", "x-kid"),
+      "page.html": `<x-kid data-on-click="go"></x-kid>\n`,
+      "page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+      "plain.ts": `export const n = 1;\n`,
+    });
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const context = (name: string) => ({ filename: join(dir, name), sourceCode: { text: readFileSync(join(dir, name), "utf8") }, options: [] as [], report() {} });
+      for (const rule of ["a11y", "data-flow"] as const) plugin.rules[rule].create(context("plain.ts"));
+      const visitors = (["data-flow", "unused-markup"] as const).map((rule) => plugin.rules[rule].create(context("page.ts")));
+      parses.n = 0;
+      for (const v of visitors) v.ImportDeclaration({ type: "ImportDeclaration", source: { value: "./page.html.js" } });
+      expect(parses.n).toBe(1);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+  it("reads a child template once for all the uses of the child in a parent template", () => {
+    const dir = project({
+      "src/x-kid.html": `<span>Kid</span>\n`,
+      "src/x-kid.ts": component("Kid", "x-kid"),
+      "src/page.html": `${Array.from({ length: 10 }, () => `<button type="button"><x-kid></x-kid></button>\n<x-kid data-on-click="go"></x-kid>`).join("\n")}\n`,
+      "src/page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+    });
+    const src = join(dir, "src");
+    const ws = new Workspace();
+    const kid = join(src, "x-kid.html");
+    expect(readsDuring(() => lintRun([src], { ws, a11y: true, cwd: dir })).get(kid)).toBeLessThanOrEqual(3);
   });
 });

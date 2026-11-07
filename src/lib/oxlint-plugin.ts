@@ -34,10 +34,12 @@ type Found = { label: string; findings: TemplateFindings }[];
 
 /** The groups of the rules that are on for the file being linted: oxlint calls the create() of each of them for a file before it visits the file's nodes. */
 let enabled = new Set<Group>();
+let enabledFor: string | undefined;
 let visiting = false;
-function enable(group: Group): void {
-  if (visiting) {
+function enable(group: Group, file: string): void {
+  if (visiting || file !== enabledFor) {
     enabled = new Set();
+    enabledFor = file;
     visiting = false;
   }
   enabled.add(group);
@@ -95,7 +97,7 @@ function templateRule(group: Group, description: string, only?: string) {
   return {
     meta: { type: "suggestion" as const, docs: { description }, schema: only ? [] : ignoreSchema },
     create(context: Context) {
-      enable(group);
+      enable(group, context.filename);
       return {
         ImportDeclaration(node: ImportNode) {
           const ignore = context.options?.[0]?.ignore ?? [];

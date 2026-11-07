@@ -246,23 +246,20 @@ function kindOf(valueText: string): PropKind {
  * Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to.
  * `files` are the define() file, the class file and the template, and `template` the template (absolute), which the checks of a parent template read.
  */
-export type Contracts = Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]>;
+export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]> {
+  /** The contracts of each package that contractsAt has worked out. */
+  readonly byPackage = new Map<string, ReadonlyMap<string, Contract>>();
+  /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the index the contracts were read from finds it. */
+  readonly packageOf: (dir: string) => string;
+  constructor(packageOf: (dir: string) => string) {
+    super();
+    this.packageOf = packageOf;
+  }
+}
 
 /** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; kept with the index. */
 function packageOf(ws: Workspace, index: ComponentIndex, dir: string): string {
   return ws.derived(index, `package\0${dir}`, () => (ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, index, dirname(dir))));
-}
-
-/** For one Contracts object: the package of a folder, and the contracts of each package that contractsAt has worked out. */
-const lookups = new WeakMap<Contracts, { packageOf: (dir: string) => string; byPackage: Map<string, ReadonlyMap<string, Contract>> }>();
-function lookupOf(all: Contracts) {
-  let l = lookups.get(all);
-  if (!l) {
-    const ws = new Workspace();
-    const unkept = componentIndex([], ws);
-    lookups.set(all, (l = { packageOf: (dir) => packageOf(ws, unkept, dir), byPackage: new Map() }));
-  }
-  return l;
 }
 
 /**
@@ -270,9 +267,8 @@ function lookupOf(all: Contracts) {
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
-  const out: Contracts = new Map();
   const pkgOf = (dir: string) => packageOf(ws, index, dir);
-  lookups.set(out, { packageOf: pkgOf, byPackage: new Map() });
+  const out = new Contracts(pkgOf);
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
@@ -294,9 +290,8 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
  * exactly one, so a template is never checked against a component it does not use.
  */
 export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, Contract> {
-  const { packageOf: pkgOf, byPackage } = lookupOf(all);
-  const pkg = pkgOf(dirname(resolve(file)));
-  let out = byPackage.get(pkg);
+  const pkg = all.packageOf(dirname(resolve(file)));
+  let out = all.byPackage.get(pkg);
   if (!out) {
     const own = new Map<string, Contract>();
     for (const [tag, defs] of all) {
@@ -304,7 +299,7 @@ export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, C
       const contract = here.length === 1 ? here[0]?.contract : null;
       if (contract) own.set(tag, contract);
     }
-    byPackage.set(pkg, (out = own));
+    all.byPackage.set(pkg, (out = own));
   }
   return out;
 }
@@ -518,7 +513,7 @@ function indexSig(p: LintProject, file: string, tags: readonly string[]): string
   const owners = (p.index.byTemplate.get(file) ?? []).map((o) => `${at(o.file)}:${o.line}`);
   const importers = (p.index.importers.get(file) ?? []).map((i) => `<${at(i.file)}`);
   const defs = tags.map((tag) => `${tag}=${(p.contracts.get(tag) ?? []).map((d) => `${d.at}:${d.pkg}:${d.template ?? ""}:${d.files.map(at).join(",")}`).join(";")}`);
-  return [p.cwd, lookupOf(p.contracts).packageOf(dirname(file)), ...owners, ...importers, ...defs].join("\n");
+  return [p.cwd, ...owners, ...importers, ...defs].join("\n");
 }
 
 const keyOf = (groups: readonly Group[], file: string) => `${groups.join(",")}\0${file}`;
@@ -581,7 +576,7 @@ function uncheckedTags(found: readonly { file: string; html: string; uses: Templ
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
       const defs = contracts.get(use.tag) ?? [];
       const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === lookupOf(contracts).packageOf(dirname(resolve(html))));
+      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === contracts.packageOf(dirname(resolve(html))));
       if (!defs.length) unchecked.set(use.tag, { first, cause: "missing" });
       else if (pkg.length === 1) unchecked.set(use.tag, { first, cause: "unreadable", at: pkg[0]?.at ?? "" });
       else unchecked.set(use.tag, { first, cause: "ambiguous", packages: defs.map((d) => relative(cwd, d.pkg) || ".") });
