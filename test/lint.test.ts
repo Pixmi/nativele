@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentIndex } from "../src/lib/components.ts";
-import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, unusedMarkup } from "../src/lib/lint.ts";
-import { ELEMENT_EVENT_NAMES, OTHER_NATIVE_EVENT_NAMES } from "../src/lib/events.ts";
+import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, TAG_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
+import { ELEMENT_EVENT_NAMES } from "../src/lib/events.ts";
 import type { Contract } from "../src/lib/lint.ts";
 
 /** A folder with `files` written into it. */
@@ -203,6 +203,12 @@ describe("data-flow checks", () => {
     expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`)).toEqual(["custom-event-on-native"]);
     expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`, ["message"])).toEqual([]);
   });
+  it("custom-event-on-native: an event the element itself fires natively is its own event", () => {
+    const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["enterpictureinpicture", "encrypted", "afterprint"]), bubbles: new Set() }]]);
+    const rules = (html: string) => dataFlow(html, [], kid).map((d) => d.rule);
+    expect(rules(`<video data-on-enterpictureinpicture="h"></video><audio data-on-encrypted="h"></audio><svg data-on-afterprint="h"></svg>`)).toEqual([]);
+    expect(rules(`<div data-on-enterpictureinpicture="h"></div><audio data-on-enterpictureinpicture="h"></audio><div data-on-afterprint="h"></div>`)).toEqual(["custom-event-on-native", "custom-event-on-native", "custom-event-on-native"]);
+  });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
     const r = flow(code).filter((d) => d.rule === "prop-forwarding");
@@ -277,7 +283,7 @@ define("x-kid", Kid);`;
     ]);
     expect([...(k?.emits ?? [])]).toEqual(["saved", "value-change"]);
     expect([...(k?.bubbles ?? [])]).toEqual(["value-change"]);
-    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set(), bubbles: new Set() });
+    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set(), bubbles: new Set(), unread: { cause: "template-unfollowed", at: `${relative(process.cwd(), join(dir, "bare.ts"))}:1` } });
     expect(contracts.has("x-other")).toBe(false);
   });
   it("accepts declared props (kebab-case maps to camelCase) and declared events", () => {
@@ -438,11 +444,13 @@ describe("a tag defined more than once under the scanned folders", () => {
     expect(found).toHaveLength(1);
     const [d] = found;
     expect([d?.file.endsWith(join("app", "other.html")), d?.line, d?.col, d?.severity]).toEqual([true, 1, 18, "warning"]);
-    expect(d?.message).toContain("No define() in the scanned folders: <wa-input>, <wa-button>. Defined in several packages, and not exactly once in the template's package: <x-item> (");
+    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders. <x-item> (");
+    expect(d?.message).toContain("): defined in several packages, and not exactly once in the template's package.");
+    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders; for <x-item>, keep one define() of a tag per package.");
     expect(d?.message).toContain("(unknown-prop, invalid-prop-value, unknown-event)");
     expect(d?.message).toContain("(click-semantics)");
     expect(d?.message).not.toContain("x-known");
-    expect(d?.message).toMatch(/Fix: nothing needs to change for elements from another library \(pass --ignore=unchecked-custom-elements/);
+    expect(d?.message).toMatch(/Fix: nothing needs to change for elements that are not Nativele components, such as another library's \(pass --ignore=unchecked-custom-elements/);
   });
   it("unchecked-custom-elements is not reported when every custom element has one definition", () => {
     const root = twoApps();
@@ -498,7 +506,7 @@ describe("data-flow: unguarded-input-value", () => {
 
 describe("native events: one list, the one lib.dom's element event maps declare", () => {
   const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["kid-done"]), bubbles: new Set() }]]);
-  for (const name of [...ELEMENT_EVENT_NAMES, ...OTHER_NATIVE_EVENT_NAMES]) {
+  for (const name of new Set([...ELEMENT_EVENT_NAMES, ...Object.values(TAG_EVENT_NAMES).flat()])) {
     it(`data-on-${name} on a native element and on a child component tag is a native event`, () => {
       expect(dataFlow(`<div data-on-${name}="h"></div><video data-on-${name}="h"></video><x-kid data-on-${name}="h"></x-kid>`, [], kid)).toEqual([]);
     });

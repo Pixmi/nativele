@@ -107,13 +107,13 @@ describe("unchecked-content: an element a rule cannot judge because its composed
     expect(found(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
   });
   it("a component defined in the scanned folders whose template file cannot be read is not blamed on the scanned folders", () => {
-    const withBroken: A11yChildren = new Map([...children, ["x-broken", {}]]);
+    const withBroken: A11yChildren = new Map([...children, ["x-broken", { unread: { cause: "template-missing", file: "x-broken.html" } }]]);
     const messages = (html: string) => checkA11y(html, [], withBroken).map((d) => d.message);
     const [own] = messages(`<div data-on-click="go"><x-broken></x-broken></div>`);
-    expect(own).toContain("<x-broken> is defined in the scanned folders, but the template file its class imports cannot be read");
+    expect(own).toContain("<x-broken> (the template file the class imports does not exist: x-broken.html)");
     expect(own).not.toContain("to the scanned folders");
     const [outside] = messages(`<div data-on-click="go"><x-elsewhere></x-elsewhere></div>`);
-    expect(outside).toContain("add the folder that defines <x-elsewhere> to the scanned folders");
+    expect(outside).toContain("for <x-elsewhere>, add the folders that define the project's own components to the scanned folders");
   });
   it("is left out with the rules it names", () => {
     expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["click-semantics"], children)).toEqual([]);

@@ -1,10 +1,13 @@
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
+import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, matchClose, Workspace } from "./components.ts";
-import { ELEMENT_EVENT_NAMES, OTHER_NATIVE_EVENT_NAMES } from "./events.ts";
+import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex, Sources } from "./components.ts";
+import { NOT_DEFINED, UNREAD, detailOf, unreadFixes } from "./unread.ts";
+import type { Unread } from "./unread.ts";
 
 export type { Diagnostic };
 
@@ -144,8 +147,24 @@ export const DATA_FLOW_RULES = {
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
+const WINDOW_EVENT_NAMES = ["afterprint", "beforeprint", "beforeunload", "gamepadconnected", "gamepaddisconnected", "hashchange", "languagechange", "message", "messageerror", "offline", "online", "pagehide", "pagereveal", "pageshow", "pageswap", "popstate", "rejectionhandled", "storage", "unhandledrejection", "unload"] as const;
+
+/**
+ * The event names an element fires natively beyond ELEMENT_EVENT_NAMES, by tag: the `on*` properties its lib.dom interface adds to those of HTMLElement, SVGElement or MathMLElement,
+ * the same properties the types read the event of a `data-on-*` from (test/native-events-types.ts proves the lists equal to them for every tag). Kept out of events.ts, which the runtime imports.
+ */
+export const TAG_EVENT_NAMES = {
+  audio: ["encrypted", "waitingforkey"],
+  video: ["encrypted", "waitingforkey", "enterpictureinpicture", "leavepictureinpicture"],
+  body: WINDOW_EVENT_NAMES,
+  frameset: WINDOW_EVENT_NAMES,
+  svg: WINDOW_EVENT_NAMES,
+} as const;
+
 const ELEMENT_EVENTS: ReadonlySet<string> = new Set(ELEMENT_EVENT_NAMES);
-const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...OTHER_NATIVE_EVENT_NAMES]);
+const TAG_EVENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map(Object.entries(TAG_EVENT_NAMES).map(([tag, names]) => [tag, new Set(names)]));
+const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...Object.values(TAG_EVENT_NAMES).flat()]);
+const firesNatively = (tag: string, name: string) => ELEMENT_EVENTS.has(name) || !!TAG_EVENTS.get(tag)?.has(name);
 
 /** Attributes that are valid on any element and are never props. */
 const GLOBAL_ATTRS = new Set(
@@ -232,6 +251,8 @@ export interface Contract {
   bubbles: Set<string>;
   /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists now (a check that asks depends on that): path relative to the `cwd` given to contractsFor, and its current text. */
   readonly template?: { file: string; readonly html: string };
+  /** Why there is no `template`, when there is none. */
+  readonly unread?: Unread;
 }
 
 function kindOf(valueText: string): PropKind {
@@ -247,13 +268,16 @@ function kindOf(valueText: string): PropKind {
  * `files` are the define() file, the class file and the template, and `template` the template (absolute), which the checks of a parent template read.
  */
 export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]> {
-  /** The contracts of each package that contractsAt has worked out. */
-  readonly byPackage = new Map<string, ReadonlyMap<string, Contract>>();
+  /** What contractsAt and childrenAt have worked out for each package. */
+  readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren }>();
   /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the index the contracts were read from finds it. */
   readonly packageOf: (dir: string) => string;
-  constructor(packageOf: (dir: string) => string) {
+  /** The folder the paths in messages are relative to. */
+  readonly cwd: string;
+  constructor(packageOf: (dir: string) => string, cwd: string) {
     super();
     this.packageOf = packageOf;
+    this.cwd = cwd;
   }
 }
 
@@ -268,7 +292,7 @@ function packageOf(ws: Workspace, index: ComponentIndex, dir: string): string {
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const pkgOf = (dir: string) => packageOf(ws, index, dir);
-  const out = new Contracts(pkgOf);
+  const out = new Contracts(pkgOf, cwd);
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
@@ -276,7 +300,19 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
     if (c) {
       const emits = optionEntries(c.call, "emits");
       const own = template ? { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } } : undefined;
-      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)), get template() { return template && ws.text(template) !== null ? own : undefined; } };
+      const unfollowed: Unread = { cause: "template-unfollowed", at: `${relative(cwd, c.file)}:${c.line}` };
+      contract = {
+        props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])),
+        emits: new Set(emits.map((e) => e.key)),
+        bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)),
+        get template() {
+          return template && ws.text(template) !== null ? own : undefined;
+        },
+        get unread(): Unread | undefined {
+          if (!template) return unfollowed;
+          return ws.text(template) === null ? { cause: "template-missing", file: relative(cwd, template) } : undefined;
+        },
+      };
     }
     const files = [resolve(def.file), ...(def.class ? [def.class.file] : []), ...(template ? [template] : [])];
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
@@ -290,16 +326,30 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
  * exactly one, so a template is never checked against a component it does not use.
  */
 export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, Contract> {
+  return atPackage(all, file).contracts;
+}
+
+/** The components a template in `file` can hold, as checkA11y reads them: the contract of each tag contractsAt has, and why each other tag defined in the scanned folders has none. */
+export function childrenAt(all: Contracts, file: string): A11yChildren {
+  return atPackage(all, file).children;
+}
+
+function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren } {
   const pkg = all.packageOf(dirname(resolve(file)));
   let out = all.byPackage.get(pkg);
   if (!out) {
-    const own = new Map<string, Contract>();
+    const contracts = new Map<string, Contract>();
+    const children = new Map<string, A11yChild>();
     for (const [tag, defs] of all) {
       const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
-      const contract = here.length === 1 ? here[0]?.contract : null;
-      if (contract) own.set(tag, contract);
+      const one = here.length === 1 ? here[0] : undefined;
+      if (one?.contract) {
+        contracts.set(tag, one.contract);
+        children.set(tag, one.contract);
+      } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
+      else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
-    all.byPackage.set(pkg, (out = own));
+    all.byPackage.set(pkg, (out = { contracts, children }));
   }
   return out;
 }
@@ -347,7 +397,7 @@ export function dataFlow(
   };
 
   for (const site of a.eventSites) {
-    if (site.tag.includes("-") || ELEMENT_EVENTS.has(site.event)) continue;
+    if (site.tag.includes("-") || firesNatively(site.tag, site.event)) continue;
     const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
     if (!emitters.length || emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
     const tags = emitters.map(([tag]) => `<${tag}>`).join(", ");
@@ -475,8 +525,6 @@ export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cw
   return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
 }
 
-type Unchecked = { first: LintIssue } & ({ cause: "missing" } | { cause: "unreadable"; at: string } | { cause: "ambiguous"; packages: string[] });
-
 export type Group = "unused-markup" | "data-flow" | "a11y";
 
 /** What lint finds in one template; a group that was not run has no findings. */
@@ -560,45 +608,37 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
       diagnostics: analysis.diagnostics,
       usage: groups.includes("unused-markup") ? templateUsage(file, text, analysis, p.index, p.ws) : [],
       flow: groups.includes("data-flow") ? dataFlow(text, p.index.byTemplate.get(file) ?? [], here, analysis) : [],
-      a11y: groups.includes("a11y") ? checkA11y(text, [], here, analysis.root) : [],
+      a11y: groups.includes("a11y") ? checkA11y(text, [], recording(childrenAt(p.contracts, file), tags), analysis.root) : [],
       uses: [...uses.values()],
     };
   });
 }
 
-/** `unchecked-custom-elements`: the tags the templates use that `contracts` has no single definition of, reported once at the first use. */
-function uncheckedTags(found: readonly { file: string; html: string; uses: TemplateFindings["uses"] }[], contracts: Contracts, cwd: string): LintIssue[] {
-  const issues: LintIssue[] = [];
-  const unchecked = new Map<string, Unchecked>();
+/** `unchecked-custom-elements`: the tags the templates use that `contracts` has no contract of, reported once at the first use. */
+function uncheckedTags(found: readonly { file: string; html: string; uses: TemplateFindings["uses"] }[], contracts: Contracts): LintIssue[] {
+  const unchecked = new Map<string, { first: LintIssue; unread: Unread }>();
   for (const { file, html, uses } of found) {
     const here = contractsAt(contracts, html);
+    const children = childrenAt(contracts, html);
     for (const use of uses) {
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
-      const defs = contracts.get(use.tag) ?? [];
-      const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === contracts.packageOf(dirname(resolve(html))));
-      if (!defs.length) unchecked.set(use.tag, { first, cause: "missing" });
-      else if (pkg.length === 1) unchecked.set(use.tag, { first, cause: "unreadable", at: pkg[0]?.at ?? "" });
-      else unchecked.set(use.tag, { first, cause: "ambiguous", packages: defs.map((d) => relative(cwd, d.pkg) || ".") });
+      unchecked.set(use.tag, { first: { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" }, unread: children.get(use.tag)?.unread ?? NOT_DEFINED });
     }
   }
   const all = [...unchecked];
-  const missing = all.filter(([, u]) => u.cause === "missing");
-  const unreadable = all.flatMap(([tag, u]) => (u.cause === "unreadable" ? [`<${tag}> (${u.at})`] : []));
-  const ambiguous = all.flatMap(([tag, u]) => (u.cause === "ambiguous" ? [`<${tag}> (${u.packages.join(", ")})`] : []));
-  const head = [...missing, ...all.filter(([, u]) => u.cause !== "missing")][0]?.[1].first;
-  if (head) {
-    const groups = [
-      ...(missing.length ? [`No define() in the scanned folders: ${missing.map(([tag]) => `<${tag}>`).join(", ")}`] : []),
-      ...(unreadable.length ? [`define() passes a class that is not a class extending Component(...) lint can follow through the imports: ${unreadable.join(", ")}`] : []),
-      ...(ambiguous.length ? [`Defined in several packages, and not exactly once in the template's package: ${ambiguous.join(", ")}`] : []),
-    ];
-    issues.push({
+  const head = [...all.filter(([, u]) => u.unread.cause === "undefined"), ...all.filter(([, u]) => u.unread.cause !== "undefined")][0]?.[1].first;
+  if (!head) return [];
+  const groups = (["undefined", "not-component", "ambiguous"] as const).flatMap((cause) => {
+    const tags = all.filter(([, u]) => u.unread.cause === cause).map(([tag, u]) => (detailOf(u.unread) ? `<${tag}> (${detailOf(u.unread)})` : `<${tag}>`));
+    return tags.length ? [`${tags.join(", ")}: ${UNREAD[cause].what}`] : [];
+  });
+  const fixes = unreadFixes(new Map(all.map(([tag, u]) => [tag, u.unread])));
+  return [
+    {
       ...head,
-      message: `Lint has no single definition to read for ${unchecked.size === 1 ? "one custom element" : `${unchecked.size} custom elements`} used in the templates, so their attributes and events (unknown-prop, invalid-prop-value, unknown-event) and data-on-click on them (click-semantics) are not checked. ${groups.join(". ")}. This is reported once per run, at the first use of the first tag. Fix: nothing needs to change for elements from another library (pass --ignore=unchecked-custom-elements to silence this); for the project's own components, add their folders to the scanned folders, and keep one definition of a tag per package.`,
-    });
-  }
-  return issues;
+      message: `Lint has no single definition to read for ${unchecked.size === 1 ? "one custom element" : `${unchecked.size} custom elements`} used in the templates, so their attributes and events (unknown-prop, invalid-prop-value, unknown-event) and data-on-click on them (click-semantics) are not checked. ${groups.join(". ")}. This is reported once per run, at the first use of the first tag. Fix: nothing needs to change for elements that are not Nativele components, such as another library's (pass --ignore=unchecked-custom-elements to silence this); otherwise ${fixes.join("; ")}.`,
+    },
+  ];
 }
 
 export interface LintOptions {
@@ -638,7 +678,7 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
       found.push({ file, html, uses: r.uses });
     }
   }
-  if (groups.includes("data-flow")) flow.push(...uncheckedTags(found, p.contracts, cwd));
+  if (groups.includes("data-flow")) flow.push(...uncheckedTags(found, p.contracts));
   return { issues: [...usage, ...flow, ...checks], templates };
 }
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
-import { contractsAt, contractsFor } from "../src/lib/lint.ts";
+import { childrenAt, contractsFor } from "../src/lib/lint.ts";
 
 const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
 const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
@@ -123,7 +123,7 @@ describe("click-semantics", () => {
       mkdirSync(dirname(join(root, name)), { recursive: true });
       writeFileSync(join(root, name), text);
     }
-    return { root, check: (html: string) => checkA11y(html, [], contractsAt(contractsFor([root]), join(root, page))) };
+    return { root, check: (html: string) => checkA11y(html, [], childrenAt(contractsFor([root]), join(root, page))) };
   }
   const children = scanned(
     {
@@ -166,6 +166,31 @@ describe("click-semantics", () => {
     const card = `<div><span>{{ title }}</span></div>`;
     const multi = scanned({ "a/package.json": "{}", "a/x-card.ts": component("Card", "x-card"), "a/x-card.html": card, "b/package.json": "{}", "b/x-card.ts": component("Card", "x-card"), "b/x-card.html": card }, "page.html");
     expect(multi.check(`<x-card data-on-click="go"></x-card>`)).toEqual([]);
+  });
+  it("unchecked-content names why lint cannot read each tag, with the fix for that cause", () => {
+    const why = scanned(
+      {
+        "x-gen.ts": `import { Component, define } from "@nativele/ts-dom";\nimport { makeTpl } from "./make.ts";\nexport class Gen extends Component(makeTpl()) {}\ndefine("x-gen", Gen);\n`,
+        "make.ts": `export const makeTpl = () => null as never;\n`,
+        "x-vendor.ts": `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "vendor/x.html.js";\nexport class Vendor extends Component(tpl) {}\ndefine("x-vendor", Vendor);\n`,
+        "x-gone.ts": component("Gone", "x-gone"),
+        "x-plain.ts": `import { define } from "@nativele/ts-dom";\nclass Plain extends HTMLElement {}\ndefine("x-plain", Plain);\n`,
+      },
+      "page.html",
+    );
+    const message = (tag: string) => why.check(`<div data-on-click="go"><${tag}></${tag}></div>`)[0]?.message ?? "";
+    const rel = (f: string) => relative(process.cwd(), join(why.root, f));
+    for (const [tag, file] of [["x-gen", "x-gen.ts:3"], ["x-vendor", "x-vendor.ts:3"]] as const) {
+      expect(message(tag)).toContain(`<${tag}> (the class passes Component() a template lint cannot follow to an .html file imported by a relative path: ${rel(file)})`);
+      expect(message(tag)).toContain(`for <${tag}>, pass Component() a template imported by a relative path`);
+      expect(message(tag)).not.toContain("does not exist");
+    }
+    expect(message("x-gone")).toContain(`<x-gone> (the template file the class imports does not exist: ${rel("x-gone.html")})`);
+    expect(message("x-gone")).toContain("for <x-gone>, restore the template file or correct the import path in the class");
+    expect(message("x-plain")).toContain(`<x-plain> (define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders: ${rel("x-plain.ts")}:3)`);
+    expect(message("x-plain")).not.toContain("add the folder");
+    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders)");
+    expect(message("wa-icon")).toContain("for <wa-icon>, add the folders that define the project's own components to the scanned folders");
   });
 });
 

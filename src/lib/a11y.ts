@@ -1,14 +1,22 @@
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
 import type { Diagnostic } from "./codegen.ts";
+import { and, NOT_DEFINED, noContract, unreadFixes, unreadWhy } from "./unread.ts";
+import type { Unread as Why } from "./unread.ts";
 
 type Node = DefaultTreeAdapterMap["node"];
 type Element = DefaultTreeAdapterMap["element"];
 type Template = DefaultTreeAdapterMap["template"];
 type Fragment = DefaultTreeAdapterMap["documentFragment"];
 
-/** A component the template can use, by tag: its template file and text when they could be read (see `contractsFor`). */
-export type A11yChildren = ReadonlyMap<string, { template?: { file: string; html: string } }>;
+/** A tag defined in the scanned folders: its template file and text when they can be read, and otherwise why not. */
+export interface A11yChild {
+  readonly template?: { file: string; html: string };
+  readonly unread?: Why;
+}
+/** The tags the template can use, by tag (see `childrenAt`); a tag that is not here has no define() in the scanned folders. */
+export type A11yChildren = ReadonlyMap<string, A11yChild>;
+const unreadOf = (children: A11yChildren, tag: string): Why => children.get(tag)?.unread ?? NOT_DEFINED;
 
 /** Every check, by rule id (usable in `ignore`), with a short description. */
 export const A11Y_RULES = {
@@ -65,7 +73,6 @@ const COMPOSED_RULES = {
   "heading-empty": ["is empty", "add text or aria-label"],
 } as const;
 type ComposedRule = keyof typeof COMPOSED_RULES;
-const and = (xs: readonly string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
 
 const isEl = (n: Node): n is Element => "tagName" in n;
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
@@ -136,7 +143,7 @@ function composedKids(c: Composed, children: A11yChildren, parsed: Parsed, unrea
   if (!isCustom(n)) return here(kids(n));
   const template = children.get(n.tagName)?.template;
   if (!template) {
-    unread.set(n, `<${n.tagName}>${c.path.size ? ` in the template of <${[...c.path].at(-1)}>` : ""} (a custom element whose template lint cannot read)`);
+    unread.set(n, `<${n.tagName}>${c.path.size ? ` in the template of <${[...c.path].at(-1)}>` : ""} (${unreadWhy(unreadOf(children, n.tagName))})`);
     return [];
   }
   if (c.path.has(n.tagName)) return [];
@@ -256,8 +263,8 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       if (skip.has(rule)) return false;
       const unread: Unread = new Map();
       if (!failsOn(unread)) return false;
-      // A custom element with no definition at all is reported by unchecked-custom-elements.
-      if (unread.has(el) && !children.has(tag)) return false;
+      // A custom element with no contract is reported by unchecked-custom-elements.
+      if (unread.has(el) && noContract(unreadOf(children, tag))) return false;
       if (!unread.size) return true;
       notJudged.push(rule);
       for (const [n, name] of unread) unreadHere.set(n, name);
@@ -309,13 +316,11 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     if (notJudged.length) {
-      const custom = [...unreadHere.keys()].filter((n) => n.tagName !== "slot");
-      const own = [...new Set(custom.filter((n) => !children.has(n.tagName)).map((n) => `<${n.tagName}>`))];
-      const noFile = [...new Set(custom.filter((n) => children.has(n.tagName)).map((n) => `<${n.tagName}>`))];
+      const custom = new Map([...unreadHere.keys()].filter((n) => n.tagName !== "slot").map((n) => [n.tagName, unreadOf(children, n.tagName)]));
       report(
         "unchecked-content",
         el,
-        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`).join("; ")}${own.length ? `; for a component of this project, add the folder that defines ${and(own)} to the scanned folders` : ""}${noFile.length ? `; ${and(noFile)} ${noFile.length > 1 ? "are" : "is"} defined in the scanned folders, but the template file ${noFile.length > 1 ? "their classes import" : "its class imports"} cannot be read, so restore that file or correct the import path in the class` : ""}.`,
+        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${[...notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`), ...unreadFixes(custom)].join("; ")}.`,
       );
     }
 

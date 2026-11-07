@@ -98,7 +98,7 @@ describe("ts-dom check: unchecked-custom-elements", () => {
       };
       const issues = check();
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-unchecked-tmp/one.html", 1, 1, "unchecked-custom-elements"]]);
-      expect(issues[0]?.message).toContain("No define() in the scanned folders: <vendor-picker>, <vendor-chart>.");
+      expect(issues[0]?.message).toContain("<vendor-picker>, <vendor-chart>: no define() in the scanned folders.");
       expect(check("--ignore=unchecked-custom-elements")).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
