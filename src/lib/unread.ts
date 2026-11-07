@@ -1,22 +1,24 @@
 /**
  * Why lint cannot read what a custom element renders, as the contracts know it (see `childrenAt` in lint.ts).
- * The first three leave the tag without a contract, so its attributes and events are not checked either (unchecked-custom-elements); the last two leave a component without its template.
+ * The first three leave the tag without a contract, so its attributes and events are not checked either (unchecked-custom-elements); the next two leave a component without its template,
+ * and an element of another library has a contract from its custom elements manifest, which does not say what the element renders.
  */
 export type Unread =
   | { cause: "undefined" }
   | { cause: "not-component"; at: string }
   | { cause: "ambiguous"; packages: readonly string[] }
   | { cause: "template-unfollowed"; at: string }
-  | { cause: "template-missing"; file: string };
+  | { cause: "template-missing"; file: string }
+  | { cause: "third-party"; pkg: string };
 
 type Cause = Unread["cause"];
 
 /** Each cause in the words unchecked-custom-elements and unchecked-content share: what it is, the fact a message adds after it, and the fix. */
 export const UNREAD: { [C in Cause]: { what: string; detail: (u: Extract<Unread, { cause: C }>) => string; fix: string } } = {
   undefined: {
-    what: "no define() in the scanned folders",
+    what: "no define() in the scanned folders, and no custom elements manifest of the package or its dependencies",
     detail: () => "",
-    fix: "add the folders that define the project's own components to the scanned folders",
+    fix: "add the folders that define the project's own components to the scanned folders (another library's elements are checked when their package declares a custom elements manifest, the customElements field of its package.json)",
   },
   "not-component": {
     what: "define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders",
@@ -37,6 +39,11 @@ export const UNREAD: { [C in Cause]: { what: string; detail: (u: Extract<Unread,
     what: "the template file the class imports does not exist",
     detail: (u) => u.file,
     fix: "restore the template file or correct the import path in the class",
+  },
+  "third-party": {
+    what: "an element of a package whose custom elements manifest declares its attributes, events and slots but not what it renders",
+    detail: (u) => u.pkg,
+    fix: "check by hand that the element around it is operable or named",
   },
 };
 

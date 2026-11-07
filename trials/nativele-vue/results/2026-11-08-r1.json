@@ -1,0 +1,121 @@
+{
+  "kind": "agent",
+  "skill": "nativele-vue",
+  "date": "2026-11-08",
+  "skillHash": "sha256:930187c9579ff2b57519ff898f28c1cab5cbd88ec14b2acfa050864a764275f4",
+  "fixtureHash": "sha256:02b62512e313ec42efa57758e6212d2a0e97c68b7bf0dc1ed31264d5e2fb834f",
+  "nativele": {
+    "version": "0.7.1",
+    "commit": "a731fec",
+    "tgz": "sha256:e711ec61a69486869df66aa1ae2fa3a48df08647865fb36c894ea2e81b18c764"
+  },
+  "tools": {
+    "node": "24.22.2",
+    "npm": "11.19.1",
+    "vue": "3.5.44",
+    "vite": "8.3.6",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vue-tsc": "3.3.14",
+    "typescript": "6.0.3",
+    "@vue/tsconfig": "0.9.1"
+  },
+  "sandbox": "unchecked",
+  "checks": [
+    {
+      "name": "ts-dom check",
+      "pass": true
+    },
+    {
+      "name": "ts-dom doctor",
+      "pass": true
+    },
+    {
+      "name": "types with probes",
+      "pass": true
+    },
+    {
+      "name": "build from a clean checkout",
+      "pass": true
+    },
+    {
+      "name": "build",
+      "pass": true
+    },
+    {
+      "name": "browser",
+      "pass": true,
+      "detail": "24 checks, no console errors"
+    }
+  ],
+  "guesses": [
+    {
+      "where": "Example / Children and slots",
+      "what": "The task fixes the slot content as a bare span slot=badge under v-if, so nv-inventory-item uses shadow: true (Skill says Light DOM needs a stable wrapper)",
+      "source": "other",
+      "class": "covered"
+    },
+    {
+      "where": "Set-up step 6 (main.ts)",
+      "what": "Kept the starter's style.css import after the Nativele imports",
+      "source": "guess",
+      "class": "tool"
+    },
+    {
+      "where": "Set-up step 1",
+      "what": "Skill points to nativele-core for writing components; read it via npx ts-dom skills nativele-core. Used state { total } with bind in connected() for the store-reading summary",
+      "source": "tool docs",
+      "class": "covered"
+    },
+    {
+      "where": "Known limitation 9 / KeepAlive",
+      "what": "Wrapped nv-inventory-summary in SummaryPanel.vue and kept that alive",
+      "source": "other",
+      "class": "covered"
+    },
+    {
+      "where": "Store update from the page",
+      "what": "Skill does not say where to call store.set from Vue; used watch(items, deep, immediate) in App.vue",
+      "source": "guess",
+      "class": "tool"
+    },
+    {
+      "where": "qty-input",
+      "what": "Skipped emitting on empty input; used valueAsNumber to emit; compared strings before writing in render (lint rule unguarded-input-value)",
+      "source": "guess",
+      "class": "tool"
+    },
+    {
+      "where": "Verify, types check",
+      "what": "Added src/TypesCheck.vue with 3 vue-expect-error cases",
+      "source": "other",
+      "class": "covered"
+    },
+    {
+      "where": "Known limitation 3",
+      "what": "Wrote :lowThreshold=\"2\" in camelCase",
+      "source": "other",
+      "class": "covered"
+    },
+    {
+      "where": "Verify, vite build",
+      "what": "Skill expects 'built'; actual output is 'built in Nms', treated as matching",
+      "source": "guess",
+      "class": "covered"
+    },
+    {
+      "where": "Versions",
+      "what": "Installed package is 0.7.1 while the Skill says verified 0.7.0; no problem seen",
+      "source": "other",
+      "class": "covered"
+    }
+  ],
+  "errors": [
+    {
+      "error": "src/nv/qty-input.html:1:1 warning [unguarded-input-value] render() assigns this.refs.input.value without comparing it first.",
+      "fix": "compared against the next string value with !== before writing (a valueAsNumber comparison was not accepted by the rule)",
+      "class": "covered"
+    }
+  ],
+  "result": "accepted",
+  "round": 1
+}

@@ -206,6 +206,10 @@ export interface ModuleFacts {
   exports: Map<string, string | undefined>;
   classes: ClassDecl[];
   defines: { tag: string; id: string; line: number; col: number }[];
+  /** Tags the module names without a define() lint can follow: customElements.define("tag", ...) and the keys of an HTMLElementTagNameMap interface. */
+  tags: string[];
+  /** The literal names of the events the module creates with `new Event("name", { bubbles: true })` or `new CustomEvent(...)`, which can reach any element around the one that dispatches them. */
+  dispatched: string[];
 }
 
 const IDENT = String.raw`[A-Za-z_$][\w$]*`;
@@ -214,6 +218,10 @@ const REEXPORT = new RegExp(String.raw`\bexport\s+(?:type\s+)?(\*(?:\s*as\s+(${I
 const EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
 const EXPORT_CLASS = new RegExp(String.raw`\bexport\s+(default\s+)?(?:abstract\s+)?class\b(?:\s+(?!extends\b)(${IDENT}))?`, "g");
 const EXPORT_DEFAULT = new RegExp(String.raw`\bexport\s+default\s+(?!class\b|abstract\b|function\b|async\b)(${IDENT})\s*(?:;|$)`, "gm");
+const CE_DEFINE = /\bcustomElements\s*\.\s*define\(\s*(["'])([a-z][a-z0-9._]*-[a-z0-9._-]*)\1/g;
+const TAG_MAP = /\binterface\s+HTMLElementTagNameMap\s*(?:extends\s[^{]*)?\{/g;
+const TAG_KEY = /(["'])([a-z][a-z0-9._]*-[a-z0-9._-]*)\1\s*\??\s*:/g;
+const NEW_EVENT = /\bnew\s+(?:Custom)?Event\s*(?:<[^>]*>)?\s*\(\s*(["'])([^"'\n]+)\1\s*,\s*\{/g;
 const DEFINE = /\bdefine\(\s*(["'])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\1\s*,\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*\)/g;
 
 /** `a`, `a as b`, `type a as b` inside braces, as [imported or local name, name after `as`]. */
@@ -238,7 +246,7 @@ export function moduleFacts(code: string): ModuleFacts {
     }
     return { line: lo + 1, col: pos - (lineStarts[lo] as number) + 1 };
   };
-  const facts: ModuleFacts = { imports: [], reexports: [], exports: new Map(), classes: [], defines: [] };
+  const facts: ModuleFacts = { imports: [], reexports: [], exports: new Map(), classes: [], defines: [], tags: [], dispatched: [] };
   for (const m of code.matchAll(IMPORT)) {
     if (!inCode(m.index)) continue;
     const clause = m[1] as string;
@@ -271,7 +279,32 @@ export function moduleFacts(code: string): ModuleFacts {
     facts.classes.push(decl);
   }
   for (const m of code.matchAll(DEFINE)) if (inCode(m.index)) facts.defines.push({ tag: m[2] as string, id: (m[3] as string).replace(/\s+/g, ""), ...loc(m.index) });
+  if (code.includes("customElements")) for (const m of code.matchAll(CE_DEFINE)) if (inCode(m.index)) facts.tags.push(m[2] as string);
+  if (code.includes("HTMLElementTagNameMap")) {
+    for (const m of code.matchAll(TAG_MAP)) {
+      const open = m.index + m[0].length - 1;
+      const close = inCode(m.index) ? matchClose(code, open, "{", "}") : -1;
+      if (close > 0) for (const k of code.slice(open, close).matchAll(TAG_KEY)) facts.tags.push(k[2] as string);
+    }
+  }
+  if (code.includes("bubbles")) {
+    for (const m of code.matchAll(NEW_EVENT)) {
+      const open = m.index + m[0].length - 1;
+      const close = inCode(m.index) ? matchClose(code, open, "{", "}") : -1;
+      if (close > 0 && bubblesAtTop(code.slice(open, close + 1))) facts.dispatched.push(m[2] as string);
+    }
+  }
   return facts;
+}
+
+/** Whether the object literal `obj` (braces included) has `bubbles: true` as one of its own entries. */
+function bubblesAtTop(obj: string): boolean {
+  for (const m of obj.matchAll(/\bbubbles\s*:\s*true\b/g)) {
+    let depth = 0;
+    for (const c of obj.slice(0, m.index)) depth += "{[(".includes(c) ? 1 : ")]}".includes(c) ? -1 : 0;
+    if (depth === 1) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

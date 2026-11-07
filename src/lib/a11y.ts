@@ -263,8 +263,8 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       if (skip.has(rule)) return false;
       const unread: Unread = new Map();
       if (!failsOn(unread)) return false;
-      // A custom element with no contract is reported by unchecked-custom-elements.
-      if (unread.has(el) && noContract(unreadOf(children, tag))) return false;
+      // A custom element with no contract is reported by unchecked-custom-elements; one from a manifest may handle the keyboard itself, which a manifest does not say.
+      if (unread.has(el) && (noContract(unreadOf(children, tag)) || unreadOf(children, tag).cause === "third-party")) return false;
       if (!unread.size) return true;
       notJudged.push(rule);
       for (const [n, name] of unread) unreadHere.set(n, name);

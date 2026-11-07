@@ -3,7 +3,8 @@ import { mountTemplate } from "./mount.ts";
 
 /** The description of a template's structure, produced by codegen. */
 export interface Schema {
-  refs: Record<string, Element>;
+  // refs and rootElement are not constrained to Element: checking that a component class is one needs the class complete, which needs its template's type first, so a template that names its own tag (a tree view) or a tag whose template names it back could not be typed.
+  refs: Record<string, object>;
   lists: Record<string, ListSchema>;
   /** Names of the {{ hole }}s */
   text: string;
@@ -12,7 +13,7 @@ export interface Schema {
   ifs: string;
   slots: string;
   /** The template's only top-level element (a `<style>` does not count), or `never` when there is not exactly one. */
-  rootElement: Element;
+  rootElement: object;
   /** The template's path relative to the scanned directory, which a type error about the template names. */
   file?: string;
 }
@@ -52,8 +53,9 @@ export interface Template<S extends Schema = Schema> {
   readonly __schema?: S;
 }
 
+// Not `0 extends 1 & T`: tsc reduces `1 & T` by reading every member of T, and for a component class that reads its template's types and the classes of the tags in it, all the way down, until a deep enough tree fails with TS2589.
 /** `true` when T is `any`: a type Nativele reads from elsewhere and finds `any` in counts as not declared, so it never satisfies or switches off a check by accident. */
-export type IsAny<T> = 0 extends 1 & T ? true : false;
+export type IsAny<T> = boolean extends (T extends never ? true : false) ? true : false;
 
 export type El<K extends string> = K extends keyof HTMLElementTagNameMap
   ? IsAny<HTMLElementTagNameMap[K]> extends true

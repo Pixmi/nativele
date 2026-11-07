@@ -302,7 +302,7 @@ inc() { this.count = this.count + 1; }`,
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
   "unguarded-input-value": {
-    why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs.",
+    why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs. value, valueAsNumber and valueAsDate count as one: a write to any of them is checked, and a comparison of any of them on the same ref guards it when it gates the write: if (<value> !== next) before the write on the same line, or on the line before with nothing but { after it, or if (<value> === next) return; (or continue) on the line before. A comparison whose if does not decide whether the write runs is not a guard.",
     bad: `// form.ts
 override render(view: { name: string }) {
   this.refs.name.value = view.name;
@@ -313,7 +313,7 @@ override render(view: { name: string }) {
 }`,
   },
   "unchecked-custom-elements": {
-    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders (an element from another library, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned
 npx ts-dom lint src/pages`,
     good: `npx ts-dom lint src/pages src/ui
@@ -329,25 +329,54 @@ npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
   <qty-input data-on-quantity-change="update"></qty-input>
 </div>`,
   },
+  "unknown-native-event": {
+    why: "A data-on-* on a native element whose name the element never fires is silently never called, so a typo such as data-on-submt on a <form> or data-on-clik on a <p> breaks the handler with no error anywhere. A wrapper may still catch a custom event that bubbles up from a child, so lint reports the name only when nothing it reads can deliver it and nothing it cannot read is inside the element: the element does not fire it natively, it is not a native event of any other element, no component in the scanned folders emits it with bubbles: true, no module in the scanned folders creates it as new Event('name', { bubbles: true }) or new CustomEvent('name', { bubbles: true }) with the name written as a string, no custom elements manifest of the template's package or its dependencies lists it for any element (also one whose event list may be incomplete), the element's content in the template holds no <slot> and no custom element lint cannot know the events of (one with no define() or manifest lint reads, one whose manifest may leave events out, or a component whose template cannot be read or holds such an element), and one of the element's own native events is one or two letters away. An event dispatched from a module outside the scanned folders, or with a name lint cannot read, onto an element that reaches this one some other way is a false positive: declare it with event<...>({ bubbles: true }) in the emitting component's emits, scan that component's folder, or pass --ignore=unknown-native-event.",
+    bad: `<form data-on-submt="save"></form>
+<p data-on-clik="open"></p>`,
+    good: `<form data-on-submit="save"></form>
+<p data-on-click="open"></p>`,
+  },
   "unknown-prop": {
-    why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing.",
-    bad: `<x-kid lable="hi"></x-kid>`,
+    why: "An attribute on a child tag that the child does not declare in props is ignored at runtime, so a typo silently sets nothing. On another library's element the attributes come from its custom elements manifest; when the manifest may leave some out (a class above the element that the manifest leaves out and does not copy the members of, an attribute it could not describe), unknown attributes are not reported for that element. Global attributes such as inputmode, aria-*, data-* and inline event handlers such as onclick are never props. A manifest lists the attributes the element's class reads; one that only the library's styles read and its manifest leaves out (Web Awesome 3.14's <wa-page disable-sticky>) is reported too: ignore that finding with --ignore=unknown-prop or the plugin's ignore option if the project needs it.",
+    bad: `<x-kid lable="hi"></x-kid>
+<wa-input lable="Title"></wa-input>`,
     good: `<x-kid label="hi"></x-kid>
-// x-kid.ts: Component(tpl, { props: { label: "" } })`,
+// x-kid.ts: Component(tpl, { props: { label: "" } })
+<wa-input label="Title"></wa-input>`,
   },
   "invalid-prop-value": {
-    why: "An attribute is always a string, so it can only set string, number or boolean props. Other types can only be passed as JS properties.",
+    why: "An attribute is always a string, so it can only set string, number or boolean props; other types can only be passed as JS properties. A number prop or manifest number attribute whose value is not a number is NaN (a Nativele component warns at run time and keeps its default), a manifest attribute typed as string literals takes only those values, and a manifest boolean attribute is true whenever it is present, so disabled=\"false\" disables the element (a Nativele boolean prop reads \"false\" as false, so it is not reported there).",
     bad: `<x-list items="a,b"></x-list>
-// x-list.ts: props: { items: [] as string[] }`,
+// x-list.ts: props: { items: [] as string[] }
+<x-kid max-count="many"></x-kid>
+<wa-button variant="primary" disabled="false">Save</wa-button>`,
     good: `<x-list data-ref="list"></x-list>
 // panel.ts
-this.refs.list.items = ["a", "b"];`,
+this.refs.list.items = ["a", "b"];
+<x-kid max-count="3"></x-kid>
+<wa-button variant="brand">Save</wa-button>`,
   },
   "unknown-event": {
-    why: "The child does not declare this event in emits and it is not a native event, so the handler could never run. The check catches typos and removed events.",
-    bad: `<qty-input data-on-quantity-chnage="update"></qty-input>`,
+    why: "The child does not declare this event in emits (or another library's element does not list it in its custom elements manifest) and it is not a native event, so the handler could never run. The check catches typos and removed events. An element whose manifest lists no events for any element is not checked, since the manifest then does not say, and neither is one whose manifest may leave inherited events out (a class above it that the manifest leaves out and does not copy the members of).",
+    bad: `<qty-input data-on-quantity-chnage="update"></qty-input>
+<wa-dialog data-on-wa-hidden="closed"></wa-dialog>`,
     good: `<qty-input data-on-quantity-change="update"></qty-input>
-// qty-input.ts: emits: { "quantity-change": event<{ value: number }>() }`,
+// qty-input.ts: emits: { "quantity-change": event<{ value: number }>() }
+<wa-dialog data-on-wa-after-hide="closed"></wa-dialog>`,
+  },
+  "unknown-slot": {
+    why: "A child put in a named slot the element does not have is not rendered, whether the element is a Nativele component (its template's <slot name> elements) or another library's (the slots of its custom elements manifest). Only the slot attribute of direct children is checked, not the default slot, and not an element whose template lint cannot read or whose manifest does not list slots or may leave inherited ones out.",
+    bad: `<wa-dialog label="Delete?">
+  <wa-button slot="foter">Cancel</wa-button>
+</wa-dialog>`,
+    good: `<wa-dialog label="Delete?">
+  <wa-button slot="footer">Cancel</wa-button>
+</wa-dialog>`,
+  },
+  "unknown-custom-element": {
+    why: "A misspelled tag renders as an undefined element that shows only its children, with no error anywhere. Lint reports a tag that nothing it reads defines (a define() in the scanned folders, a customElements.define() call or HTMLElementTagNameMap entry in the scanned TypeScript, the custom elements manifests of the template's package and its dependencies) only when a known tag with the same prefix is one or two edits away; any other unknown tag is listed by unchecked-custom-elements instead. A tag defined at run time by code outside the scanned folders, one or two letters from a known tag, is a false positive: pass --ignore=unknown-custom-element.",
+    bad: `<wa-buton>Save</wa-buton>`,
+    good: `<wa-button>Save</wa-button>`,
   },
 
   // A11Y_RULES
@@ -479,7 +508,7 @@ this.refs.list.items = ["a", "b"];`,
 <wa-button data-on-click="open">open</wa-button>`,
   },
   "unchecked-content": {
-    why: "click-semantics, control-name and heading-empty judge what an element holds once the components inside it render. A custom element whose template lint cannot read, and a <slot> of the template being checked, which the component's user fills, may hold the operable element or the name that decides the rule. When the content lint can read would fail the rule, lint does not report it, as that would be wrong whenever the unreadable content is what makes the element right (a <div data-on-click> around a <wa-button>), and gives this one warning per element instead, naming the rules and the content, so nothing is left unchecked without a trace. For each custom element it names why lint cannot read its template, with the fix for that cause: the three causes unchecked-custom-elements lists (no define() in the scanned folders, a define() class lint cannot follow to a class extending Component(...), a tag defined in several packages), the class passes Component() a template lint cannot follow to an .html file imported by a relative path (a template built by a function, or one from a package), or the template file the class imports does not exist. A slot's fallback content is read, so a slot whose fallback names the element decides it. A custom element with data-on-click and no contract at all (one of the first three causes) is reported by unchecked-custom-elements instead. Silence it with --ignore=unchecked-content once the elements it names are right.",
+    why: "click-semantics, control-name and heading-empty judge what an element holds once the components inside it render. A custom element whose template lint cannot read, and a <slot> of the template being checked, which the component's user fills, may hold the operable element or the name that decides the rule. When the content lint can read would fail the rule, lint does not report it, as that would be wrong whenever the unreadable content is what makes the element right (a <div data-on-click> around a <wa-button>), and gives this one warning per element instead, naming the rules and the content, so nothing is left unchecked without a trace. For each custom element it names why lint cannot read its template, with the fix for that cause: the three causes unchecked-custom-elements lists (no define() in the scanned folders, a define() class lint cannot follow to a class extending Component(...), a tag defined in several packages), the class passes Component() a template lint cannot follow to an .html file imported by a relative path (a template built by a function, or one from a package), the template file the class imports does not exist, or the element comes from a package's custom elements manifest, which declares its attributes, events and slots but not what it renders. A slot's fallback content is read, so a slot whose fallback names the element decides it. A custom element with data-on-click and no contract at all (one of the first three causes) is reported by unchecked-custom-elements instead, and one from a manifest is not reported, as it may handle the keyboard itself. Silence it with --ignore=unchecked-content once the elements it names are right.",
     bad: `<div data-on-click="open"><wa-icon name="x"></wa-icon> Open</div>
 <button type="button"><slot></slot></button>`,
     good: `<button type="button" data-on-click="open"><wa-icon name="x"></wa-icon> Open</button>
@@ -713,6 +742,12 @@ npx ts-dom check src`,
     good: `npx ts-dom gen --whitespace=collapse
 // or in vite.config.ts: tsDom({ whitespace: "collapse" })
 # and after a plain run: npm run gen (the script with the flag) once`,
+  },
+  "custom-elements-manifest": {
+    why: "Lint reads the custom elements manifest a package names in the customElements field of its package.json to check its elements' attributes, events and slots. A manifest that is missing, not valid JSON, not an object, or of a schemaVersion other than 1.x or 2.x is treated as absent, so its elements are not checked; doctor reports it once instead of lint in every template.",
+    bad: `// node_modules/some-lib/package.json: "customElements": "dist/custom-elements.json", and the file is not in the package`,
+    good: `npm i some-lib@latest   # a version that ships its manifest
+# or report the missing manifest to the package's maintainers`,
   },
   "skill-available": {
     why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",

@@ -189,7 +189,7 @@ describe("click-semantics", () => {
     expect(message("x-gone")).toContain("for <x-gone>, restore the template file or correct the import path in the class");
     expect(message("x-plain")).toContain(`<x-plain> (define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders: ${rel("x-plain.ts")}:3)`);
     expect(message("x-plain")).not.toContain("add the folder");
-    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders)");
+    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders, and no custom elements manifest of the package or its dependencies)");
     expect(message("wa-icon")).toContain("for <wa-icon>, add the folders that define the project's own components to the scanned folders");
   });
 });

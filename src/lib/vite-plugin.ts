@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
+import { analyze, CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
+import type { Analysis } from "./codegen.ts";
 import { defineDefs, isTs, Memo, Workspace } from "./components.ts";
 import type { DefineDef } from "./components.ts";
 import { lintProject, lintTemplate } from "./lint.ts";
@@ -64,16 +65,17 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   const templates = () => existing().flatMap((d) => listHtml(d, ws).filter((f) => isSelected(d, f, generate)).map((f) => resolve(f)));
 
   const printed = new Map<string, string>();
-  const warnA11y = (warn: (m: string) => void, saved?: string) => {
+  /** `parsed` holds the analyses codegen made of templates in this run, by path, which the check uses instead of parsing them again. */
+  const warnA11y = (warn: (m: string) => void, parsed: ReadonlyMap<string, Analysis>, saved?: string) => {
     if (!a11y) return;
     const p = lintProject(ws, existing(), process.cwd());
     for (const f of templates()) {
-      const lines = lintTemplate(p, f, ["a11y"]).a11y.filter((d) => !a11y.ignore?.includes(d.rule)).map((d) => formatDiagnostics(f, [d]));
+      const lines = lintTemplate(p, f, ["a11y"], (t) => parsed.get(f) ?? analyze(t)).a11y.filter((d) => !a11y.ignore?.includes(d.rule)).map((d) => formatDiagnostics(f, [d]));
       if (saved === undefined || f === saved || printed.get(f) !== lines.join("\n")) for (const line of lines) warn(line);
       printed.set(f, lines.join("\n"));
     }
   };
-  const recheck = (file: string, logger: Logger) => warnA11y((m) => logger.warn(m), file);
+  const recheck = (file: string, logger: Logger, parsed: ReadonlyMap<string, Analysis> = new Map()) => warnA11y((m) => logger.warn(m), parsed, file);
 
   /** Regenerate one template. Returns whether its generated module changed. */
   const regenerate = (file: string, logger: Logger): boolean => {
@@ -81,14 +83,15 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     const html = ws.text(file);
     if (!dir || html === null || file.includes(`${sep}node_modules${sep}`) || isFullPage(html) || !isSelected(dir, file, generate)) return false;
     let written: string | null;
+    const parsed = new Map<string, Analysis>();
     try {
-      written = generateFile(file, generate, defs(), dir, ws);
+      written = generateFile(file, generate, defs(), dir, ws, parsed);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
       return false;
     }
-    recheck(file, logger);
+    recheck(file, logger, parsed);
     return written !== null;
   };
 
@@ -136,14 +139,15 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       for (const d of dirs) {
         if (!existsSync(d)) this.warn(`${relative(process.cwd(), d) || "."}:1:1 warning [dir-not-found] The folder ${d} given in tsDom({ dirs }) does not exist, so no templates in it are generated. Fix: dirs are resolved against Vite's root (${root}), not the working directory; give the folder relative to that root, or an absolute path.`);
       }
+      const parsed = new Map<string, Analysis>();
       try {
-        generateDirs(existing(), generate, ws);
+        generateDirs(existing(), generate, ws, undefined, parsed);
       } catch (e) {
         if (e instanceof CodegenError) this.error(e.message);
         throw e;
       }
       noteDefines();
-      warnA11y((m) => this.warn(m));
+      warnA11y((m) => this.warn(m), parsed);
     },
     configureServer(server: { watcher: { add(p: string | string[]): void; on(ev: string, fn: (f: string) => void): void }; config: { logger: Logger } }) {
       const logger = server.config.logger;

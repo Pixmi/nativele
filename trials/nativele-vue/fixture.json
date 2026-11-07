@@ -1,0 +1,29 @@
+{
+  "skill": "nativele-vue",
+  "node": "24",
+  "start": {
+    "command": "npm create vite@9.3.4 app -- --template vue-ts --no-interactive",
+    "dir": "app",
+    "buildOnce": "npm run build"
+  },
+  "install": ["vue@3.5.44", "vite@8.3.6", "@vitejs/plugin-vue@6.0.10", "vue-tsc@3.3.14", "typescript@6.0.3", "@vue/tsconfig@0.9.1"],
+  "skills": ["nativele-vue"],
+  "contract": {
+    "tags": ["nv-inventory-item", "nv-qty-input", "nv-inventory-summary"],
+    "entry": "src/App.vue"
+  },
+  "probes": [{ "from": "probes/TypesProbe.vue", "to": "src/TypesProbe.vue" }],
+  "checks": [
+    { "name": "ts-dom check", "run": "npx ts-dom check src/nv", "exit": 0, "stdout": "ts-dom check: no issues" },
+    { "name": "ts-dom doctor", "run": "npx ts-dom doctor src/nv", "exit": 0 },
+    { "name": "types with probes", "run": "npx vue-tsc -b", "exit": 0 },
+    { "name": "build from a clean checkout", "run": "git clean -fdX src && npm run build", "exit": 0 },
+    { "name": "build", "run": "npx vite build", "exit": 0 }
+  ],
+  "browser": {
+    "serve": "npx vite --port {port} --strictPort",
+    "url": "http://localhost:{port}/",
+    "script": "checks/browser.ts",
+    "failOn": ["pageerror", "console.error", "console.warn:^\\[Vue warn\\]"]
+  }
+}

@@ -444,9 +444,9 @@ describe("a tag defined more than once under the scanned folders", () => {
     expect(found).toHaveLength(1);
     const [d] = found;
     expect([d?.file.endsWith(join("app", "other.html")), d?.line, d?.col, d?.severity]).toEqual([true, 1, 18, "warning"]);
-    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders. <x-item> (");
+    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders, and no custom elements manifest of the package or its dependencies. <x-item> (");
     expect(d?.message).toContain("): defined in several packages, and not exactly once in the template's package.");
-    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders; for <x-item>, keep one define() of a tag per package.");
+    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders (another library's elements are checked when their package declares a custom elements manifest, the customElements field of its package.json); for <x-item>, keep one define() of a tag per package.");
     expect(d?.message).toContain("(unknown-prop, invalid-prop-value, unknown-event)");
     expect(d?.message).toContain("(click-semantics)");
     expect(d?.message).not.toContain("x-known");
@@ -498,6 +498,22 @@ describe("data-flow: unguarded-input-value", () => {
   it("accepts a comparison on the same line or the line before", async () => {
     expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name) this.refs.name.value = v.name;\n  }`)).toEqual([]);
     expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.name)\n      this.refs.name.value = v.name;\n  }`)).toEqual([]);
+  });
+  it("treats value, valueAsNumber and valueAsDate as one set", async () => {
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsNumber !== v.n) this.refs.name.value = String(v.n);\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsNumber === v.n) return;\n    this.refs.name.value = String(v.n);\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.valueAsDate !== v.d) this.refs.name.valueAsDate = v.d;\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.valueAsNumber = v.n;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.valueAsDate = v.d;\n  }`)).toEqual(["unguarded-input-value"]);
+  });
+  it("counts as the guard only a comparison that gates the write", async () => {
+    expect(await rules(`  override render(v) {\n    if (v.name !== this.refs.name.value) { this.refs.name.value = v.name; }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value != v.name) {\n      this.refs.name.value = v.name;\n    }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    for (const x of v.xs) {\n      if (this.refs.name.value == x) continue;\n      this.refs.name.value = x;\n    }\n  }`)).toEqual([]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value === v.prev) log();\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    if (this.refs.name.value !== v.prev) return;\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    this.refs.name.value = v.name; if (this.refs.name.value !== v.name) log();\n  }`)).toEqual(["unguarded-input-value"]);
+    expect(await rules(`  override render(v) {\n    const same = this.refs.name.value === v.name;\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
   });
   it("leaves event handlers and elements that are not form controls alone", async () => {
     expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);

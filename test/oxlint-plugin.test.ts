@@ -66,6 +66,30 @@ describe("the lint plugin in oxlint", () => {
     expect(out.diagnostics.map((d) => /does not emit "([^"]+)"/.exec(d.message)?.[1])).toEqual(["row-open"]);
   }, 30_000);
 
+  it("checks a library element against the custom elements manifest of a dependency, with a rule per id", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
+    const manifest = { schemaVersion: "1.0.0", modules: [{ path: "dialog.js", declarations: [{ name: "D", customElement: true, tagName: "fk-dialog", superclass: { name: "HTMLElement" }, attributes: [{ name: "open", type: { text: "boolean" } }], events: [{ name: "fk-hide" }], slots: [{ name: "" }, { name: "footer" }] }] }] };
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ dependencies: { "fake-wc": "1" } }),
+      "node_modules/fake-wc/package.json": JSON.stringify({ customElements: "cem.json" }),
+      "node_modules/fake-wc/cem.json": JSON.stringify(manifest),
+      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-slot": "warn", "ts-dom/unknown-custom-element": "error", "ts-dom/invalid-prop-value": "warn", "ts-dom/unknown-native-event": "warn" } }),
+      "page.html": `<fk-dialog open="false"><p slot="foter">x</p></fk-dialog>\n<fk-dailog></fk-dailog>\n<form data-on-submt="go"></form>\n`,
+      "page.ts": `import { Component } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+    };
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), text);
+    }
+    const out = JSON.parse(run(dir, "page.ts")) as { diagnostics: { code: string; severity: string; message: string }[] };
+    expect(out.diagnostics.map((d) => [d.code, d.severity, d.message.slice(0, d.message.indexOf("]") + 1)]).sort()).toEqual([
+      ["ts-dom(invalid-prop-value)", "warning", "./page.html.js:1:1 [invalid-prop-value]"],
+      ["ts-dom(unknown-custom-element)", "error", "./page.html.js:2:1 [unknown-custom-element]"],
+      ["ts-dom(unknown-native-event)", "warning", "./page.html.js:3:7 [unknown-native-event]"],
+      ["ts-dom(unknown-slot)", "warning", "./page.html.js:1:25 [unknown-slot]"],
+    ]);
+  }, 30_000);
+
   it("click-semantics checks a child component against its template and leaves other custom elements alone", () => {
     const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
     const child = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;

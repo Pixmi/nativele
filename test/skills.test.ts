@@ -33,9 +33,8 @@ describe("Skills shipped with the package", () => {
       const value = /^\s*[\w-]+: (.*)$/.exec(line)?.[1];
       if (value && value.includes(": ")) expect(value.startsWith('"'), line).toBe(true);
     }
-    const lowest = s.nativele.match(/^>=(\S+)/)?.[1];
-    const row = text.match(/^\| @nativele\/ts-dom \| (.+) \|$/m)?.[1];
-    expect(row, "the Versions row names the version of the last agent trial").toBe(`${lowest} (the last agent trial)`);
+    const row = text.match(/^\| @nativele\/ts-dom \| (\S+) \(the last agent trial\) \|$/m)?.[1];
+    expect(row && inRange(row, s.nativele), "the Versions row names the version of the last agent trial, inside the nativele range").toBe(true);
   });
 
   it("the shipped Skills cover the version in package.json", () => {

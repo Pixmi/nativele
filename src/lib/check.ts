@@ -37,6 +37,8 @@ export interface CheckOptions {
   project?: string;
   a11y?: boolean;
   cwd?: string;
+  /** The rule ids whose warnings the caller leaves out (see LintOptions). */
+  ignore?: readonly string[];
 }
 
 /** One error as tsc prints it with --pretty false. */
@@ -343,7 +345,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   issues.push(...split.missing);
 
   const ws = new Workspace();
-  const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws });
+  const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws, ignore: options.ignore });
   for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
   for (const dir of dirs) {

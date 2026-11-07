@@ -56,7 +56,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vp dev",
@@ -72,7 +72,9 @@
     "verify:pack": "vp pack --publint --attw",
     "smoke": "bash scripts/consumer-smoke.sh",
     "smoke:no-bundler": "bash scripts/no-bundler-smoke.sh",
-    "bench": "node scripts/bench.ts"
+    "bench": "node scripts/bench.ts",
+    "trial": "node scripts/trial.ts",
+    "bench:check": "node scripts/bench/check.ts"
   },
   "dependencies": {
     "parse5": "^8.1.0"

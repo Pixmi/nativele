@@ -98,23 +98,24 @@ None of this adds a runtime dependency: listing and copying read the Markdown fi
 
 ## Checks
 
-The workflow `.github/workflows/skills.yml` has one required check for `main`, "SKILL.md format": it checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, whenever any of them changes.
+The workflow `.github/workflows/skills.yml` has one required check for `main`, "SKILL.md format": it checks every `SKILL.md` against this specification, and the links in the READMEs, `llms.txt` and the guides, whenever any of them changes. Two more jobs run on every change and are not required: "Skill trials needed" lists in its summary the Skills whose trial a change calls for (the Skill's text, a guide section it links, a command or rule it names, its fixture, or a stale `verified` date) and whether the current `SKILL.md` has an accepted trial record; "Skill replay" runs `npm run trial -- replay <name>` for every Skill with a stored accepted agent output when the library or its fixture changed, so a library regression shows without an agent.
 
 ## Contributing a Skill
 
 - Copy `skills/_template/SKILL.md`, fill in every section, set `tier: experimental`.
 - Run the Skill's verification commands in a fresh project with the versions you list, and paste their output in the PR description.
-- The PR touches only `skills/<name>/`; a PR that changes the library and adds a Skill is split. Community and Experimental Skills live in this repository, in the same `skills/` folder, so they ship with the package and `ts-dom skills` lists them with their tier.
+- The PR touches only `skills/<name>/`, and may add the Skill's trial fixture in `trials/<name>/` (below); a PR that changes the library and adds a Skill is split. Community and Experimental Skills live in this repository, in the same `skills/` folder, so they ship with the package and `ts-dom skills` lists them with their tier.
 
 ## How a Skill pull request is accepted
 
 A Skill is written for agents, so the maintainers accept it by having an agent use it: a fresh agent that knows nothing about the Skill does real work with nothing but the Skill, and the result is checked. Reading the Skill or rerunning its verification commands is not enough, because neither shows what the Skill leaves out.
 
 1. **Check the format**: the frontmatter is complete, every required section is there, the facts link to `docs/` instead of restating them, and nothing would add a dependency to the library's core.
-2. **Build the package from the PR branch** (`npm run build:lib && npm pack`), so the trial uses the real delivery path.
-3. **Start a fresh project** in an empty folder outside the repository: for an integration Skill, the tool's own starter project at the versions the Skill lists (for example `create-vite` with the `react-ts` template), built once to confirm it works before Nativele is added. Install the packed library and the exact tool versions the Skill lists, and install the Skill the way users do: `npx ts-dom skills add <name>`.
-4. **Give a fresh agent a task** that the Skill says it covers, written from its "When to use" and "Example": a small but real piece of work that goes through every set-up step and touches every known limitation. The agent may use the Skill, `npx ts-dom` and the public guides in `docs/`, but not the Nativele source or this repository. It reports the files it wrote, the output of every Verify command, every point where it had to guess or look elsewhere, and every error it hit and how it fixed it.
-5. **Check the result independently**, without relying on the agent's report: run the Verify commands again and check the behavior in a real browser or with a test.
+2. **Run the trial** with `npm run trial -- run <name>`. The runner reads the Skill's fixture in `trials/<name>/` and does the rest the same way every time: it packs the library from the branch (`npm run build:lib`, `npm pack`), starts a fresh project outside the repository from the tool's own starter at the versions the Skill lists, built once before Nativele is added, installs the packed library, the exact tool versions and the Skill the way users do (`npx ts-dom skills add <name>`), and gives a fresh agent the fixture's task. The task is a small but real piece of work written from the Skill's "When to use" and "Example" that goes through every set-up step and touches every known limitation. The agent may use the Skill, `npx ts-dom` and the guides shipped in the package, but not the Nativele source or this repository, and reports the files it wrote, the output of every Verify command, every point where it had to guess or look elsewhere, and every error it hit and how it fixed it. The agent command defaults to Claude Code and is set with `TRIAL_AGENT_CMD` for another harness; `prepare`, `agent` and `check` run the steps one at a time.
+3. **The result is checked independently**, without relying on the agent's report: the runner runs the Verify commands and the fixture's checks again, type-checks the fixture's probes against the agent's components, and drives the page in a real browser. It also scans the agent's transcript for the forbidden sources; a trial that used them cannot be accepted and runs again.
+4. **Review and classify**: read the agent's changes (`.trial/out/agent.patch`), which the checks cannot judge for style or needless detours, and mark every guess and error in the record (`.trial/out/record.json` in the trial folder) as `covered` (the Skill already says it), `tool` (about the tool itself) or `gap`. `npm run trial -- accept <trial folder>` stores the record in `trials/<name>/results/`; when every check passed and nothing is a gap, it also stores the agent's output, including its `package-lock.json` (required, so a replay installs the same versions with `npm ci`), in `trials/<name>/last-pass/` for "Skill replay" and sets the Skill's `verified` date and its `@nativele/ts-dom` row to the trial's.
+
+A fixture is maintainer test material, not part of the Skill, and is not shipped: `fixture.json` (the starter, the pinned versions, the checks), `task.md` (the task, ending with a "Contract" section that fixes the names the checks use: tags, props, events, visible text), `probes/` (files type-checked in the agent's project) and `checks/` (the browser check). The checks verify the task's outcome through the contract, never against a reference implementation: a fixture holds no expected project, file contents or diff. Every Official and Community Skill is to have a fixture; until it has one, and for an Experimental Skill without one, the trial runs by hand in the same steps.
 
 The Skill is accepted when:
 
@@ -122,7 +123,7 @@ The Skill is accepted when:
 - the agent followed the Skill's steps as written, and no step was wrong for the stated versions;
 - every guess, outside search or unexplained error in the report is already covered by the Skill; a guess about the tool itself (how to configure the framework, the build tool or the test runner beyond what Nativele needs) is not a gap in the Skill.
 
-Otherwise the maintainers send the gaps back to the contributor as review comments (a missing step, a limitation to list, a Troubleshooting row to add), and the trial runs again, with a new agent, on the updated Skill. Each trial is recorded on the PR as a review comment in this form, so a reader can see which agent passed which task, what it ran into, and whether a later change to the Skill needs a new trial:
+Otherwise the maintainers send the gaps back to the contributor as review comments (a missing step, a limitation to list, a Troubleshooting row to add), and the trial runs again, with a new agent, on the updated Skill. Each trial is recorded on the PR as a review comment in this form, printed by `npm run trial -- comment <record>`, so a reader can see which agent passed which task, what it ran into, and whether a later change to the Skill needs a new trial:
 
 ```yaml
 trial:
@@ -133,6 +134,7 @@ trial:
   tools: vue@3.5.44 vite@8.3.6 vue-tsc@3.3.14 typescript@6.0.3
   agent: Claude Code            # or Codex, Cursor, ...
   model: <model id>
+  sandbox: clean                # no forbidden source in the agent's transcript
   start: create-vite vue-ts, built once before Nativele was added
   task: |
     An inventory screen: an item component in a keyed list Vue sorts, a two-way bound input,

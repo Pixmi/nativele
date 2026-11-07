@@ -79,6 +79,8 @@ jobs:
       - run: npm ci
       # npm stage publish needs npm 11.15 or later; trusted publishing needs no token, the workflow's OIDC identity is the credential. setup-node must not get registry-url, which writes a placeholder token that npm then uses instead.
       - run: npm install -g npm@^11.15.0
+      # npm checks package.json before prepack builds dist, and drops a bin whose file is missing, so build first.
+      - run: npm run build:lib
       # The version waits in npm's staging area until a maintainer approves it (with 2FA) on npmjs.com or with `npm stage approve`.
       # A prerelease version (one with a "-") is published under the "next" tag so that "npm i @nativele/ts-dom" keeps installing the latest stable release.
       - name: Stage on npm
