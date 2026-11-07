@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml, regenerateDefines } from "./codegen.ts";
+import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
 import { defineDefs, isTs, Memo, Workspace } from "./components.ts";
 import type { DefineDef } from "./components.ts";
 import { lintProject, lintTemplate } from "./lint.ts";
@@ -80,27 +80,27 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     const dir = dirOf(file);
     const html = ws.text(file);
     if (!dir || html === null || file.includes(`${sep}node_modules${sep}`) || isFullPage(html) || !isSelected(dir, file, generate)) return false;
-    const out = `${file}.ts`;
-    const before = read(out);
+    let written: string | null;
     try {
-      generateFile(file, generate, defs(), dir, ws);
+      written = generateFile(file, generate, defs(), dir, ws);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
       return false;
     }
     recheck(file, logger);
-    return read(out) !== before;
+    return written !== null;
   };
 
   /** Regenerate after a define() call may have changed: the tag maps and the templates that use a tag whose definition changed. */
   const regenerateDefs = (logger: Logger) => {
-    let written: string[] = [];
+    let written: readonly string[];
     try {
-      written = regenerateDefines(existing(), generate, generatedDefs, ws);
+      written = generateDirs(existing(), generate, ws, generatedDefs);
     } catch (e) {
-      if (e instanceof CodegenError) logger.error(e.message);
-      else throw e;
+      if (!(e instanceof CodegenError)) throw e;
+      logger.error(e.message);
+      written = e.written;
     }
     noteDefines();
     for (const out of written) {

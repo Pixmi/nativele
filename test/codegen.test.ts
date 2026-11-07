@@ -189,10 +189,10 @@ describe("generateTags (define → HTMLElementTagNameMap)", () => {
     generateTags(dir);
     expect(existsSync(`${dir}/ts-dom-tags.ts`)).toBe(true);
     unlinkSync(`${dir}/a.ts`);
-    expect(generateTags(dir)).toBeNull();
+    expect(generateTags(dir)).toBe(`${dir}/ts-dom-tags.ts`);
     expect(existsSync(`${dir}/ts-dom-tags.ts`)).toBe(false);
     writeFileSync(`${dir}/ts-dom-tags.ts`, "// written by me\n");
-    generateTags(dir);
+    expect(generateTags(dir)).toBeNull();
     expect(existsSync(`${dir}/ts-dom-tags.ts`)).toBe(true);
   });
 });

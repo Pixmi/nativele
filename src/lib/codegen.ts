@@ -503,7 +503,14 @@ export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
   return ds.map((d) => `${file}:${d.line}:${d.col} ${d.severity} [${d.rule}] ${d.message}`).join("\n");
 }
 
-export class CodegenError extends Error {}
+export class CodegenError extends Error {
+  /** The generated files the run rewrote before it failed. */
+  readonly written: readonly string[];
+  constructor(message: string, written: readonly string[] = []) {
+    super(message);
+    this.written = written;
+  }
+}
 
 /** The error diagnostics and the custom element tags of the template `file` with the text `html`; `parse` analyzes it when the memo does not have them. */
 function shapeOf(file: string, html: string, ws: Workspace, parse = () => analyze(html)): { errors: Diagnostic[]; tags: ReadonlySet<string> } {
@@ -532,14 +539,13 @@ export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs
 }
 
 /**
- * Generate a single `x.html.ts`; throws CodegenError (and writes nothing) when there are error diagnostics.
+ * Generate a single `x.html.ts`, returning its path when it rewrote it and null when it held that already; throws CodegenError (and writes nothing) when there are error diagnostics.
  * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
  * are imported automatically from the modules that define them.
  */
-export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace): string {
+export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace): string | null {
   const { out, next } = renderFile(htmlPath, options, defs, dir, ws);
-  update(out, next);
-  return out;
+  return update(out, next) ? out : null;
 }
 
 /** Write `next` to `out` unless it holds that already; whether it wrote. */
@@ -617,15 +623,11 @@ export function scanTags(dir: string, ws?: Workspace): TagDef[] {
 /**
  * Generate `ts-dom-tags.ts`: register every `define("tag", Class)` component in HTMLElementTagNameMap
  * so that `refs.x` for `<tag data-ref="x">` in a template is fully typed (props, methods and emitted events).
+ * Returns its path when it rewrote or removed it, and null when it left it as it was.
  */
 export function generateTags(dir: string, ws?: Workspace): string | null {
   const { out, next } = renderTags(dir, ws);
-  if (next === null) {
-    removeTags(out);
-    return null;
-  }
-  update(out, next);
-  return out;
+  return (next === null ? removeTags(out) : update(out, next)) ? out : null;
 }
 
 /** What `generateTags` would write, without writing it; `next` is null when the directory defines no exported component. */
@@ -681,7 +683,7 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs?:
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of listGenerated(dir, scanned)) if (!files.has(f) && !existsSync(f.slice(0, -3))) files.set(f, null);
+  for (const f of orphans(dir, scanned)) files.set(f, null);
   return { files, errors };
 }
 
@@ -704,30 +706,40 @@ export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?
   return { stale: out.sort((a, b) => a.file.localeCompare(b.file)), errors: plan.errors };
 }
 
-function listGenerated(dir: string, scanned: readonly string[], top = true): string[] {
+/** The files ts-dom generated under `dir` that nothing generates any more: an `x.html.ts` whose template is gone, and a ts-dom-tags.ts in a subfolder that is not one of the `scanned`. */
+function orphans(dir: string, scanned: readonly string[], top = true): string[] {
   const out: string[] = [];
   const ownTags = top || scanned.some((d) => resolve(d) === resolve(dir));
-  for (const name of readdirSync(dir)) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const names = new Set(entries.map((e) => e.name));
+  for (const entry of entries) {
+    const name = entry.name;
     if (name === "node_modules") continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...listGenerated(full, scanned, false));
-    else if ((name.endsWith(".html.ts") || (name === TAGS_FILE && !ownTags)) && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
+    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...orphans(full, scanned, false));
+    else if (((name.endsWith(".html.ts") && !names.has(name.slice(0, -3))) || (name === TAGS_FILE && !ownTags)) && readFileSync(full, "utf8").startsWith(TAGS_HEADER)) out.push(full);
   }
   return out;
 }
 
 /**
- * Generate every `x.html.ts` (and the tag map) under a directory; collects all errors and throws them together.
+ * Generate every `x.html.ts` (and the tag map) under a directory and delete the orphans; returns the files it rewrote, and collects all errors and throws them together with those files.
  * `defs` are the define() calls templates import child components from (default: those under `dir`).
+ * With `changed`, only the templates that use one of these tags are generated.
  */
-export function generateAll(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace()): string[] {
+export function generateAll(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace(), changed?: ReadonlySet<string>): string[] {
   const known = defs ?? scanDefines(dir, ws);
   const written: string[] = [];
   const errors: string[] = [];
-  for (const f of listHtml(dir, ws)) {
-    if (!isSelected(dir, f, options)) continue;
+  const uses = (f: string) => {
+    const html = ws.text(resolve(f));
+    return html !== null && [...shapeOf(resolve(f), html, ws).tags].some((tag) => changed?.has(tag));
+  };
+  for (const f of changed?.size === 0 ? [] : listHtml(dir, ws)) {
+    if (!isSelected(dir, f, options) || (changed && !uses(f))) continue;
     try {
-      written.push(generateFile(f, options, known, dir, ws));
+      const out = generateFile(f, options, known, dir, ws);
+      if (out) written.push(out);
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
       else throw e;
@@ -740,71 +752,44 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
     if (e instanceof CodegenError) errors.push(e.message);
     else throw e;
   }
-  for (const f of listGenerated(dir, scanned)) if (!existsSync(f.slice(0, -3))) unlinkSync(f);
-  if (errors.length) throw new CodegenError(errors.join("\n"));
-  return written;
-}
-
-/** `generateAll` for every directory, with the define() calls of all of them: a template imports a child component defined in another directory. */
-export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}, ws = new Workspace()): string[] {
-  const defs = scanDefines(dirs, ws);
-  const written: string[] = [];
-  const errors: string[] = [];
-  for (const dir of dirs) {
-    try {
-      written.push(...generateAll(dir, options, defs, dirs, ws));
-    } catch (e) {
-      if (e instanceof CodegenError) errors.push(e.message);
-      else throw e;
-    }
-  }
-  for (const d of crossDirDuplicates(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
-  if (errors.length) throw new CodegenError(errors.join("\n"));
+  for (const f of orphans(dir, scanned)) unlinkSync(f);
+  if (errors.length) throw new CodegenError(errors.join("\n"), written);
   return written;
 }
 
 /**
- * Regenerate what depends on the define() calls under `dirs`, which were `before` at the last generation: the tag maps, and the templates that use a tag whose definition changed.
- * Returns the generated files it rewrote; throws CodegenError with the errors of the files it generated and the tags defined twice.
+ * `generateAll` for every directory, with the define() calls of all of them: a template imports a child component defined in another directory.
+ * With `before`, the define() calls of the last generation, only the templates that use a tag whose definition changed since are generated.
  */
-export function regenerateDefines(dirs: readonly string[], options: GenerateOptions, before: readonly DefineDef[], ws = new Workspace()): string[] {
+export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}, ws = new Workspace(), before?: readonly DefineDef[]): string[] {
   const defs = scanDefines(dirs, ws);
+  const changed = before && changedTags(before, defs);
+  const written: string[] = [];
+  const errors: string[] = [];
+  for (const dir of dirs) {
+    try {
+      written.push(...generateAll(dir, options, defs, dirs, ws, changed));
+    } catch (e) {
+      if (!(e instanceof CodegenError)) throw e;
+      errors.push(e.message);
+      written.push(...e.written);
+    }
+  }
+  for (const d of crossDirDuplicates(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
+  if (errors.length) throw new CodegenError(errors.join("\n"), written);
+  return written;
+}
+
+/** The tags whose definitions (the files that define them and whether their classes are exported, all a generated module depends on) differ between `before` and `after`. */
+function changedTags(before: readonly DefineDef[], after: readonly DefineDef[]): Set<string> {
   const imported = (all: readonly DefineDef[]) => {
     const byTag = new Map<string, string>();
     for (const d of all) byTag.set(d.tag, `${byTag.get(d.tag) ?? ""}${d.file}\0${d.exported}\n`);
     return byTag;
   };
   const was = imported(before);
-  const now = imported(defs);
-  const changed = new Set([...was.keys(), ...now.keys()].filter((tag) => was.get(tag) !== now.get(tag)));
-  const uses = (f: string) => {
-    const html = ws.text(resolve(f));
-    return html !== null && [...shapeOf(resolve(f), html, ws).tags].some((tag) => changed.has(tag));
-  };
-  const written: string[] = [];
-  const errors: string[] = [];
-  for (const dir of dirs) {
-    try {
-      for (const f of changed.size ? listHtml(dir, ws) : []) {
-        if (!isSelected(dir, f, options) || !uses(f)) continue;
-        try {
-          const { out, next } = renderFile(f, options, defs, dir, ws);
-          if (update(out, next)) written.push(out);
-        } catch (e) {
-          if (e instanceof CodegenError) errors.push(e.message);
-          else throw e;
-        }
-      }
-      const tags = renderTags(dir, ws);
-      if (tags.next === null ? removeTags(tags.out) : update(tags.out, tags.next)) written.push(tags.out);
-    } catch (e) {
-      if (e instanceof CodegenError) errors.push(e.message);
-      else throw e;
-    }
-  }
-  for (const d of crossDirDuplicates(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
-  if (errors.length) throw new CodegenError(errors.join("\n"));
-  return written;
+  const now = imported(after);
+  return new Set([...was.keys(), ...now.keys()].filter((tag) => was.get(tag) !== now.get(tag)));
 }
 
 /** Watch .html (and define() calls in .ts) under the directories and regenerate, each time reading the files again; returns a stop function. Errors go to onError and never stop the watcher. */
@@ -819,12 +804,15 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         clearTimeout(timers.get("tags"));
         timers.set("tags", setTimeout(() => {
           const ws = new Workspace(memo);
+          let written: readonly string[];
           try {
-            for (const f of regenerateDefines(dirs, opts, defs, ws)) opts.onGenerate?.(f);
+            written = generateDirs(dirs, opts, ws, defs);
           } catch (e) {
-            if (e instanceof CodegenError) opts.onError?.(e.message);
-            else throw e;
+            if (!(e instanceof CodegenError)) throw e;
+            opts.onError?.(e.message);
+            written = e.written;
           }
+          for (const f of written) opts.onGenerate?.(f);
           defs = scanDefines(dirs, ws);
         }, 100));
         return;
@@ -839,7 +827,8 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
             const ws = new Workspace(memo);
             const html = ws.text(resolve(file));
             if (html === null || !isSelected(dir, file, opts) || isFullPage(html)) return;
-            opts.onGenerate?.(generateFile(file, opts, scanDefines(dirs, ws), dir, ws));
+            const out = generateFile(file, opts, scanDefines(dirs, ws), dir, ws);
+            if (out) opts.onGenerate?.(out);
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;
