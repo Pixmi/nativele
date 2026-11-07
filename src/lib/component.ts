@@ -34,21 +34,23 @@ type EmitArgs<D> = [DetailOf<D>] extends [void] ? [detail?: undefined] : [detail
  * Read-only all the way down: arrays, objects, Maps and Sets inside it cannot be changed through it.
  * State, props and derived values are typed this way, so changing an object in place instead of passing a new one is a tsc error.
  */
-export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+export type DeepReadonly<T> = T extends Opaque
   ? T
-  : T extends Node | Date | RegExp | Promise<unknown>
-    ? T
-    : T extends ReadonlyMap<infer K, infer V>
-      ? ReadonlyMap<K, DeepReadonly<V>>
-      : T extends ReadonlySet<infer V>
-        ? ReadonlySet<DeepReadonly<V>>
-        : T extends readonly unknown[]
-          ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-          : T extends object
-            ? IsPlainObject<T> extends true
-              ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-              : T
-            : T;
+  : T extends ReadonlyMap<infer K, infer V>
+    ? ReadonlyMap<K, DeepReadonly<V>>
+    : T extends ReadonlySet<infer V>
+      ? ReadonlySet<DeepReadonly<V>>
+      : T extends readonly unknown[]
+        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+        : T extends object
+          ? IsPlainObject<T> extends true
+            ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+            : T
+          : T;
+
+// Values a component's data holds but is not made of: DeepReadonly keeps them as they are, and any inside them is not looked for.
+// Library interfaces pass IsPlainObject, so the ones whose members are any (opener, detail, an index signature, ...) are named here.
+type Opaque = Function | EventTarget | Event | Storage | History | IDBCursor | IDBKeyRange | PerformanceEntry | Date | RegExp | Promise<unknown>;
 
 // A copy of only the public members is assignable back to a plain object type, but not to a class with private or protected members: such a class instance keeps its own type, so it can still be passed where the class is expected.
 type IsPlainObject<T> = { [K in keyof T]: T[K] } extends T ? true : false;
@@ -77,34 +79,45 @@ export interface DataOptions<St extends object, P extends object, R, E extends R
 }
 
 type Keys<St, P, R> = (keyof St | keyof P | keyof R) & string;
-// Where `any` sits in the data a component declares, as `state.items[]` or `props.user.name`; only arrays, tuples and plain objects are looked into.
-type AnyPath<T, At extends string, Depth extends unknown[] = []> =
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type IdStart = "_" | "$" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | Uppercase<"a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z">;
+type IsIdentifier<S extends string, Started = false> = S extends `${infer C}${infer Rest}` ? (C extends IdStart | (Started extends true ? "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" : never) ? IsIdentifier<Rest, true> : false) : Started;
+type Quoted<S extends string> = S extends `${infer C}${infer Rest}` ? `${C extends "\\" | '"' ? `\\${C}` : C}${Quoted<Rest>}` : "";
+// A path is written as the property access that reaches the value, so ts-dom check can read it back: `.name`, `["a.b"]`, `[1]` for a tuple element, `[]` for any array or Set element, `[key]` for any value under an index signature or in a Map.
+type Segment<K> = {} extends Record<K & PropertyKey, 1> ? "[key]" : K extends number ? `[${K}]` : K extends string ? (IsIdentifier<K> extends true ? `.${K}` : `["${Quoted<K>}"]`) : never;
+type AnyPath<T, At extends string, Seen extends unknown[] = []> =
   IsAny<T> extends true
     ? At
-    : Depth["length"] extends 4
+    : T extends Opaque
       ? never
-      : T extends (...args: never[]) => unknown
+      : true extends { [I in keyof Seen]: Same<T, Seen[I]> }[number]
         ? never
-        : T extends readonly unknown[]
-          ? number extends T["length"]
-            ? AnyPath<T[number], `${At}[]`, [...Depth, unknown]>
-            : { [K in keyof T & `${number}`]: AnyPath<T[K], `${At}[${K}]`, [...Depth, unknown]> }[keyof T & `${number}`]
-          : T extends object
-            ? IsPlainObject<T> extends true
-              ? { [K in keyof T & string]-?: AnyPath<T[K], `${At}.${K}`, [...Depth, unknown]> }[keyof T & string]
-              : never
-            : never;
+        : T extends ReadonlyMap<unknown, infer V>
+          ? AnyPath<V, `${At}[key]`, [...Seen, T]>
+          : T extends ReadonlySet<infer V>
+            ? AnyPath<V, `${At}[]`, [...Seen, T]>
+            : T extends readonly unknown[]
+              ? number extends T["length"]
+                ? AnyPath<T[number], `${At}[]`, [...Seen, T]>
+                : { [K in keyof T & `${number}`]: AnyPath<T[K], `${At}[${K}]`, [...Seen, T]> }[keyof T & `${number}`]
+              : T extends object
+                ? IsPlainObject<T> extends true
+                  ? { [K in keyof T]-?: AnyPath<T[K], `${At}${Segment<K>}`, [...Seen, T]> }[keyof T]
+                  : never
+                : never;
+// A template typed any, or the bare Template, which a value typed any also gives, has every name.
+type Untyped<S> = IsAny<S> extends true ? true : string extends (S & Schema)["text"] ? true : false;
 // Kept in a tuple, the union is not named by an alias, so tsc prints the paths themselves.
-type AnyIn<St, P, R, E> = [AnyPath<St, "state"> | AnyPath<P, "props"> | AnyPath<R, "derive"> | (IsAny<E> extends true ? "emits" : { [K in keyof E & string]: AnyPath<DetailOf<E[K]>, `emits.${K}`> }[keyof E & string])][0];
+type AnyIn<S, St, P, R, E> = [(Untyped<S> extends true ? "template" : never) | AnyPath<St, "state"> | AnyPath<P, "props"> | AnyPath<R, "derive"> | (IsAny<E> extends true ? "emits" : { [K in keyof E & string]: AnyPath<DetailOf<E[K]>, `emits${Segment<K>}`> }[keyof E & string])][0];
 // An option that is any as a whole has every name, so the other checks look at the options that are not, and a missing name is not reported.
 type Typed<T> = IsAny<T> extends true ? Record<never, never> : T;
-type WholeAny<St, P, R> = true extends IsAny<St> | IsAny<P> | IsAny<R> ? true : false;
+type WholeAny<S, St, P, R> = true extends Untyped<S> | IsAny<St> | IsAny<P> | IsAny<R> ? true : false;
 type MissingBindings<S extends Schema, St, P, R> = Exclude<S["text"] | S["ifs"], Keys<St, P, R>>;
 type Conflicts<St, P, R> = (keyof St & keyof P) | (keyof St & keyof R) | (keyof P & keyof R);
 type ReservedProps<P> = Extract<keyof P, keyof HTMLElement | "refs" | "lists" | "text" | "root" | "state" | "props" | "set" | "batch" | "render" | "show" | "bind" | "on" | "emit">;
 type NativeEmits<E> = Extract<keyof E, keyof HTMLElementEventMap>;
 // A value whose type is an error is any as well, and its path then reads as any: tsc already reports that error.
-type Problems<S extends Schema, St, P, R, E> = [AnyIn<St, P, R, E>] extends [never] ? CheckedProblems<S, St, P, R, E> : IsAny<AnyIn<St, P, R, E>> extends true ? CheckedProblems<S, St, P, R, E> : { anyInContract: AnyIn<St, P, R, E> } & CheckedProblems<S, Typed<St>, Typed<P>, Typed<R>, Typed<E>, WholeAny<St, P, R>>;
+type Problems<S extends Schema, St, P, R, E> = [AnyIn<S, St, P, R, E>] extends [never] ? CheckedProblems<S, St, P, R, E> : IsAny<AnyIn<S, St, P, R, E>> extends true ? CheckedProblems<S, St, P, R, E> : { anyInContract: AnyIn<S, St, P, R, E> } & CheckedProblems<S, Typed<St>, Typed<P>, Typed<R>, Typed<E>, WholeAny<S, St, P, R>>;
 type CheckedProblems<S extends Schema, St, P, R, E, SkipMissing = false> = (SkipMissing extends true ? unknown : [keyof St | keyof P | keyof R] extends [never] ? unknown : [MissingBindings<S, St, P, R>] extends [never] ? unknown : { missingStateKeys: MissingBindings<S, St, P, R> }) &
   ([Conflicts<St, P, R>] extends [never] ? unknown : { conflictingKeys: Conflicts<St, P, R> }) &
   ([ReservedProps<P>] extends [never] ? unknown : { reservedPropNames: ReservedProps<P> }) &
@@ -235,14 +248,14 @@ export function Component<S extends Schema>(
   // The data options are explicitly excluded so that an options object that has them never matches this overload;
   // otherwise TypeScript tries this overload first and cannot infer the type of the parameter of `derive`.
   opts?: ComponentOptions & { state?: never; props?: never; derive?: never; emits?: never },
-): new () => ComponentInstance<S>;
+): Untyped<S> extends true ? { anyInContract: "template" } : new () => ComponentInstance<S>;
 /**
  * With the `state` / `props` / `derive` / `emits` options, {{ holes }} and data-if in the HTML bind to same-named data.
  * When something is wrong the return type becomes an object type describing the problem, so
  * `class X extends Component(...)` fails in tsc and lists the names:
  * `missingStateKeys` (the HTML uses a name that does not exist), `conflictingKeys` (state / props / derive share a name),
  * `reservedPropNames` (a prop shares a name with HTMLElement or a ts-dom member), `nativeEventNames` (emits shares a name with a native event),
- * `anyInContract` (a state or props field, a derived value or an emitted detail is typed any, which would satisfy every check: the paths, such as `props.item`).
+ * `anyInContract` (a state or props field, a derived value, an emitted detail or the template is typed any, which would satisfy every check: the paths, such as `props.item` or `template`).
  * (The check lives in the return type, not in the parameter: in the parameter it prevents TypeScript from inferring the type of derive.)
  */
 export function Component<
@@ -269,7 +282,6 @@ export function Component(
   const propDefaults = (opts.props ?? {}) as Record<string, unknown>;
   const propKeys = Object.keys(propDefaults);
   const stateKeys = Object.keys(opts.state ?? {});
-  // Reject declarations that would cause hard-to-trace problems as early as possible, at definition time
   for (const k of propKeys) {
     if (k in HTMLElement.prototype || RESERVED_NAMES.has(k)) throw new Error(`[reserved-prop] props.${k} has the same name as a member of HTMLElement or ts-dom, which it would shadow. Fix: rename the prop (e.g. ${k}Text).`);
     if (stateKeys.includes(k)) throw new Error(`[conflicting-keys] "${k}" is declared in both state and props. Data must have exactly one owner. Fix: keep it in props (the parent owns it) or in state (the component owns it), not both.`);
@@ -615,7 +627,7 @@ type Mismatched<I, E> = {
   [K in keyof E & keyof I]: IsAny<I[K]> extends true ? never : I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
 }[keyof E & keyof I];
 type AnyHandlers<I, E> = {
-  [K in keyof E & keyof I & string]: IsAny<I[K]> extends true ? `${K}(event)` : I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : IsAny<A[0]> extends true ? `${K}(event)` : never) : never;
+  [K in keyof E & keyof I & string]: IsAny<I[K]> extends true ? `this.${K}` : I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : IsAny<A[0]> extends true ? `this.${K}(event)` : never) : never;
 }[keyof E & keyof I & string];
 type HandlerProblems<I, E> = ([Missing<I, E>] extends [never] ? unknown : { missingHandlers: Missing<I, E> }) &
   ([Mismatched<I, E>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, E>]: Shown<HandlerEvent<E[K]>> } }) &
@@ -630,7 +642,7 @@ type CheckHandlers<I> = IsAny<I> extends true ? unknown : I extends { readonly "
  * Register a custom element. Also checks types: every method name referenced by data-on-* in the HTML must exist on the
  * component as a public method, otherwise tsc reports an error that lists the missing names (`missingHandlers`), and its first
  * parameter, when it has one, must accept the event the template binds it to, otherwise tsc lists the method with that event type (`wrongHandlerParameters`);
- * a first parameter typed any is listed as `anyInContract` (`onPick(event)`).
+ * a first parameter typed any is listed as `anyInContract` (`this.onPick(event)`), and a method member typed any as `this.onPick`.
  */
 export function define<C extends abstract new (...args: never[]) => HTMLElement>(
   name: string,

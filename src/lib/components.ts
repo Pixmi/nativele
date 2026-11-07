@@ -60,6 +60,69 @@ export function matchClose(code: string, start: number, open: string, close: str
   return -1;
 }
 
+/** The offset of the `,` that ends the expression starting at `from` (or of `end`, when none does before it), skipping brackets, strings and comments. */
+function expressionEnd(code: string, from: number, end: number): number {
+  let depth = 0;
+  for (let i = from; i < end; i++) {
+    const skip = skipNonCode(code, i);
+    if (skip > i) i = skip - 1;
+    else if ("([{".includes(code[i] as string)) depth++;
+    else if (")]}".includes(code[i] as string)) depth--;
+    else if (code[i] === "," && depth === 0) return i;
+  }
+  return end;
+}
+
+function skipSpace(code: string, i: number): number {
+  for (;;) {
+    while (/\s/.test(code[i] ?? "")) i++;
+    const skip = code[i] === "/" ? skipNonCode(code, i) : i;
+    if (skip === i) return i;
+    i = skip;
+  }
+}
+
+/** The arguments of the call whose `(` is at `open`: the offset each one starts at. */
+export function callArguments(code: string, open: number): number[] {
+  const close = matchClose(code, open, "(", ")");
+  const out: number[] = [];
+  for (let i = open + 1; close > 0 && i < close; i = expressionEnd(code, i, close) + 1) {
+    i = skipSpace(code, i);
+    if (i < close) out.push(i);
+  }
+  return out;
+}
+
+function stringValue(inner: string): string {
+  try {
+    return JSON.parse(`"${inner.replace(/\\(.)|"/g, (m, c: string | undefined) => (c === "'" ? c : c === undefined ? '\\"' : m))}"`) as string;
+  } catch {
+    return inner;
+  }
+}
+
+/** The keys written in the object literal whose `{` is at `open`, each with its offset and the offset of its value (-1 for a shorthand or a method); spreads and computed keys are left out. */
+export function literalKeys(code: string, open: number): { name: string; at: number; value: number }[] {
+  const close = matchClose(code, open, "{", "}");
+  const out: { name: string; at: number; value: number }[] = [];
+  for (let i = open + 1; close > 0 && i < close; i = expressionEnd(code, i, close) + 1) {
+    i = skipSpace(code, i);
+    const at = i;
+    let name: string | undefined;
+    if (code[i] === '"' || code[i] === "'") {
+      const end = skipNonCode(code, i);
+      name = stringValue(code.slice(i + 1, end - 1));
+      i = end;
+    } else {
+      name = /^[\w$]+/.exec(code.slice(i, close))?.[0];
+      i += name?.length ?? 0;
+    }
+    i = skipSpace(code, i);
+    if (name !== undefined) out.push({ name, at, value: code[i] === ":" ? skipSpace(code, i + 1) : -1 });
+  }
+  return out;
+}
+
 /** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
 const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
 export const TEMPLATE_SPEC = new RegExp(`^${TEMPLATE_PATH}$`);

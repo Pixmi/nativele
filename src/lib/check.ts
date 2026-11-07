@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
-import { classSpan, componentClassHeads, indexDirs, matchClose, scanDefines, Workspace } from "./components.ts";
+import { callArguments, classSpan, componentClassHeads, indexDirs, literalKeys, scanDefines, Workspace } from "./components.ts";
 import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
@@ -16,7 +16,7 @@ export const CHECK_RULES = {
   "conflicting-keys": "the same name is declared in more than one of state, props and derive (found by tsc)",
   "reserved-prop": "a prop is named like a member of HTMLElement or ts-dom (found by tsc)",
   "native-event-name": "an emitted event is named like a native DOM event (found by tsc)",
-  "any-in-contract": "state, props, a derived value, an emitted detail or the event parameter of a data-on-* handler is typed any, which switches its checks off (found by tsc)",
+  "any-in-contract": "state, props, a derived value, an emitted detail, a data-on-* handler or its event parameter, or the template is typed any, which switches its checks off (found by tsc)",
   "missing-handler": "a data-on-* names a method the component class does not define (found by tsc through define())",
   "handler-event-type": "the first parameter of a data-on-* handler does not accept the event the template binds it to (found by tsc)",
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
@@ -68,9 +68,21 @@ const CONTRACT: [string, string, string][] = [
   ["itemComponentClassNotExported", "item-class-not-exported", "export the class passed to define() so its prop types can be read"],
 ];
 
+const STRING = String.raw`"(?:[^"\\]|\\.)*"`;
 const namesAfter = (message: string, key: string): string[] => {
-  const m = new RegExp(`${key}: ((?:"[^"]+"(?:\\s*\\|\\s*)?)+)`).exec(message);
-  return m ? [...(m[1] as string).matchAll(/"([^"]+)"/g)].map((x) => x[1] as string) : [];
+  const m = new RegExp(`${key}: ((?:${STRING}(?:\\s*\\|\\s*)?)+)`).exec(message);
+  return m ? [...(m[1] as string).matchAll(new RegExp(STRING, "g"))].map((x) => JSON.parse(x[0]) as string) : [];
+};
+
+/** The keys an `anyInContract` path names, from its option to the last named property, as written by AnyPath: `.name`, `["a.b"]`; it stops at `[1]`, `[]` and `[key]`. */
+const pathKeys = (path: string): string[] => {
+  const keys = [/^[\w$]+/.exec(path)?.[0] as string];
+  for (let rest = path.slice(keys[0]?.length); ; ) {
+    const m = /^\.([\w$]+)/.exec(rest) ?? new RegExp(`^\\[(${STRING})\\]`).exec(rest);
+    if (!m) return keys;
+    keys.push(m[0].startsWith(".") ? (m[1] as string) : (JSON.parse(m[1] as string) as string));
+    rest = rest.slice(m[0].length);
+  }
 };
 
 /** The `name: type` members of the object type that follows `key: ` in a tsc message. */
@@ -180,23 +192,30 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
     }
     for (const path of namesAfter(e.message, "anyInContract")) {
       named = true;
-      const method = /^([\w$]+)\(event\)$/.exec(path)?.[1];
-      if (method) {
+      if (path === "template") {
+        issue("any-in-contract", `The template passed to Component() is typed any, or as a Template without the types ts-dom gen writes, so tsc checks none of its names: every {{ hole }}, data-if, data-ref and data-on-* is accepted (tsc at ${where}). Fix: import the template from its ./x.html.js module, which ts-dom gen types, and pass it to Component() directly, not through a value typed any.`);
+        continue;
+      }
+      const handler = /^this\.([\w$]+)(\(event\))?$/.exec(path);
+      if (handler) {
+        const method = handler[1] as string;
         const html = templateOf(e);
         const sites = html ? analysisOf(html).eventSites.filter((x) => x.method === method).map((x) => ({ html, ...x })) : [];
-        const bound = [...new Set(sites.map((x) => `data-on-${x.event} on <${x.tag}>`))];
+        const bound = sites.length ? [...new Set(sites.map((x) => `data-on-${x.event} on <${x.tag}>`))].join(" and ") : "a data-on-* attribute";
         const first = sites[0];
         issue(
           "any-in-contract",
-          `The first parameter of ${method}(), which ${bound.length ? bound.join(" and ") : "a data-on-* attribute"} calls, is typed any, so tsc does not check that it accepts the event the template binds it to (tsc at ${where}). Fix: type it as the event it receives (\`Event\` always fits; ts-dom check names the exact type when a narrower one is wrong), or as \`unknown\` and narrow it.`,
+          handler[2]
+            ? `The first parameter of ${method}(), which ${bound} calls, is typed any, so tsc does not check that it accepts the event the template binds it to (tsc at ${where}). Fix: type it as the event it receives (\`Event\` always fits; ts-dom check names the exact type when a narrower one is wrong), or as \`unknown\` and narrow it.`
+            : `${method}, which ${bound} calls, is typed any, so tsc checks neither that it is a method nor which event it accepts (tsc at ${where}). Fix: declare it as a method, \`${method}(e: Event): void { ... }\`, or give the property a function type, \`${method} = (e: Event): void => { ... }\`.`,
           first && { file: rel(first.html), line: first.line, col: first.col },
         );
         continue;
       }
-      const [option, key] = path.split(/[.[]/) as [string, string | undefined];
-      const at = optionAt(readFileSync(file, "utf8"), e, option, key);
-      const what = option === "emits" ? `The detail of ${path} is typed any, so tsc checks neither what emit() sends nor what the parent's handler reads from it` : `${path} is typed any, so tsc checks nothing that reads or assigns it: the template, render(), derive and the parent all accept any value there`;
-      const fix = option === "emits" ? `declare the detail type, event<{ id: string }>(), or event<unknown>() and narrow it in the handler` : `declare a specific type (an empty array or null default needs one: \`[] as Todo[]\`, \`null as User | null\`; a value from JSON.parse or a fetch needs an annotation), or \`unknown\` and narrow it where it is read`;
+      const keys = pathKeys(path);
+      const at = declarationAt(readFileSync(file, "utf8"), e, keys);
+      const what = keys[0] === "emits" ? `The detail of ${path} is typed any, so tsc checks neither what emit() sends nor what the parent's handler reads from it` : `${path} is typed any, so tsc checks nothing that reads or assigns it: the template, render(), derive and the parent all accept any value there`;
+      const fix = keys[0] === "emits" ? `declare the detail type, event<{ id: string }>(), or event<unknown>() and narrow it in the handler` : `declare a specific type (an empty array or null default needs one: \`[] as Todo[]\`, \`null as User | null\`; a value from JSON.parse or a fetch needs an annotation), or \`unknown\` and narrow it where it is read`;
       issue("any-in-contract", `${what} (tsc at ${where}). Fix: ${fix}.`, at && { file: rel(file), ...at });
     }
     for (const [key, rule, fix] of CONTRACT) {
@@ -241,25 +260,22 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
   });
 }
 
-/** Where `option` (and its `key`, when written there) is declared in the Component(...) call that a tsc error at `e` reports. */
-function optionAt(text: string, e: TscError, option: string, key?: string): { line: number; col: number } | undefined {
+/** Where the deepest of `keys` (an option of the Component(...) call that a tsc error at `e` reports, then the properties inside it) is written in that call's object literals. */
+function declarationAt(text: string, e: TscError, keys: readonly string[]): { line: number; col: number } | undefined {
   const lines = text.split("\n");
-  const lineStart = lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0);
   const head = componentClassHeads(lines[e.line - 1] ?? "")[0];
   if (!head) return undefined;
-  const open = lineStart + head.open;
-  const close = matchClose(text, open, "(", ")");
-  const call = text.slice(open, close < 0 ? undefined : close);
-  const opt = new RegExp(`(?<![\\w$.])${option}\\s*:`).exec(call);
-  if (!opt) return undefined;
-  let found = opt.index;
-  const brace = call.indexOf("{", opt.index);
-  if (key && brace >= 0 && /^\s*:\s*$/.test(call.slice(opt.index + option.length, brace))) {
-    const body = call.slice(brace, Math.max(brace, matchClose(call, brace, "{", "}")));
-    const k = new RegExp(`(?<![\\w$.])["']?${key.replace(/[$]/g, "\\$&")}["']?\\s*[:,}(]`).exec(body);
-    if (k) found = brace + k.index;
+  let open = callArguments(text, lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + head.open)[1];
+  let found: number | undefined;
+  for (const key of keys) {
+    if (open === undefined || text[open] !== "{") break;
+    const entry = literalKeys(text, open).find((k) => k.name === key);
+    if (!entry) break;
+    found = entry.at;
+    open = entry.value < 0 ? undefined : entry.value;
   }
-  const before = text.slice(0, open + found).split("\n");
+  if (found === undefined) return undefined;
+  const before = text.slice(0, found).split("\n");
   return { line: before.length, col: (before.at(-1) as string).length + 1 };
 }
 
