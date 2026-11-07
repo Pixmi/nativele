@@ -4,7 +4,7 @@ import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
-import { componentIndex, matchClose, Workspace } from "./components.ts";
+import { componentIndex, literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex } from "./components.ts";
 import { manifestsAt, packageOf } from "./manifest.ts";
@@ -59,17 +59,35 @@ export const UNUSED_MARKUP_RULES = {
 
 const at = (a: Analysis, key: string) => a.locs.get(key) ?? { line: 1, col: 1 };
 
-const REFS_PATTERN = new RegExp(String.raw`\{([^{}]*)\}\s*=\s*(?:[\w$]+(?:\??\.[\w$]+|\([^()]*\)|!)*\??\.)?refs(?!\s*(?:[\w$.\[(]|\?\.))|\brefs\s*:\s*\{([^{}]*)\}`, "g");
+const PATTERN_SOURCE = /\s*=(?![=>])\s*((?:[\w$]+|\((?:[^()]|\([^()]*\))*\))(?:\??\.[\w$]+|\([^()]*\)|\[[^\]]*\]|!)*)/y;
+const CONTINUED = /\s*(?:[.([`]|\?\.)/y;
 
-/** The keys that `code` destructures from a `.refs` object (`const { a, b: x } = inst.refs`, `const { refs: { a } } = ...`); null when a rest element (`...rest`) takes them all. */
+function patternKeys(code: string, open: number, fromRefs: boolean, keys: Set<string>): boolean {
+  for (const { name, value } of literalKeys(code, open)) {
+    if (fromRefs) keys.add(name);
+    else if (code[value] === "{" && !patternKeys(code, value, name === "refs", keys)) return false;
+  }
+  return !fromRefs || !/\.\.\.\s*[\w$]+\s*\}$/.test(code.slice(open, matchClose(code, open, "{", "}") + 1));
+}
+
 function refsDestructured(code: string): Set<string> | null {
   const keys = new Set<string>();
-  for (const m of code.matchAll(REFS_PATTERN)) {
-    for (const entry of (m[1] ?? m[2] ?? "").split(",")) {
-      const e = entry.trim();
-      if (e.startsWith("...")) return null;
-      const key = /^["']?([\w$]+)["']?\s*(?:[:=]|$)/.exec(e)?.[1];
-      if (key) keys.add(key);
+  const opens: number[] = [];
+  for (let i = 0; i < code.length; i++) {
+    const skip = skipNonCode(code, i);
+    if (skip > i) i = skip - 1;
+    else if (code[i] === "{") opens.push(i);
+    else if (code[i] === "}") {
+      const open = opens.pop();
+      if (open === undefined) continue;
+      let before = open - 1;
+      while (/\s/.test(code[before] ?? "")) before--;
+      if (code[before] === ":") continue;
+      PATTERN_SOURCE.lastIndex = i + 1;
+      const source = PATTERN_SOURCE.exec(code)?.[1];
+      if (source === undefined) continue;
+      CONTINUED.lastIndex = PATTERN_SOURCE.lastIndex;
+      if (!patternKeys(code, open, /(?<![\w$])refs!*$/.test(source) && !CONTINUED.test(code), keys)) return null;
     }
   }
   return keys;
@@ -83,15 +101,14 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
     out.push({ rule, severity: "error", message, ...at(a, key) });
   // Dynamic access (refs[k], text[k], lists[k]) or an alias (const r = this.refs) hides which names are used: treat everything as used.
   const dynamic = (obj: string) => used(`\\b${obj}\\[\\s*[^"'\\s\\]]`) || used(`[\\w$]\\s*=\\s*this\\.${obj}\\s*[;,)\\n]|[(,]\\s*this\\.${obj}\\s*[,)]`);
-  const destructured = refsDestructured(code);
-  const dynRefs = dynamic("refs") || destructured === null;
+  const destructured = a.scope.refs.size && !dynamic("refs") ? refsDestructured(code) : null;
   const dynText = dynamic("text");
   const dynLists = dynamic("lists");
   // With a state/props/derive option, {{ }} and data-if bind to same-named fields (names are checked by tsc),
   // so they do not have to appear in the code.
   const stateful = code.includes(STATEFUL_MARK);
 
-  for (const n of dynRefs ? [] : a.scope.refs.keys()) {
+  for (const n of destructured ? a.scope.refs.keys() : []) {
     if (!destructured?.has(n) && !used(`refs\\.${esc(n)}\\b|refs\\[\\s*["']${esc(n)}["']`)) {
       add("unused-ref", `data-ref="${n}" is never used by the component class. Fix: use this.refs.${n}, or remove the attribute if the element needs no TypeScript access.`, `ref:${n}`);
     }

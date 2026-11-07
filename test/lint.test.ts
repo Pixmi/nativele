@@ -89,6 +89,22 @@ describe("dynamic access", () => {
     expect(unused(`const { refs: { c } } = tpl.instantiate();`)).toEqual(["a", "b"]);
     expect(unused(`const { a = null } = this.refs?.x;`)).toEqual(["a", "b", "c"]);
     expect(unused(`const { a, ...rest } = this.refs;`)).toEqual([]);
+    expect(unused(`const { a, b } = this.refs\nfocus(a);`)).toEqual(["c"]);
+    expect(unused(`const { a, b } = this.refs as R;`)).toEqual(["c"]);
+    expect(unused(`const { a } = this.refs satisfies R;`)).toEqual(["b", "c"]);
+    expect(unused(`const { a } = this.refs!;`)).toEqual(["b", "c"]);
+    expect(unused(`({ a } = this.refs);`)).toEqual(["b", "c"]);
+    expect(unused(`const { root, refs: { b: el } } = tpl.instantiate();`)).toEqual(["a", "c"]);
+    expect(unused(`const { a } = this.refs.b;`)).toEqual(["a", "c"]);
+    expect(unused(`const { a } = this.refs\n  .b;`)).toEqual(["a", "b", "c"]);
+    expect(unused(`const { a } = this.refs(b);`)).toEqual(["a", "b", "c"]);
+  });
+  it("does not take a refs: { ... } outside a destructuring pattern for a destructured ref", () => {
+    const html = `<b data-ref="a"></b><i data-ref="b"></i>`;
+    const unused = (code: string) => unusedMarkup(html, code).map((x) => x.message.match(/data-ref="(\w)"/)?.[1]);
+    expect(unused(`const o = { refs: { a: 1 } };`)).toEqual(["a", "b"]);
+    expect(unused(`type T = { refs: { a: HTMLInputElement } };`)).toEqual(["a", "b"]);
+    expect(unused(`const v: { refs: { a: HTMLInputElement } } = inst;`)).toEqual(["a", "b"]);
   });
 });
 
