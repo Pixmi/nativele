@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
-import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml, scanDefines } from "./codegen.ts";
-import type { DefineDef } from "./codegen.ts";
+import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
+import { scanDefines } from "./components.ts";
+import type { DefineDef } from "./components.ts";
 import { checkA11y } from "./a11y.ts";
 import { contractsAt, contractsFor } from "./lint.ts";
 
@@ -51,12 +52,12 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let defs: DefineDef[] | undefined;
   const existing = () => dirs.filter((d) => existsSync(d));
   const allDefs = () => (defs ??= scanDefines(existing()));
-  const isDefineFile = (file: string) => allDefs().some((d) => resolve(d.file) === file);
+  const isDefineFile = (file: string) => allDefs().some((d) => resolve(d.file) === file || resolve(d.classFile) === file);
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
 
   // Read again for every check, so that a click-semantics warning follows the child templates as they are saved.
-  const children = () => contractsFor(existing(), process.cwd(), allDefs());
+  const children = () => contractsFor(existing(), process.cwd());
   const warnA11y = (warn: (m: string) => void) => {
     if (!a11y) return;
     const contracts = children();
@@ -77,7 +78,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     const out = `${file}.ts`;
     const before = read(out);
     try {
-      generateFile(file, generate, allDefs());
+      generateFile(file, generate, allDefs(), dir);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;

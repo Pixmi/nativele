@@ -270,9 +270,11 @@ this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.labe
 this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
   },
   "no-importer": {
-    why: "A template that no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten.",
+    why: "A template that no component class passes to Component() and no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten. A module that only re-exports it (export { default as tpl } from \"./card.html.js\") does not use it.",
     bad: `// card.html exists, but no .ts file contains
-// import tpl from "./card.html.js"`,
+// import tpl from "./card.html.js"
+// templates/index.ts only re-exports it, and no class uses that export
+export { default as cardTpl } from "./card.html.js";`,
     good: `// card.ts
 import tpl from "./card.html.js";`,
   },
@@ -311,7 +313,7 @@ override render(view: { name: string }) {
 }`,
   },
   "unchecked-custom-elements": {
-    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of (an element from another library, a component outside the scanned folders, or a tag defined in several packages and not exactly once in the template's package) those checks are skipped, and this one warning per run lists the tags so the gap is visible. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of (an element from another library, a component outside the scanned folders, a define() whose class is not a class extending Component(...) that lint can follow through the imports, or a tag defined in several packages and not exactly once in the template's package) those checks are skipped, and this one warning per run lists the tags so the gap is visible. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned
 npx ts-dom lint src/pages`,
     good: `npx ts-dom lint src/pages src/ui

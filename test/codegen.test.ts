@@ -423,7 +423,7 @@ describe("scanDefines ignores define() calls inside strings and comments", () =>
     const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { scanDefines } = await import("../src/lib/codegen.ts");
+    const { scanDefines } = await import("../src/lib/components.ts");
     const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -443,7 +443,7 @@ describe("scanDefines ignores define() calls inside strings and comments", () =>
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { scanDefines } = await import("../src/lib/codegen.ts");
+    const { scanDefines } = await import("../src/lib/components.ts");
     const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(dir, "a.ts"), 'const s = "export class A {}";\nclass A {}\ndefine("x-a", A);');
     expect(scanDefines(dir)).toMatchObject([{ tag: "x-a", exported: false }]);

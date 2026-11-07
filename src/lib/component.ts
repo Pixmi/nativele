@@ -113,6 +113,8 @@ export type EventHit<Item = unknown, KeyField extends keyof Item = never> = [Key
 export interface ComponentInstance<S extends Schema> extends HTMLElement {
   /** Type inference only (define() uses it to check the data-on-* methods and the events they receive); does not exist at runtime. */
   readonly "~events"?: S["events"];
+  /** Type inference only (define() names the template in its errors); does not exist at runtime. */
+  readonly "~template"?: S["file"];
   readonly refs: S["refs"];
   readonly lists: Lists<S>;
   /** Maps to {{ name }}: assigning a value updates every place the hole appears. */
@@ -194,7 +196,7 @@ export function Component<
 >(
   tpl: Template<S>,
   opts: DataOptions<St, P, R, E>,
-): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E>;
+): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E> & { template: S["file"] };
 export function Component(
   tpl: Template<Schema>,
   opts: ComponentOptions & {
@@ -569,9 +571,12 @@ type Missing<I, E> = Exclude<keyof E, keyof I>;
 type Mismatched<I, E> = {
   [K in keyof E & keyof I]: I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
 }[keyof E & keyof I];
-type CheckHandlers<I> = I extends { readonly "~events"?: infer E }
-  ? ([Missing<I, NonNullable<E>>] extends [never] ? unknown : { missingHandlers: Missing<I, NonNullable<E>> }) &
-      ([Mismatched<I, NonNullable<E>>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, NonNullable<E>>]: HandlerEvent<NonNullable<E>[K]> } })
+type HandlerProblems<I, E> = ([Missing<I, E>] extends [never] ? unknown : { missingHandlers: Missing<I, E> }) &
+  ([Mismatched<I, E>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, E>]: HandlerEvent<E[K]> } });
+type CheckHandlers<I> = I extends { readonly "~events"?: infer E; readonly "~template"?: infer F }
+  ? IsClean<HandlerProblems<I, NonNullable<E>>> extends true
+    ? unknown
+    : HandlerProblems<I, NonNullable<E>> & { template: F }
   : unknown;
 
 /**

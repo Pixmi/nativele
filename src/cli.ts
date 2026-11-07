@@ -6,7 +6,8 @@ import { CHECK_RULES, runCheck } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, scanDefines, watchAll } from "./lib/codegen.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, watchAll } from "./lib/codegen.ts";
+import { scanDefines } from "./lib/components.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, runLint } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]

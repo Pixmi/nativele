@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
-import { analyze, listHtml, listTs, matchClose, scanDefines, templateImports } from "./codegen.ts";
-import type { Analysis, DefineDef, Diagnostic } from "./codegen.ts";
+import { analyze, listHtml } from "./codegen.ts";
+import type { Analysis, Diagnostic } from "./codegen.ts";
+import { componentIndex, diskSources, indexDirs, listTs, matchClose, TEMPLATE_SPEC } from "./components.ts";
+import type { ComponentIndex, Sources } from "./components.ts";
 
 export type { Diagnostic };
 
@@ -13,47 +15,10 @@ export interface LintIssue extends Diagnostic {
 
 const esc = (s: string) => s.replace(/[$]/g, "\\$&");
 
-/** Marker that templateCode() appends when it sees `Component(tpl, { state | props | derive })`. */
+/** Marker that ownerCode() adds when it sees `Component(tpl, { state | props | derive })`. */
 const STATEFUL_MARK = "/*ts-dom:stateful*/";
 
-// ---------------------------------------------------------------------------
-// Reading the component class out of TypeScript source (text based, no parser)
-// ---------------------------------------------------------------------------
-
-/** Find the local name of `import X from "<spec>"`. */
-function defaultImportName(code: string, spec: string): string | null {
-  return templateImports(code).find((i) => i.spec === spec && i.local)?.local ?? null;
-}
-
-const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
-const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
-
-/** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
-export function componentClassHeads(code: string): { name?: string; open: number }[] {
-  const out: { name?: string; open: number }[] = [];
-  for (const m of code.matchAll(CLASS_NAME)) {
-    let at = m.index + m[0].length;
-    if (code[at] === "<") {
-      const end = matchClose(code, at, "<", ">");
-      if (end < 0) continue;
-      at = end + 1;
-    }
-    EXTENDS_COMPONENT.lastIndex = at;
-    const e = EXTENDS_COMPONENT.exec(code);
-    if (e) out.push({ ...(m[1] ? { name: m[1] } : {}), open: at + e[0].length - 1 });
-  }
-  return out;
-}
-
-/** The `Component(...)` call whose `(` is at `open` and the class body after it: the offsets of the call's `)` and of the body's braces; null when one is not closed. */
-export function classSpan(code: string, open: number): { callEnd: number; bodyStart: number; bodyEnd: number } | null {
-  const callEnd = matchClose(code, open, "(", ")");
-  if (callEnd < 0) return null;
-  const bodyStart = code.indexOf("{", callEnd);
-  if (bodyStart < 0) return null;
-  const bodyEnd = matchClose(code, bodyStart, "{", "}");
-  return bodyEnd > 0 ? { callEnd, bodyStart, bodyEnd } : null;
-}
+const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
 
 export interface ComponentClass {
   /** Full text of the `Component(tpl, {...})` call, parentheses included. */
@@ -62,32 +27,31 @@ export interface ComponentClass {
   body: string;
 }
 
-/** Find every `class X extends Component(<tpl> ...)` and return its call and class body. Empty when none is found. */
-export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
-  const local = defaultImportName(code, htmlSpec);
-  if (!local) return [];
-  const arg = new RegExp(`\\(\\s*${esc(local)}\\b`, "y");
-  return componentClassHeads(code).flatMap(({ open }) => {
-    arg.lastIndex = open;
-    const span = arg.test(code) ? classSpan(code, open) : null;
-    return span ? [{ call: code.slice(open, span.callEnd + 1), body: code.slice(span.bodyStart, span.bodyEnd + 1) }] : [];
-  });
+/**
+ * The code that uses a template: the bodies of the component classes that pass it to Component(), marked when their options have state, props or derive.
+ * A template no class uses is used by the modules that import it, so their whole text counts.
+ */
+function ownerCode(classes: readonly ComponentClass[], importers: readonly string[]): string {
+  if (classes.length) return classes.map((c) => `${DATA_OPTION.test(c.call) ? `${STATEFUL_MARK}\n` : ""}${c.body}`).join("\n");
+  return importers.map((code) => (/Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code)).join("\n");
 }
 
-const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
+/** The index of one module's text, and the template that `htmlSpec` names from it. */
+function oneModule(code: string, htmlSpec: string): { index: ComponentIndex; html: string } {
+  const file = resolve("ts-dom-module.ts");
+  return { index: componentIndex([file], { text: (f) => (f === file ? code : null) }), html: resolve(TEMPLATE_SPEC.exec(htmlSpec)?.[1] ?? htmlSpec) };
+}
 
-/**
- * Return only the text of the classes that extend `Component(<tpl> ...)`,
- * so that a file importing several templates checks each one against its own class only.
- * Falls back to the whole file when no class can be found (for example when Component is wrapped in a helper).
- */
+/** Every class in `code` that passes the template imported as `htmlSpec` to Component(), with its call and class body. */
+export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
+  const { index, html } = oneModule(code, htmlSpec);
+  return index.byTemplate.get(html) ?? [];
+}
+
+/** The text of `code` that uses the template imported as `htmlSpec` (see ownerCode). */
 export function templateCode(code: string, htmlSpec: string): string {
-  const classes = componentClasses(code, htmlSpec);
-  if (classes.length) {
-    // The Component(...) arguments matter too: the state / props options live there.
-    return classes.map((c) => `${DATA_OPTION.test(c.call) ? `${STATEFUL_MARK}\n` : ""}${c.body}`).join("\n");
-  }
-  return /Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code;
+  const { index, html } = oneModule(code, htmlSpec);
+  return ownerCode(index.byTemplate.get(html) ?? [], index.importers.has(html) ? [code] : []);
 }
 
 /** A template as one lint run reads it: its text and analysis, shared by every check. */
@@ -108,30 +72,6 @@ export function readTemplates(dirs: readonly string[]): LintTemplate[] {
   );
 }
 
-/** A module that imports a template: its source and the specifier it imports the template with. */
-interface Importer {
-  code: string;
-  spec: string;
-}
-
-/** The modules that import each template, by the template's absolute path; each file is read once. */
-function importersByTemplate(tsFiles: readonly string[]): Map<string, Importer[]> {
-  const out = new Map<string, Importer[]>();
-  for (const f of new Set(tsFiles.map((t) => resolve(t)))) {
-    const code = readFileSync(f, "utf8");
-    const seen = new Set<string>();
-    for (const { html, spec } of templateImports(code)) {
-      const file = resolve(dirname(f), html);
-      if (seen.has(`${file}\0${spec}`)) continue;
-      seen.add(`${file}\0${spec}`);
-      const here = out.get(file);
-      if (here) here.push({ code, spec });
-      else out.set(file, [{ code, spec }]);
-    }
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // unused-markup: things the HTML declares but the component class never uses
 // ---------------------------------------------------------------------------
@@ -142,7 +82,7 @@ export const UNUSED_MARKUP_RULES = {
   "unused-text": "{{ hole }} is never filled",
   "unused-list": "data-each is never rendered",
   "unused-item-name": "a name inside a data-each template is never referenced",
-  "no-importer": "no TypeScript file imports this template",
+  "no-importer": "no component class or module uses this template",
 } as const;
 
 const at = (a: Analysis, key: string) => a.locs.get(key) ?? { line: 1, col: 1 };
@@ -202,30 +142,37 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   return out;
 }
 
-/** Check every HTML template under `dirs` against the TypeScript files that import it. */
+/** Check every HTML template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return usage(readTemplates(dirs), importersByTemplate(tsFiles), cwd);
+  const sources = diskSources();
+  return usage(readTemplates(dirs), componentIndex(tsFiles, sources), sources, cwd);
 }
 
-function usage(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, cwd: string): LintIssue[] {
+/** The unused-markup findings of one template, or null when no class or module uses it. */
+export function templateUsage(html: string, text: string, analysis: Analysis, index: ComponentIndex, sources: Sources): Diagnostic[] | null {
+  const classes = index.byTemplate.get(resolve(html)) ?? [];
+  const importers = index.importers.get(resolve(html)) ?? [];
+  if (!classes.length && !importers.length) return null;
+  return unusedMarkup(text, ownerCode(classes, importers.map((i) => sources.text(i.file) ?? "")), analysis);
+}
+
+function usage(templates: readonly LintTemplate[], index: ComponentIndex, sources: Sources, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
   for (const { file: html, text, analysis } of templates) {
-    const name = basename(html);
-    const by = importers.get(resolve(html)) ?? [];
     const file = relative(cwd, html);
-    if (!by.length) {
+    const found = templateUsage(html, text, analysis, index, sources);
+    if (!found) {
       issues.push({
         file,
         rule: "no-importer",
         severity: "error",
         line: 1,
         col: 1,
-        message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
+        message: `No component class passes this template to Component(), and no TypeScript file imports it (a module that only re-exports it does not use it). Fix: add \`import tpl from "./${basename(html)}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
       });
       continue;
     }
-    const code = by.map((i) => templateCode(i.code, i.spec)).join("\n");
-    for (const d of unusedMarkup(text, code, analysis)) issues.push({ file, ...d });
+    for (const d of found) issues.push({ file, ...d });
   }
   return issues;
 }
@@ -344,8 +291,8 @@ function kindOf(valueText: string): PropKind {
   return "other";
 }
 
-/** Every definition of each tag found by contractsFor, with the folder of the package that defines it. */
-export type Contracts = Map<string, { pkg: string; contract: Contract }[]>;
+/** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
+export type Contracts = Map<string, { pkg: string; contract: Contract | null; at: string }[]>;
 
 /** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; `folders` keeps the answer for every folder on the way. */
 function packageOf(dir: string, folders: Map<string, string>): string {
@@ -369,21 +316,18 @@ function lookupOf(all: Contracts) {
  * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[], cwd = process.cwd(), defs: readonly DefineDef[] = scanDefines(dirs)): Contracts {
+export function contractsFor(dirs: string[], cwd = process.cwd(), index: ComponentIndex = indexDirs(dirs), sources: Sources = diskSources()): Contracts {
   const out: Contracts = new Map();
   const { folders } = lookupOf(out);
-  for (const def of defs) {
-    const code = readFileSync(def.file, "utf8");
-    const head = componentClassHeads(code).find((h) => h.name === def.className);
-    const close = head ? matchClose(code, head.open, "(", ")") : -1;
-    if (!head || close < 0) continue;
-    const call = code.slice(head.open, close + 1);
-    const contract: Contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
-    const tpl = /^\(\s*([A-Za-z_$][\w$]*)/.exec(call)?.[1];
-    const spec = tpl && templateImports(code).find((i) => i.local === tpl)?.html;
-    const html = spec && resolve(dirname(def.file), spec);
-    if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract }]);
+  for (const def of index.defines) {
+    const c = def.component;
+    let contract: Contract | null = null;
+    if (c) {
+      contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(c.call, "emits")) };
+      const html = c.template && sources.text(c.template);
+      if (c.template && typeof html === "string") contract.template = { file: relative(cwd, c.template), html };
+    }
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract, at: `${relative(cwd, def.file)}:${def.line}` }]);
   }
   return out;
 }
@@ -401,7 +345,8 @@ export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, C
     const own = new Map<string, Contract>();
     for (const [tag, defs] of all) {
       const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
-      if (here.length === 1) own.set(tag, here[0]!.contract);
+      const contract = here.length === 1 ? here[0]?.contract : null;
+      if (contract) own.set(tag, contract);
     }
     byPackage.set(pkg, (out = own));
   }
@@ -574,33 +519,40 @@ export function dataFlow(
   return out;
 }
 
-/** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
+/** Run the data-flow checks on every template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return flow(readTemplates(dirs), importersByTemplate(tsFiles), contractsFor(dirs, cwd), cwd);
+  return flow(readTemplates(dirs), componentIndex(tsFiles), contractsFor(dirs, cwd), cwd);
 }
 
-function flow(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, contracts: Contracts, cwd: string): LintIssue[] {
+type Unchecked = { first: LintIssue } & ({ cause: "missing" } | { cause: "unreadable"; at: string } | { cause: "ambiguous"; packages: string[] });
+
+function flow(templates: readonly LintTemplate[], index: ComponentIndex, contracts: Contracts, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
-  const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
+  const unchecked = new Map<string, Unchecked>();
   for (const { file: html, text, analysis } of templates) {
     const file = relative(cwd, html);
-    const classes = (importers.get(resolve(html)) ?? []).flatMap((i) => componentClasses(i.code, i.spec));
     const here = contractsAt(contracts, html);
-    for (const d of dataFlow(text, classes, here, analysis)) issues.push({ file, ...d });
+    for (const d of dataFlow(text, index.byTemplate.get(resolve(html)) ?? [], here, analysis)) issues.push({ file, ...d });
     for (const use of analysis.customUses) {
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
-      const defs = contracts.get(use.tag);
+      const defs = contracts.get(use.tag) ?? [];
       const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-      unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
+      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === packageOf(dirname(resolve(html)), lookupOf(contracts).folders));
+      if (!defs.length) unchecked.set(use.tag, { first, cause: "missing" });
+      else if (pkg.length === 1) unchecked.set(use.tag, { first, cause: "unreadable", at: pkg[0]?.at ?? "" });
+      else unchecked.set(use.tag, { first, cause: "ambiguous", packages: defs.map((d) => relative(cwd, d.pkg) || ".") });
     }
   }
-  const missing = [...unchecked].filter(([, u]) => !u.packages);
-  const ambiguous = [...unchecked].filter(([, u]) => u.packages);
-  const head = [...missing, ...ambiguous][0]?.[1].first;
+  const all = [...unchecked];
+  const missing = all.filter(([, u]) => u.cause === "missing");
+  const unreadable = all.flatMap(([tag, u]) => (u.cause === "unreadable" ? [`<${tag}> (${u.at})`] : []));
+  const ambiguous = all.flatMap(([tag, u]) => (u.cause === "ambiguous" ? [`<${tag}> (${u.packages.join(", ")})`] : []));
+  const head = [...missing, ...all.filter(([, u]) => u.cause !== "missing")][0]?.[1].first;
   if (head) {
     const groups = [
       ...(missing.length ? [`No define() in the scanned folders: ${missing.map(([tag]) => `<${tag}>`).join(", ")}`] : []),
-      ...(ambiguous.length ? [`Defined in several packages, and not exactly once in the template's package: ${ambiguous.map(([tag, u]) => `<${tag}> (${u.packages?.join(", ")})`).join(", ")}`] : []),
+      ...(unreadable.length ? [`define() passes a class that is not a class extending Component(...) lint can follow through the imports: ${unreadable.join(", ")}`] : []),
+      ...(ambiguous.length ? [`Defined in several packages, and not exactly once in the template's package: ${ambiguous.join(", ")}`] : []),
     ];
     issues.push({
       ...head,
@@ -624,10 +576,11 @@ export interface LintOptions {
  * Each template is parsed once, and the TypeScript sources and child definitions are read once, for all of them.
  */
 export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), templates = readTemplates(dirs) }: LintOptions = {}): LintIssue[] {
-  const importers = importersByTemplate(dirs.flatMap(listTs));
-  const contracts = contractsFor(dirs, cwd);
+  const sources = diskSources();
+  const index = componentIndex(dirs.flatMap(listTs), sources);
+  const contracts = contractsFor(dirs, cwd, index, sources);
   const checks = a11y ? templates.flatMap((t) => checkA11y(t.text, [], contractsAt(contracts, t.file), t.analysis.root).map((d) => ({ file: relative(cwd, t.file), ...d }))) : [];
-  return [...usage(templates, importers, cwd), ...flow(templates, importers, contracts, cwd), ...checks];
+  return [...usage(templates, index, sources, cwd), ...flow(templates, index, contracts, cwd), ...checks];
 }
 
 /** `file:line:col severity [rule] message` for a lint issue. */

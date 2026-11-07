@@ -133,7 +133,7 @@ describe("reading component classes", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(d, "kid.html"), `<p></p>`);
     writeFileSync(join(d, "kid.ts"), `import tpl from "./kid.html.js";\nexport class Kid<T> extends Component(tpl, { props: { label: "" } }) {}\ndefine("x-kid", Kid);`);
-    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract.props.keys() ?? [])]).toEqual(["label"]);
+    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract?.props.keys() ?? [])]).toEqual(["label"]);
   });
 });
 

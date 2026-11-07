@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import { A11Y_RULES, checkA11y } from "./a11y.ts";
-import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
+import { contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateUsage, UNUSED_MARKUP_RULES } from "./lint.ts";
 import type { Contracts } from "./lint.ts";
-import { analyze, TEMPLATE_SPEC } from "./codegen.ts";
+import { analyze } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
+import { diskSources, indexDirs, TEMPLATE_SPEC } from "./components.ts";
+import type { ComponentIndex, Sources } from "./components.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
@@ -27,32 +28,50 @@ const ignoreSchema = [
   },
 ];
 
-/** Child component contracts, scanned once per process from the working directory. */
-let contracts: Contracts | null = null;
-const getContracts = () => (contracts ??= contractsFor([process.cwd()]));
+let project: { sources: Sources; index: ComponentIndex; contracts: Contracts } | null = null;
+const getProject = () => {
+  if (!project) {
+    const sources = diskSources();
+    const index = indexDirs([process.cwd()], sources);
+    project = { sources, index, contracts: contractsFor([process.cwd()], process.cwd(), index, sources) };
+  }
+  return project;
+};
 
-// Each template is analyzed once for a given file text and template text, and each group runs once on it, however many rules ask for it.
-const cache = new Map<string, { code: string; html: string; analysis: Analysis; diags: Partial<Record<Group, Diagnostic[]>> }>();
-function groupDiagnostics(group: Group, html: string, code: string, spec: string, filename: string): Diagnostic[] {
-  const key = `${filename}\0${spec}`;
-  let hit = cache.get(key);
-  if (!hit || hit.code !== code || hit.html !== html) cache.set(key, (hit = { code, html, analysis: analyze(html), diags: {} }));
+const cache = new Map<string, { analysis: Analysis; diags: Partial<Record<Group, Diagnostic[]>> }>();
+function groupDiagnostics(group: Group, html: string): Diagnostic[] {
+  const { sources, index, contracts } = getProject();
+  const text = sources.text(html) ?? "";
+  let hit = cache.get(html);
+  if (!hit) cache.set(html, (hit = { analysis: analyze(text), diags: {} }));
   const a = hit.analysis;
   return (hit.diags[group] ??=
-    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), contractsAt(getContracts(), filename), a));
-}
-
-function readTemplate(filename: string, html: string): string | null {
-  try {
-    return readFileSync(resolve(dirname(filename), html), "utf8");
-  } catch {
-    return null; // a missing file is reported by tsc / the bundler
-  }
+    group === "unused-markup"
+      ? (templateUsage(html, text, a, index, sources) ?? [])
+      : group === "a11y"
+        ? checkA11y(text, [], contractsAt(contracts, html), a.root)
+        : dataFlow(text, index.byTemplate.get(html) ?? [], contractsAt(contracts, html), a));
 }
 
 /**
- * Build an oxlint rule that checks every `import x from "./name.html.js"` and reports the findings
- * on the import line (an oxlint plugin can only report inside the file being linted).
+ * The templates whose findings belong on the import of `spec` in `file`: those of the classes declared in `file` that get their template through this import,
+ * and the template the import names itself when no class anywhere uses it.
+ */
+function templatesThrough(file: string, spec: string): { html: string; label: string }[] {
+  const { index } = getProject();
+  const facts = index.modules.get(file);
+  const locals = new Set(facts?.imports.filter((i) => i.spec === spec).map((i) => i.local));
+  const out = new Map<string, string>();
+  for (const c of index.components) if (c.file === file && c.template && c.arg && locals.has(c.arg)) out.set(c.template, "");
+  const named = TEMPLATE_SPEC.exec(spec)?.[1];
+  const direct = named && resolve(dirname(file), named);
+  if (direct && !index.byTemplate.has(direct) && index.importers.get(direct)?.some((i) => i.file === file)) out.set(direct, "");
+  return [...out.keys()].map((html) => ({ html, label: html === direct ? spec : `./${relative(dirname(file), html).split(sep).join("/")}` }));
+}
+
+/**
+ * Build an oxlint rule that reports the findings of each template on the import that brings it into the file of the class that uses it
+ * (an oxlint plugin can only report inside the file being linted).
  * The message starts with the HTML location, the rule id and what to do: `./x.html.js:3:5 [unused-ref] ...`.
  * `only` limits the rule to one rule id of the group; without it the rule reports the whole group, minus `ignore`.
  */
@@ -62,16 +81,12 @@ function templateRule(group: Group, description: string, only?: string) {
     create(context: Context) {
       return {
         ImportDeclaration(node: ImportNode) {
-          const spec = node.source.value;
-          const path = TEMPLATE_SPEC.exec(spec)?.[1];
-          if (!path) return;
-          const html = readTemplate(context.filename, path);
-          if (html === null) return;
-          const code = context.sourceCode.text;
           const ignore = context.options?.[0]?.ignore ?? [];
-          for (const d of groupDiagnostics(group, html, code, spec, context.filename)) {
-            if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
-            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
+          for (const { html, label } of templatesThrough(resolve(context.filename), node.source.value)) {
+            for (const d of groupDiagnostics(group, html)) {
+              if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
+              context.report({ message: `${label}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
+            }
           }
         },
       };
@@ -86,7 +101,7 @@ const { "unchecked-custom-elements": _unchecked, ...dataFlowRules } = DATA_FLOW_
 export default {
   meta: { name: "ts-dom" },
   rules: {
-    /** The HTML declares markup that this file never uses. Reported as errors. */
+    /** The HTML declares markup that the component class never uses. Reported as errors. */
     "unused-markup": templateRule("unused-markup", "Markup declared in the HTML (data-ref, data-if, data-each, {{ }}, data-on-*) must be used by the component class"),
     /** ARIA and basic accessibility problems in the template. Off by default. */
     a11y: templateRule("a11y", "Check the template for ARIA and basic accessibility problems"),

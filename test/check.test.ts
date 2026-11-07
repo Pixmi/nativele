@@ -56,7 +56,7 @@ describe("ts-dom check on a project", () => {
 });
 
 describe("ts-dom check: missing-handler", () => {
-  it("is reported once, by tsc through define(), when define() is in another file", () => {
+  it("is reported once, at the template, when define() is in another file", () => {
     const dir = join(process.cwd(), "check-handler-tmp");
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir);
@@ -72,8 +72,9 @@ describe("ts-dom check: missing-handler", () => {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
-      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/register.ts", 3, 19, "missing-handler"]]);
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/panel.html", 1, 1, "missing-handler"]]);
       expect(issues[0]?.message).toContain(`"save"`);
+      expect(issues[0]?.message).toContain("tsc at check-handler-tmp/register.ts:3:19");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -149,7 +150,7 @@ describe("ts-dom check: handler parameter types", () => {
             line: 9,
             col: 15,
             code: "TS2345",
-            message: "Argument of type 'typeof Card' is not assignable to parameter of type 'typeof Card & { wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.\nProperty 'wrongHandlerParameters' is missing in type 'typeof Card' but required in type '{ wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.",
+            message: "Argument of type 'typeof Card' is not assignable to parameter of type 'typeof Card & { wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; } & { template: \"card.html\"; }'.\nProperty 'wrongHandlerParameters' is missing in type 'typeof Card' but required in type '{ wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.",
           },
         ],
         dir,
@@ -340,7 +341,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     writeFileSync(join(dir, "hello-card.ts"), `import tpl from "./hello-card.html.js";\nexport class HelloCard extends Component(tpl, { props: { name: "" } }) {}\ndefine("hello-card", HelloCard);\n`);
     const issues = mapTscErrors(
       [
-        { file: "hello-card.ts", line: 2, col: 32, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` },
+        { file: "hello-card.ts", line: 2, col: 32, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; } & { template: "hello-card.html"; }' is not a constructor function type.` },
         { file: "hello-card.ts", line: 3, col: 22, code: "TS2345", message: "Argument of type 'typeof HelloCard' is not assignable to parameter of type 'abstract new (...args: never[]) => HTMLElement'." },
         { file: "host.ts", line: 9, col: 27, code: "TS2345", message: "Argument of type 'HelloCard & { extra: number; }' is not assignable to parameter of type 'string | Node'." },
         { file: "main.ts", line: 4, col: 6, code: "TS2339", message: "Property 'name' does not exist on type 'HelloCard'." },
@@ -366,7 +367,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     writeFileSync(join(dir, "index.ts"), `import tpl from "./index.html.js";\nexport class Index extends Component(tpl) {}\nconst rows: Record<string, number> = row;\n`);
     writeFileSync(join(dir, "task.html"), `<p>{{ missing }}</p>\n`);
     writeFileSync(join(dir, "task.ts"), `import tpl from "./task.html.js";\nexport class Task extends Component(tpl) {}\n`);
-    const broken = (file: string, line: number) => ({ file, line, col: 21, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` });
+    const broken = (file: string, line: number) => ({ file, line, col: 21, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; } & { template: "${file.replace(/\.ts$/, ".html")}"; }' is not a constructor function type.` });
     const issues = mapTscErrors(
       [
         broken("index.ts", 2),
