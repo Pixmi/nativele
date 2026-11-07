@@ -132,6 +132,7 @@ interface ClassDecl {
   name?: string;
   line: number;
   col: number;
+  /** `arg` is the identifier or the member access (`t.card`) passed to Component(). */
   component?: { arg?: string; call: string; body: string; endLine: number };
 }
 export interface ModuleFacts {
@@ -150,7 +151,7 @@ const REEXPORT = new RegExp(String.raw`\bexport\s+(?:type\s+)?(\*(?:\s*as\s+(${I
 const EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
 const EXPORT_CLASS = new RegExp(String.raw`\bexport\s+(default\s+)?(?:abstract\s+)?class\b(?:\s+(?!extends\b)(${IDENT}))?`, "g");
 const EXPORT_DEFAULT = new RegExp(String.raw`\bexport\s+default\s+(?!class\b|abstract\b|function\b|async\b)(${IDENT})\s*(?:;|$)`, "gm");
-const DEFINE = /\bdefine\(\s*(["'])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g;
+const DEFINE = /\bdefine\(\s*(["'])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\1\s*,\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*\)/g;
 
 /** `a`, `a as b`, `type a as b` inside braces, as [imported or local name, name after `as`]. */
 const listEntries = (list: string): [string, string][] =>
@@ -201,12 +202,12 @@ export function moduleFacts(code: string): ModuleFacts {
     const span = head.open === undefined ? null : classSpan(code, head.open);
     if (head.open !== undefined && span) {
       const call = code.slice(head.open, span.callEnd + 1);
-      const arg = new RegExp(`^\\(\\s*(${IDENT})`).exec(call)?.[1];
+      const arg = new RegExp(`^\\(\\s*(${IDENT}(?:\\s*\\.\\s*${IDENT})*)`).exec(call)?.[1]?.replace(/\s+/g, "");
       decl.component = { ...(arg ? { arg } : {}), call, body: code.slice(span.bodyStart, span.bodyEnd + 1), endLine: loc(span.bodyEnd).line };
     }
     facts.classes.push(decl);
   }
-  for (const m of code.matchAll(DEFINE)) if (inCode(m.index)) facts.defines.push({ tag: m[2] as string, id: m[3] as string, ...loc(m.index) });
+  for (const m of code.matchAll(DEFINE)) if (inCode(m.index)) facts.defines.push({ tag: m[2] as string, id: (m[3] as string).replace(/\s+/g, ""), ...loc(m.index) });
   return facts;
 }
 
@@ -391,7 +392,7 @@ export interface ComponentIndex {
   byFile: Map<string, ComponentRef[]>;
   /** The component classes that pass this template to Component(). */
   byTemplate: Map<string, ComponentRef[]>;
-  /** The modules that import this template themselves (`import x from "./x.html.js"`), by template. */
+  /** The modules that import this template themselves (`import x from "./x.html.js"` or `import * as x from "./x.html.js"`), by template. */
   importers: Map<string, { file: string; local: string }[]>;
   defines: DefineSite[];
   byTag: Map<string, DefineSite[]>;
@@ -403,7 +404,7 @@ export interface ComponentIndex {
   revs?: ReadonlyMap<string, number>;
 }
 
-type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string };
+type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string } | { kind: "namespace"; file: string };
 
 const TS_EXTENSIONS = [".ts", ".tsx", ".mts"];
 
@@ -445,7 +446,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     for (const r of m.reexports) {
       if (r.local === name) {
         const t = target(file, r.spec);
-        if (t) return resolveExport(t, r.imported, seen);
+        if (t) return r.imported === "*" ? { kind: "namespace", file: t } : resolveExport(t, r.imported, seen);
       }
     }
     if (name === "default") return undefined;
@@ -460,10 +461,16 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const resolveLocal = (file: string, id: string, seen = new Set<string>()): Target | undefined => {
     const m = facts(file);
     if (!m) return undefined;
-    if (m.classes.some((c) => c.name === id)) return { kind: "class", file, name: id };
-    const b = m.imports.find((i) => i.local === id);
-    const t = b && target(file, b.spec);
-    return t && b.imported !== "*" ? resolveExport(t, b.imported, seen) : undefined;
+    const [head = "", ...members] = id.split(".");
+    let found: Target | undefined;
+    if (m.classes.some((c) => c.name === head)) found = { kind: "class", file, name: head };
+    else {
+      const b = m.imports.find((i) => i.local === head);
+      const t = b && target(file, b.spec);
+      found = t ? (b.imported === "*" ? { kind: "namespace", file: t } : resolveExport(t, b.imported, seen)) : undefined;
+    }
+    for (const member of members) found = found?.kind === "namespace" ? resolveExport(found.file, member, seen) : undefined;
+    return found;
   };
 
   const components: ComponentRef[] = [];
@@ -477,13 +484,13 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     for (const c of m.classes) {
       if (!c.component) continue;
       const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
-      const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
+      const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg.split(".")[0] } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
       components.push(ref);
       byFile.set(file, [...(byFile.get(file) ?? []), ref]);
       if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
     }
     for (const i of m.imports) {
-      const t = i.imported === "default" ? target(file, i.spec) : undefined;
+      const t = i.imported === "default" || i.imported === "*" ? target(file, i.spec) : undefined;
       if (t?.endsWith(".html")) importers.set(t, [...(importers.get(t) ?? []), { file, local: i.local }]);
     }
     for (const d of m.defines) defines.push({ tag: d.tag, id: d.id, file: path, line: d.line, col: d.col, ...classOf(file, d.id) });

@@ -38,6 +38,19 @@ const files: Record<string, string> = {
   "barrel/register.ts": `${H}import BarrelCard from "./card.ts";\ndefine("x-barrel-card", BarrelCard);\n`,
   "barrel/page.html": `<x-barrel-card data-on-click="go"></x-barrel-card>\n`,
   "barrel/page.ts": `${H}import tpl from "./page.html.js";\nexport class BarrelPage extends Component(tpl) {\n  go(): void {}\n}\ndefine("x-barrel-page", BarrelPage);\n`,
+  // templates reached through a namespace: of a barrel, of a barrel's `export * as`, and of the template module itself
+  "ns/templates/card.html": `<p data-ref="note"></p>\n`,
+  "ns/templates/row.html": `<p data-ref="note"></p>\n`,
+  "ns/templates/index.ts": `export { default as card } from "./card.html.js";\nexport { default as row } from "./row.html.js";\n`,
+  "ns/barrel.ts": `export * as t from "./templates/index.ts";\n`,
+  "ns/card.ts": `${H}import * as t from "./templates/index.ts";\nexport class NsCard extends Component(t.card) {}\n`,
+  "ns/row.ts": `${H}import { t } from "./barrel.ts";\nexport class NsRow extends Component(t.row) {}\n`,
+  "ns/direct.html": `<p data-ref="note"></p>\n`,
+  "ns/direct.ts": `${H}import * as d from "./direct.html.js";\nexport class NsDirect extends Component(d.default) {}\n`,
+  "ns/register.ts": `${H}import * as cards from "./card.ts";\ndefine("x-ns-card", cards.NsCard);\n`,
+  // a class missing more handlers than tsc prints in a message it truncates
+  "many/many.html": `${Array.from({ length: 12 }, (_, i) => `<button type="button" data-on-click="handlerWithALongName${i}">${i}</button>`).join("\n")}\n`,
+  "many/many.ts": `${H}import tpl from "./many.html.js";\nexport class Many extends Component(tpl) {}\ndefine("x-many", Many);\n`,
   // a template that a barrel only re-exports
   "orphan/orphan.html": `<p data-ref="note">{{ msg }}</p>\n`,
   "orphan/index.ts": `export { default as orphanTpl } from "./orphan.html.js";\n`,
@@ -102,6 +115,17 @@ describe("a template, its class, its define() and their files", () => {
       ["barrel/templates/card.html", 1, 1, "props-mutation"],
       ["barrel/templates/note.html", 1, 1, "unused-ref"],
     ]);
+  });
+  it("a template reached through a namespace import or an export * as has that class as its owner", () => {
+    expect(at("ns/")).toEqual([
+      ["ns/direct.html", 1, 1, "unused-ref"],
+      ["ns/templates/card.html", 1, 1, "unused-ref"],
+      ["ns/templates/row.html", 1, 1, "unused-ref"],
+    ]);
+    expect(readFileSync(join(dir, "ts-dom-tags.ts"), "utf8")).toMatch(/import type \{ NsCard as Tag\d+ \} from "\.\/ns\/card\.js";/);
+  });
+  it("a message tsc would truncate still names the template and every missing handler", () => {
+    expect(at("many/").map(([f, l, , r]) => [f, l, r])).toEqual(Array.from({ length: 12 }, (_, i) => ["many/many.html", i + 1, "missing-handler"]));
   });
   it("a template that a barrel only re-exports has no importer", () => {
     expect(at("orphan/")).toEqual([["orphan/orphan.html", 1, 1, "no-importer"]]);

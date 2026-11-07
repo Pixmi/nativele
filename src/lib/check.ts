@@ -310,7 +310,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     const runs = configs.length ? configs.map((c) => ["-p", c]) : [options.project ? ["-p", options.project] : []];
     const parsed: TscError[] = [];
     for (const extra of runs) {
-      const run = spawnSync(process.execPath, [tsc.bin, "--noEmit", "--pretty", "false", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+      const run = spawnSync(process.execPath, [tsc.bin, "--noEmit", "--pretty", "false", "--noErrorTruncation", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
       const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
       const errors = parseTscOutput(output);
       parsed.push(...errors);
