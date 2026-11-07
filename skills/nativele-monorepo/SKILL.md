@@ -4,7 +4,7 @@ description: "Use Nativele across the packages of a workspace (npm or pnpm works
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "npm@11.19.1 pnpm@12.16.1 turbo@2.11.10 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vue-tsc@3.3.14"
   author: "Nativele maintainers"
   detects: "turbo nx lerna"
@@ -32,7 +32,7 @@ metadata:
 | create-vite (`vanilla-ts`, the app) | 9.3.4 |
 | vue-tsc | 3.3.14 (only to see which package's checker `ts-dom check` runs) |
 
-Verified on 2026-11-06 in Google Chrome 148 with a component package `packages/ui` and a Vite app `apps/web` from `create-vite`, built once before Nativele was added, in an npm workspace and a pnpm workspace: the component package exported as TypeScript source and as built JavaScript with declarations, and the built one also packed and installed into a separate app. Not verified: yarn and Bun workspaces, nx, lerna, TypeScript project references across packages (`tsc -b` with `composite`), and apps with a UI framework consuming the package. With a different major version of npm, pnpm or turbo, treat every step as unverified.
+Verified on 2026-11-08 in Google Chrome 148 with a component package `packages/ui` and a Vite app `apps/web` from `create-vite`, built once before Nativele was added, in an npm workspace and a pnpm workspace: the component package exported as TypeScript source and as built JavaScript with declarations, and the built one also packed and installed into a separate app. Not verified: yarn and Bun workspaces, nx, lerna, TypeScript project references across packages (`tsc -b` with `composite`), and apps with a UI framework consuming the package. With a different major version of npm, pnpm or turbo, treat every step as unverified.
 
 ## Set-up
 

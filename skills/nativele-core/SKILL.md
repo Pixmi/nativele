@@ -4,7 +4,7 @@ description: "Build and change web components with Nativele (@nativele/ts-dom): 
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "@nativele/ts-dom"
@@ -26,7 +26,7 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 | @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
+Verified on 2026-11-08 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
 
 ## Set-up
 

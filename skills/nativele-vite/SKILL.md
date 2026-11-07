@@ -4,7 +4,7 @@ description: "Add Nativele to an existing Vite app without a UI framework, and s
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vite-plus@1.5.0"
   author: "Nativele maintainers"
   detects: "vite vite-plus"
@@ -30,7 +30,7 @@ metadata:
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 | vite-plus | 1.5.0 (checked by hand with `vp dev`, `vp build` and `vp lint`) |
 
-Verified on 2026-11-07 in Google Chrome 157, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of Vite, treat every step as unverified.
+Verified on 2026-11-08 in Google Chrome 157, and by an agent trial: a fresh agent did real work with only the Skill, and the result was checked independently. With a different major version of Vite, treat every step as unverified.
 
 ## Set-up
 
