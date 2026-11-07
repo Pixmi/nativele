@@ -22,6 +22,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - `ts-dom check` reports `anyInContract` as `any-in-contract`: at the `state`, `props`, `derive` or `emits` entry that declares it, and for a handler parameter at its `data-on-*` attribute, with a `Fix:` to declare the type or `unknown` (`ts-dom rules --explain=any-in-contract`).
 
+### Performance
+
+- A save in the Vite plugin or `ts-dom gen --watch` reads each scanned folder once per run for templates, modules and orphaned generated files, instead of once for each of them.
+- Lint keeps the declared props and emits of each component between runs and works out each folder's package once per run: on a 1000-component project a single-file oxlint re-lint drops from about 21 ms to 13 ms, a Vite template save from about 45 ms to 29 ms, and `ts-dom lint --a11y` from about 330 ms to 295 ms.
+
 ### Skills
 
 - nativele-linting: the project's linter may forbid `any` in the rest of the code with `typescript/no-explicit-any` (oxlint) or `@typescript-eslint/no-explicit-any` (ESLint); Nativele reports it only in component contracts.
