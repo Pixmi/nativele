@@ -68,7 +68,46 @@ describe("an element's composed content: its own descendants and what the compon
     expect(formLabel(`<x-box><input></x-box>`)).toBe(1);
     expect(formLabel(`<vendor-field><input></vendor-field>`)).toBe(1);
   });
-  it("a slot of the template being checked holds content its user gives, which lint cannot read", () => {
-    for (const wrap of Object.values(RULES)) expect(checkA11y(wrap(`<slot></slot>`), [], children)).toEqual([]);
+});
+
+describe("unchecked-content: an element a rule cannot judge because its composed content holds content lint cannot read", () => {
+  const found = (html: string) => checkA11y(html, [], children).map((d) => [d.rule, d.message] as const);
+  const UNREADABLE: [name: string, inner: string, names: string][] = [
+    ["a third-party element", `<wa-icon name="x"></wa-icon>`, `<wa-icon>`],
+    ["a third-party element inside a child template", `<x-wrap></x-wrap>`, `<vendor-thing> in the template of <x-wrap>`],
+    ["a slot of the template being checked", `<slot name="icon"></slot>`, `<slot name="icon">`],
+  ];
+  for (const [rule, wrap] of Object.entries(RULES)) {
+    for (const [name, inner, names] of UNREADABLE) {
+      it(`${rule}: ${name} gives one unchecked-content warning that names the rule and the content, and no ${rule}`, () => {
+        const ds = found(wrap(inner));
+        expect(ds.map(([r]) => r)).toEqual(["unchecked-content"]);
+        expect(ds[0]?.[1]).toContain(`not checked for ${rule}`);
+        expect(ds[0]?.[1]).toContain(names);
+        expect(ds[0]?.[1]).toContain("Fix: ");
+      });
+    }
+  }
+  it("the keyboard-inaccessible div around a third-party icon and text", () => {
+    const ds = checkA11y(`<div data-on-click="open"><wa-icon name="x"></wa-icon> Open</div>`, [], children);
+    expect(ds.map((d) => [d.rule, d.line, d.col, d.severity])).toEqual([["unchecked-content", 1, 1, "warning"]]);
+  });
+  it("one warning per element, naming every rule that could not judge it", () => {
+    const ds = found(`<h2 data-on-click="go"><wa-icon></wa-icon><slot></slot></h2>`);
+    expect(ds.map(([r]) => r)).toEqual(["unchecked-content"]);
+    expect(ds[0]?.[1]).toContain("not checked for heading-empty and click-semantics");
+    expect(ds[0]?.[1]).toContain("<wa-icon>");
+    expect(ds[0]?.[1]).toContain("<slot>");
+  });
+  it("content lint can read decides, whatever else is there", () => {
+    expect(found(`<button type="button"><wa-icon></wa-icon> Save</button><h2><slot></slot>Title</h2><div data-on-click="go"><wa-icon></wa-icon>${button}</div>`)).toEqual([]);
+    expect(found(`<button type="button"><slot>Save</slot></button>`)).toEqual([]);
+  });
+  it("a third-party element with data-on-click itself is left to unchecked-custom-elements", () => {
+    expect(found(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
+  });
+  it("is left out with the rules it names", () => {
+    expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["click-semantics"], children)).toEqual([]);
+    expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["unchecked-content"], children)).toEqual([]);
   });
 });

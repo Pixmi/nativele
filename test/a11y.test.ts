@@ -142,8 +142,9 @@ describe("click-semantics", () => {
     expect(rules(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
     expect(children.check(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
   });
-  it("a scanned component whose template has an operable element (or an unreadable custom element) does not warn", () => {
-    expect(children.check(`<x-action data-on-click="go"></x-action><x-edit data-on-click="go"></x-edit><x-wrap data-on-click="go"></x-wrap>`)).toEqual([]);
+  it("a scanned component whose template has an operable element does not warn, and one whose template holds an unreadable custom element is not checked", () => {
+    expect(children.check(`<x-action data-on-click="go"></x-action><x-edit data-on-click="go"></x-edit>`)).toEqual([]);
+    expect(children.check(`<x-wrap data-on-click="go"></x-wrap>`).map((d) => d.rule)).toEqual(["unchecked-content"]);
   });
   it("a scanned component whose template has no operable element warns and names the template", () => {
     const [d, ...rest] = children.check(`<div><x-card data-on-click="go"></x-card></div>`);
@@ -156,8 +157,9 @@ describe("click-semantics", () => {
   it("the component tag with an interactive role plus tabindex does not warn", () => {
     expect(children.check(`<x-card role="button" tabindex="0" data-on-click="go"></x-card>`)).toEqual([]);
   });
-  it("a label wrapping a component counts the component's template, and an unreadable custom element as operable", () => {
-    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label><label data-on-click="go"><wa-switch></wa-switch> b</label>`)).toEqual([]);
+  it("a label wrapping a component counts the component's template, and one wrapping an unreadable custom element is not checked", () => {
+    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label>`)).toEqual([]);
+    expect(children.check(`<label data-on-click="go"><wa-switch></wa-switch> b</label>`).map((d) => d.rule)).toEqual(["unchecked-content"]);
     expect(children.check(`<label data-on-click="go"><x-card></x-card> a</label>`).map((d) => d.rule)).toEqual(["click-semantics"]);
   });
   it("a tag defined in several packages, none of them the template's, is not checked", () => {
@@ -171,7 +173,8 @@ describe("a11y should not false-positive", () => {
   it("controls with a name", () => {
     expect(rules(`<button>Go</button><button aria-label="x"></button><button>{{ label }}</button>`)).toEqual([]);
     expect(rules(`<a href="/"><img src="a" alt="home"></a>`)).toEqual([]);
-    expect(rules(`<button><slot></slot></button>`)).toEqual([]);
+    expect(rules(`<button><slot>Save</slot></button>`)).toEqual([]);
+    expect(rules(`<button><slot></slot></button>`)).toEqual(["unchecked-content"]);
   });
   it("elements managed by TS (with data-ref) skip the missing-name checks", () => {
     expect(rules(`<button data-ref="b"></button><img data-ref="i"><input data-ref="n"><h1 data-ref="t"></h1>`)).toEqual([]);
@@ -215,6 +218,7 @@ describe("rule coverage and messages", () => {
     "landmark-label": `<nav>a</nav><nav>b</nav>`,
     "redundant-role": `<button role="button">x</button>`,
     "click-semantics": `<div data-on-click="go">x</div>`,
+    "unchecked-content": `<div data-on-click="go"><wa-icon></wa-icon> Open</div>`,
   };
   it("every A11Y_RULES key is produced by at least one input", () => {
     for (const rule of Object.keys(A11Y_RULES)) {

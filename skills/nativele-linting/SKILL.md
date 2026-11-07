@@ -66,7 +66,7 @@ Check first, then change only what the task needs. Keep the user's plugins, rule
 ### Rules, groups and severities
 
 - Three groups: `ts-dom/unused-markup`, `ts-dom/data-flow`, `ts-dom/a11y`. A group reports all of its ids; `["warn", { "ignore": ["img-alt"] }]` drops ids from it. `npx ts-dom rules` lists every id by group, and `npx ts-dom rules --explain=<id>` says why it exists.
-- Every id is also a rule of its own (`ts-dom/unused-ref`, `ts-dom/img-alt`, `ts-dom/unknown-prop`, ...; 37 rules in all), for a severity per id. A single-id rule takes no options.
+- Every id is also a rule of its own (`ts-dom/unused-ref`, `ts-dom/img-alt`, `ts-dom/unknown-prop`, ...), for a severity per id. A single-id rule takes no options.
 - To give one id another severity, ignore it in its group and enable it alone: `"ts-dom/unused-markup": ["error", { "ignore": ["unused-ref"] }], "ts-dom/unused-ref": "warn"`. A group and one of its ids both on report the finding twice.
 - Choose by what each id costs when it is missed: unused-markup ids are dead or broken markup (blank text, an empty list) and stay errors. data-flow ids are design advice plus child contract checks (`unknown-prop`, `invalid-prop-value`, `unknown-event`), warnings by default; raise the contract ids to `"error"` singly if the user wants. a11y ids are static hints, warnings, and `ignore` takes the ids that do not apply (for example `aria-idref` when labels point outside the template).
 - An `ignore` id that does not exist is silently accepted: check every id against `npx ts-dom rules` before writing it.

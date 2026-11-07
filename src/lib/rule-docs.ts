@@ -478,6 +478,13 @@ this.refs.list.items = ["a", "b"];`,
 <x-card data-on-click="open"></x-card>
 <wa-button data-on-click="open">open</wa-button>`,
   },
+  "unchecked-content": {
+    why: "click-semantics, control-name and heading-empty judge what an element holds once the components inside it render. A custom element whose template lint cannot read (from another library, outside the scanned folders, or defined in several packages), and a <slot> of the template being checked, which the component's user fills, may hold the operable element or the name that decides the rule. When the content lint can read would fail the rule, lint does not report it, as that would be wrong whenever the unreadable content is what makes the element right (a <div data-on-click> around a <wa-button>), and gives this one warning per element instead, naming the rules and the content, so nothing is left unchecked without a trace. A slot's fallback content is read, so a slot whose fallback names the element decides it. A custom element with data-on-click and no definition at all is reported by unchecked-custom-elements instead. Silence it with --ignore=unchecked-content once the elements it names are right.",
+    bad: `<div data-on-click="open"><wa-icon name="x"></wa-icon> Open</div>
+<button type="button"><slot></slot></button>`,
+    good: `<button type="button" data-on-click="open"><wa-icon name="x"></wa-icon> Open</button>
+<button type="button"><slot>Save</slot></button>`,
+  },
 
   // CHECK_RULES
   "stale-generated": {

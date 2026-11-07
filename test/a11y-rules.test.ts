@@ -38,6 +38,8 @@ const FIXTURES: [string, string[]][] = [
   [`<ul><div>x</div></ul>`, ["list-structure"]],
   [`<nav>a</nav><nav>b</nav>`, ["landmark-label", "landmark-label"]],
   [`<button type="button" role="button">x</button>`, ["redundant-role"]],
+  [`<div data-on-click="go"><wa-icon></wa-icon> Open</div>`, ["unchecked-content"]],
+  [`<button type="button"><slot></slot></button>`, ["unchecked-content"]],
 ];
 const RULES = Object.keys(A11Y_RULES);
 const allBut = (rule: string) => RULES.filter((r) => r !== rule);

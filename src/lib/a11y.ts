@@ -33,6 +33,7 @@ export const A11Y_RULES = {
   "landmark-label": "several landmarks of the same kind are not told apart by aria-label",
   "redundant-role": "the role repeats the element's native role",
   "click-semantics": "data-on-click is on an element that keyboard and assistive technology users cannot operate",
+  "unchecked-content": "click-semantics, control-name or heading-empty cannot judge an element, because what decides it is content lint cannot read",
 } as const;
 export type A11yRule = keyof typeof A11Y_RULES;
 
@@ -56,6 +57,15 @@ const IMPLICIT_ROLE: Record<string, string> = {
   h1: "heading", h2: "heading", h3: "heading", h4: "heading", h5: "heading", h6: "heading",
 };
 const NO_LABEL_INPUT = new Set(["hidden", "submit", "reset", "button", "image"]);
+
+/** The rules that judge composed content: what an element fails with, and the fix that needs no content lint cannot read. */
+const COMPOSED_RULES = {
+  "click-semantics": ["has no operable element a click could come from", "put data-on-click on a <button> or <a href>, or add an interactive role plus tabindex and keyboard handling"],
+  "control-name": ["has no accessible name", "add text or aria-label"],
+  "heading-empty": ["is empty", "add text or aria-label"],
+} as const;
+type ComposedRule = keyof typeof COMPOSED_RULES;
+const and = (xs: readonly string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : (xs[0] ?? ""));
 
 const isEl = (n: Node): n is Element => "tagName" in n;
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
@@ -103,19 +113,32 @@ const templateNodes = (template: { html: string }, parsed: Parsed): Node[] => {
   return nodes;
 };
 
-/** The children of a composed node, or null when they are content lint cannot read: a custom element without a readable template, or a slot of the template being checked. */
-function composedKids(c: Composed, children: A11yChildren, parsed: Parsed): Composed[] | null {
+/** The elements of composed content that lint cannot read, each with how a message names it. */
+type Unread = Map<Element, string>;
+
+/**
+ * The children of a composed node. Content lint cannot read is added to `unread`: a custom element without a readable template, which has no children here,
+ * and a slot of the template being checked, which its user fills, so only its fallback content is read.
+ */
+function composedKids(c: Composed, children: A11yChildren, parsed: Parsed, unread: Unread): Composed[] {
   const n = c.node;
   if (!isEl(n)) return [];
   const here = (nodes: Node[]) => nodes.map((node) => ({ ...c, node }));
   if (n.tagName === "slot") {
-    if (!c.slots) return null;
-    const given = c.slots.get(attr(n, "name") ?? "");
+    const name = attr(n, "name");
+    if (!c.slots) {
+      unread.set(n, `<slot${name === undefined ? "" : ` name="${name}"`}> (the user of this component fills it)`);
+      return here(kids(n));
+    }
+    const given = c.slots.get(name ?? "");
     return given?.length ? given : here(kids(n));
   }
   if (!isCustom(n)) return here(kids(n));
   const template = children.get(n.tagName)?.template;
-  if (!template) return null;
+  if (!template) {
+    unread.set(n, `<${n.tagName}>${c.path.size ? ` in the template of <${[...c.path].at(-1)}>` : ""} (a custom element whose template lint cannot read)`);
+    return [];
+  }
   if (c.path.has(n.tagName)) return [];
   const slots = new Map<string, Composed[]>();
   for (const k of here(kids(n))) {
@@ -142,17 +165,14 @@ function slotInLabel(tag: string, name: string, children: A11yChildren, parsed: 
   return walk(templateNodes(template, parsed), false);
 }
 
-/** Whether some element of the composed content of `c` passes `test`; content lint cannot read may hold one, so it counts. */
-function someInside(c: Composed, test: (el: Element) => boolean, children: A11yChildren, parsed: Parsed): boolean {
-  const ks = composedKids(c, children, parsed);
-  return ks === null || ks.some((k) => (isEl(k.node) && test(k.node)) || someInside(k, test, children, parsed));
+/** Whether some element of the composed content of `c` that lint can read passes `test`. */
+function someInside(c: Composed, test: (el: Element) => boolean, children: A11yChildren, parsed: Parsed, unread: Unread): boolean {
+  return composedKids(c, children, parsed, unread).some((k) => (isEl(k.node) && test(k.node)) || someInside(k, test, children, parsed, unread));
 }
 
-/** Whether the composed content of `c` may hold readable content: text, holes, TypeScript-managed elements, named descendants, or content lint cannot read. */
-function hasContent(c: Composed, children: A11yChildren, parsed: Parsed): boolean {
-  const ks = composedKids(c, children, parsed);
-  if (ks === null) return true;
-  for (const k of ks) {
+/** Whether the composed content of `c` that lint can read holds readable content: text, holes, TypeScript-managed elements or named descendants. */
+function hasContent(c: Composed, children: A11yChildren, parsed: Parsed, unread: Unread): boolean {
+  for (const k of composedKids(c, children, parsed, unread)) {
     const n = k.node;
     if (n.nodeName === "#text") {
       if ((n as { value: string }).value.trim()) return true;
@@ -160,7 +180,7 @@ function hasContent(c: Composed, children: A11yChildren, parsed: Parsed): boolea
       if (n.tagName === "style" || n.tagName === "script") continue;
       if (has(n, "data-ref") || nonEmpty(attr(n, "aria-label")) || nonEmpty(attr(n, "title"))) return true;
       if (n.tagName === "img" && nonEmpty(attr(n, "alt"))) return true;
-      if (hasContent(k, children, parsed)) return true;
+      if (hasContent(k, children, parsed, unread)) return true;
     }
   }
   return false;
@@ -172,7 +192,7 @@ const named = (el: Element) =>
 /**
  * Check a template for ARIA and basic accessibility problems. Returns warnings and never throws.
  * `children` are the components whose templates can be read (see `contractsFor` and `contractsAt`): the content of a button, link, heading or data-on-click element
- * includes what such a component renders inside it, and the content of any other custom element is not judged.
+ * includes what such a component renders inside it; when the rest of the content decides nothing because it holds another custom element or a slot of this template, unchecked-content is reported instead.
  * `root` is the template already parsed with source locations (`analyze(html).root`), so a run that has it does not parse again.
  */
 export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): Diagnostic[] {
@@ -219,9 +239,9 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
   };
 
   const top = (el: Element): Composed => ({ node: el, path: new Set() });
-  const content = (el: Element) => hasContent(top(el), children, parsed);
+  const content = (el: Element, unread: Unread) => hasContent(top(el), children, parsed, unread);
   // A click on an operable element inside, by keyboard too, reaches the handler of the element around it.
-  const clickable = (el: Element) => operable(el) || someInside(top(el), operable, children, parsed);
+  const clickable = (el: Element, unread: Unread) => operable(el) || someInside(top(el), operable, children, parsed, unread);
 
   let lastHeading = 0;
   const landmarks = all.filter((x) => (x.el.tagName === "nav" || x.el.tagName === "aside") && attr(x.el, "role") !== "presentation");
@@ -229,11 +249,25 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     const tag = el.tagName;
     const managed = has(el, "data-ref"); // managed by TypeScript: the name may be set there, so skip the "missing name" checks
     const role = roleOf(el);
+    const notJudged: ComposedRule[] = [];
+    const unreadHere: Unread = new Map();
+    /** Whether `rule` fails on the content lint can read; when content it cannot read could change that, the rule is noted as not judged instead. */
+    const fails = (rule: ComposedRule, failsOn: (unread: Unread) => boolean): boolean => {
+      if (skip.has(rule)) return false;
+      const unread: Unread = new Map();
+      if (!failsOn(unread)) return false;
+      // A custom element with no definition at all is reported by unchecked-custom-elements.
+      if (unread.has(el) && !children.has(tag)) return false;
+      if (!unread.size) return true;
+      notJudged.push(rule);
+      for (const [n, name] of unread) unreadHere.set(n, name);
+      return false;
+    };
 
     if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el, `<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt="description", or alt="" if the image is purely decorative.`);
 
-    if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && !content(el)) {
-      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, a <slot>, aria-label or aria-labelledby.`);
+    if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && fails("control-name", (u) => !content(el, u))) {
+      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, aria-label or aria-labelledby.`);
     }
 
     if (
@@ -248,7 +282,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
 
     if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el, "<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content.");
     if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el, "<dialog> has no accessible name. Fix: add aria-label or aria-labelledby.");
-    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && !content(el)) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
+    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && fails("heading-empty", (u) => !content(el, u))) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
 
     if (role !== undefined && !ROLES.has(role) && !role.startsWith("doc-") && !role.startsWith("graphics-")) {
       report("aria-role", el, `role="${role}" is not a valid ARIA role. Fix: check the spelling against the WAI-ARIA roles.`);
@@ -259,7 +293,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
 
     const tabindex = attr(el, "tabindex");
     const interactiveRole = !!role && INTERACTIVE_ROLES.has(role);
-    const unoperableClick = has(el, "data-on-click") && !interactiveRole && !clickable(el);
+    const unoperableClick = has(el, "data-on-click") && !interactiveRole && fails("click-semantics", (u) => !clickable(el, u));
     if (interactiveRole && !focusable(el) && tabindex === undefined && !managed) {
       report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
@@ -272,6 +306,15 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       } else {
         report("click-semantics", el, `data-on-click is on <${tag}>, and its template (${children.get(tag)?.template?.file}) has no operable element a click could come from, so keyboard and assistive technology users cannot use it. Fix: put a <button> or <a href> in that template, or add an interactive role plus tabindex to <${tag}> here and handle keyboard events.`);
       }
+    }
+
+    if (notJudged.length) {
+      const own = [...unreadHere.keys()].filter((n) => n.tagName !== "slot").map((n) => `<${n.tagName}>`);
+      report(
+        "unchecked-content",
+        el,
+        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`).join("; ")}${own.length ? `; for a component of this project, add the folder that defines ${and([...new Set(own)])} to the scanned folders` : ""}.`,
+      );
     }
 
     if (/^h[1-6]$/.test(tag)) {
