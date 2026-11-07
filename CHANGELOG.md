@@ -11,6 +11,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, chosen from the whole set by this policy (a minor version when any iteration has a breaking change or a new feature), its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.3 (not published)
+
+### Changed
+
+- Lint, `ts-dom check` and the oxlint plugin treat only `./x.html.js` imports as Nativele template imports. `import view from "./x.html"`, the form of another template system kept during a migration, is no longer linted as a Nativele template (it gave false `unused-ref` and accessibility findings); an `.html` imported only that way in a scanned folder is reported as `no-importer`, whose Fix says to scan only the Nativele folders. `ts-dom doctor` still reports the import as `template-import-without-js`, and its message now says that lint does not treat it as a template and that another system's files belong outside the scanned folders.
+
+### Fixes
+
+- In a Light DOM component, a `<template data-each>` at the top level of the template keeps the items added or reordered after the first render (`replace()`, `upsert()`, `items =`, also while the element is disconnected): they were taken for children the user added, so with no slot they disappeared and with a slot they were moved into it, returned by `assignedNodes()` and reported by `slotchange`.
+- A top-level `<slot>`'s fallback content that comes back when its last assigned node is removed is no longer taken for user content: `assignedNodes()` is empty, `slotchange` runs once, and the fallback goes away again when a child is added. An assigned node moved from the element to another parent is unassigned, with `slotchange`, instead of staying in `assignedNodes()`.
+- Light DOM slots place nodes from where they are after each change instead of from the order of mutation records: a slotted child removed and appended back to the element in the same task (`el.append(child)`, also to reorder) is put back into its slot instead of rendering after `<!--/slot:-->` while `assignedNodes()` still returned it; children added while the element is disconnected are slotted when it is connected again; `slotchange` runs when a slot's assigned nodes or their order change, not for a remove and re-append that leaves them as they were.
+- A slot's fallback content comes back as `data-if` and lists inside it last left it: a `data-if` block that is hidden stays hidden instead of reappearing, a block shown while the fallback was replaced appears, and the items a list inside the fallback added or removed meanwhile are there (they used to stay visible next to the assigned content, and later items were lost).
+- A folder deleted while a run is under way (between listing its parent and reading it) is treated as empty, and a symbolic link whose target is gone as absent, instead of failing the run with `ENOENT`: `ts-dom gen --watch`, the Vite plugin and `oxlint --lsp` keep running when a folder is removed.
+- The Fix of `img-alt`, `control-name`, `form-label`, `iframe-title`, `dialog-name` and `heading-empty` says that when TypeScript sets the name, alt or text, the element should get a `data-ref`, which these rules leave to TypeScript.
+- `ts-dom check` gives a TS2307 for a module ending in `.html.js` its own Fix: run `ts-dom gen` (or `ts-dom check` without `--no-write`) and make sure the folder that holds the `.html` file is among the scanned folders; other TS2307 errors keep the general hint.
+- `unused-ref` counts the keys destructured from any `.refs` object, not only `this.refs`: `const { a, b } = tpl.instantiate().refs`, `const { a } = inst.refs`, renamed keys (`const { a: input } = this.refs`) and nested `const { refs: { a } } = ...`; a rest element (`...rest`) counts every ref as used.
+
 ## 0.7.2
 
 ### New checks

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentIndex } from "../src/lib/components.ts";
 import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, TAG_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
@@ -80,6 +80,32 @@ describe("dynamic access", () => {
     const d = unusedMarkup(html, `const { a } = this.refs; a.focus(); this.text.x = 1; this.lists.l; y`);
     expect(d.map((x) => x.message.match(/data-ref="(\w)"/)?.[1])).toEqual(["b"]);
   });
+  it("counts the keys destructured from any .refs, renamed or nested, and still reports a ref no one names", () => {
+    const html = `<b data-ref="a"></b><i data-ref="b"></i><s data-ref="c"></s>`;
+    const unused = (code: string) => unusedMarkup(html, code).map((x) => x.message.match(/data-ref="(\w)"/)?.[1]);
+    expect(unused(`const { a, b } = tpl.instantiate().refs;`)).toEqual(["c"]);
+    expect(unused(`const inst = tpl.instantiate();\nconst { a } = inst.refs;`)).toEqual(["b", "c"]);
+    expect(unused(`const { a: x, "b": y } = this.refs;`)).toEqual(["c"]);
+    expect(unused(`const { refs: { c } } = tpl.instantiate();`)).toEqual(["a", "b"]);
+    expect(unused(`const { a = null } = this.refs?.x;`)).toEqual(["a", "b", "c"]);
+    expect(unused(`const { a, ...rest } = this.refs;`)).toEqual([]);
+    expect(unused(`const { a, b } = this.refs\nfocus(a);`)).toEqual(["c"]);
+    expect(unused(`const { a, b } = this.refs as R;`)).toEqual(["c"]);
+    expect(unused(`const { a } = this.refs satisfies R;`)).toEqual(["b", "c"]);
+    expect(unused(`const { a } = this.refs!;`)).toEqual(["b", "c"]);
+    expect(unused(`({ a } = this.refs);`)).toEqual(["b", "c"]);
+    expect(unused(`const { root, refs: { b: el } } = tpl.instantiate();`)).toEqual(["a", "c"]);
+    expect(unused(`const { a } = this.refs.b;`)).toEqual(["a", "c"]);
+    expect(unused(`const { a } = this.refs\n  .b;`)).toEqual(["a", "b", "c"]);
+    expect(unused(`const { a } = this.refs(b);`)).toEqual(["a", "b", "c"]);
+  });
+  it("does not take a refs: { ... } outside a destructuring pattern for a destructured ref", () => {
+    const html = `<b data-ref="a"></b><i data-ref="b"></i>`;
+    const unused = (code: string) => unusedMarkup(html, code).map((x) => x.message.match(/data-ref="(\w)"/)?.[1]);
+    expect(unused(`const o = { refs: { a: 1 } };`)).toEqual(["a", "b"]);
+    expect(unused(`type T = { refs: { a: HTMLInputElement } };`)).toEqual(["a", "b"]);
+    expect(unused(`const v: { refs: { a: HTMLInputElement } } = inst;`)).toEqual(["a", "b"]);
+  });
 });
 
 describe("lintUsage", () => {
@@ -113,11 +139,16 @@ describe("lintUsage", () => {
     expect(issues.map((i) => [i.file.endsWith("card.html"), i.rule])).toEqual([[true, "unused-ref"]]);
     expect(issues[0]?.message).toContain(`data-ref="dead"`);
   });
-  it("counts an import without .js as the importer, leaving that mistake to ts-dom doctor and tsc", () => {
+  it("does not count an import without .js, the form of another template system, as a Nativele template import", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(d, "a.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
-    writeFileSync(join(d, "a.ts"), `import t from "./a.html";\nclass A extends Component(t) { x() { this.refs.used; } }`);
-    expect(lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule)).toEqual(["unused-ref"]);
+    writeFileSync(join(d, "a.ts"), `import view from "./a.html";\nexport const a = () => view;`);
+    writeFileSync(join(d, "b.html"), `<i data-ref="dead"></i>`);
+    writeFileSync(join(d, "b.html.ts"), `export default template({});`);
+    writeFileSync(join(d, "b.ts"), `import t from "./b.html";\nclass B extends Component(t) { x() {} }`);
+    const issues = lintUsage([d], [join(d, "a.ts"), join(d, "b.ts")]);
+    expect(issues.map((i) => [basename(i.file), i.rule])).toEqual([["a.html", "no-importer"], ["b.html", "no-importer"]]);
+    expect(issues[0]?.message).toContain("scan only the folder with the Nativele templates");
   });
 });
 

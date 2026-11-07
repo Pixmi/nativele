@@ -1,0 +1,4 @@
+{{ title }}<h2>head</h2>
+<p data-if="msg">msg</p>
+<slot name="x"><template data-each="rows"><p class="it">{{ n }}</p></template></slot>
+<slot>fallback<i data-if="note">note</i></slot>

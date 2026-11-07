@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runCheck } from "../src/lib/check.ts";
 import type { LintIssue } from "../src/lib/lint.ts";
@@ -7,7 +8,7 @@ import type { LintIssue } from "../src/lib/lint.ts";
 // One project with every way a template, its class, its define() call and their files can be related; one `ts-dom check --a11y` run reads all of them.
 const H = `import { Component, define, event } from "@nativele/ts-dom";\n`;
 const files: Record<string, string> = {
-  "tsconfig.json": `{ "extends": "../tsconfig.json", "include": ["."] }`,
+  "tsconfig.json": `{ "extends": ${JSON.stringify(join(process.cwd(), "tsconfig.json"))}, "include": ["."] }`,
   // define() in another file than the class, and two classes defined from one registry file
   "registry/a.html": `<button type="button" data-on-click="pick">A</button>\n`,
   "registry/b.html": `<input aria-label="b" data-on-input="pick">\n`,
@@ -69,17 +70,18 @@ const files: Record<string, string> = {
   "same/use.ts": `import { Item } from "./b/item.ts";\nexport const item: Item = 5;\n`,
 };
 
-const dir = join(process.cwd(), "components-tmp");
+const dir = mkdtempSync(join(tmpdir(), "nativele-components-"));
 let issues: LintIssue[] = [];
-const at = (file: string) => issues.filter((i) => i.file.startsWith(`components-tmp/${file}`)).map((i) => [i.file.slice("components-tmp/".length), i.line, i.col, i.rule]);
+const at = (file: string) => issues.filter((i) => i.file.startsWith(file)).map((i) => [i.file, i.line, i.col, i.rule]);
 
 beforeAll(() => {
-  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(join(dir, "node_modules"));
+  for (const name of ["typescript", "@types"]) symlinkSync(join(process.cwd(), "node_modules", name), join(dir, "node_modules", name));
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true });
     writeFileSync(join(dir, name), text);
   }
-  issues = runCheck({ dirs: ["components-tmp"], project: "components-tmp/tsconfig.json", a11y: true });
+  issues = runCheck({ dirs: ["."], project: "tsconfig.json", a11y: true, cwd: dir });
 }, 60_000);
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -101,8 +103,8 @@ describe("a template, its class, its define() and their files", () => {
   it("define() in another file: lint reads the child's contract and template", () => {
     expect(at("registry/page.html").map((i) => i[3])).toEqual(["unknown-prop", "unknown-event", "click-semantics"]);
     const unchecked = issues.filter((i) => i.rule === "unchecked-custom-elements");
-    expect(unchecked.map((i) => i.file)).toEqual(["components-tmp/plain/host.html"]);
-    expect(unchecked[0]?.message).toContain("<x-plain> (components-tmp/plain/plain.ts:3): define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders.");
+    expect(unchecked.map((i) => i.file)).toEqual(["plain/host.html"]);
+    expect(unchecked[0]?.message).toContain("<x-plain> (plain/plain.ts:3): define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders.");
     expect(unchecked[0]?.message).not.toContain("No define()");
   });
   it("two classes in one file: each contract error points at that class's template", () => {

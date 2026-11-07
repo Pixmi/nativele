@@ -224,7 +224,7 @@ export function runDoctor(options: DoctorOptions): DoctorIssue[] {
       const lines = readFileSync(f, "utf8").split("\n");
       lines.forEach((text, i) => {
         const m = templateImports(text).find((t) => !t.js);
-        if (m) add("template-import-without-js", "error", `${m.html} is imported without .js, which works only through a bundler plugin that Nativele does not provide. Fix: import "${m.html}.js" (TypeScript maps it to the generated ${m.html}.ts).`, { file: rel(f), line: i + 1 });
+        if (m) add("template-import-without-js", "error", `${m.html} is imported without .js, which works only through a bundler plugin that Nativele does not provide, and lint does not treat it as a Nativele template. Fix: import "${m.html}.js" (TypeScript maps it to the generated ${m.html}.ts); if it belongs to another template system, scan only the Nativele folders.`, { file: rel(f), line: i + 1 });
       });
     }
     for (const s of staleGenerated(d, generate, defs, dirs)) {

@@ -689,7 +689,7 @@ npx ts-dom check`,
     good: `npm i @nativele/ts-dom`,
   },
   "template-import-without-js": {
-    why: "Without a bundler plugin, ./x.html is not a module. ./x.html.js is what TypeScript maps to the generated x.html.ts, and it works with or without Vite.",
+    why: "Without a bundler plugin, ./x.html is not a module. ./x.html.js is what TypeScript maps to the generated x.html.ts, and it works with or without Vite; lint and the oxlint plugin treat only that form as a Nativele template import.",
     bad: `import tpl from "./card.html";`,
     good: `import tpl from "./card.html.js";`,
   },

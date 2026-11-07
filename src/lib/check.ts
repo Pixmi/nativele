@@ -233,6 +233,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: rea
     if (e.code === "TS2717" && tag && file.endsWith(`${sep}ts-dom-tags.ts`)) {
       issue("duplicate-define", `The tag <${tag}> is declared with another class by a second tag map in the same program (another generated ts-dom-tags.ts, from a folder that is scanned separately or from a package), so two components share one custom element name, and at runtime only the class whose define() runs first is registered: the other define() is skipped without an error (tsc ${e.code} at ${where}). Fix: rename the tag in one of the define() calls and in the templates that use it; editing this generated file does not help.`);
     } else if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
+    else if (e.code === "TS2307" && /'[^']*\.html\.js'/.test(e.message)) issue("tsc", `${e.code}: ${e.message} The module is a template's generated file, which does not exist yet. Fix: run ts-dom gen (or ts-dom check without --no-write), and make sure the folder that holds the .html file is among the scanned folders.`);
     else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
   const named = new Map<string, string[]>();

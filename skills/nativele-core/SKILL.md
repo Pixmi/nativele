@@ -4,7 +4,7 @@ description: "Build and change web components with Nativele (@nativele/ts-dom): 
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "@nativele/ts-dom"
@@ -26,7 +26,7 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 | @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | typescript | 7.0.2 |
 
-Verified on 2026-11-06 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
+Verified on 2026-11-08 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
 
 ## Set-up
 
@@ -115,7 +115,7 @@ define("todo-app", TodoApp);
 
 - A `derive` function gets the state and props merged: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - Declare each event in `emits` with `event()` or `event<Detail>()`; the parent's handler declares the event it receives, `onX(e: EmitEvent<Child, "name">)`, and reads `e.detail`; `define()` checks that type against the `data-on-*` binding: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
-- Call `bind` in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
+- Call `bind` in `connected()`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state; a store from another library (an object with `getSnapshot`/`getState` and `subscribe`, Zustand, Redux, nanostores) is bound through the adapter in `npx ts-dom skills nativele-state-management`, not a hand-written one
 
 ## The loop
 

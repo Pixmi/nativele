@@ -1,99 +1,104 @@
 interface Slot {
   name: string;
+  start: Comment;
   end: Comment;
-  fallback: Node[];
-  assigned: Set<Node>;
+  /** Holds the fallback while the slot has assigned nodes, so `data-if` and lists inside it keep working on it; null while it is shown. */
+  parked: DocumentFragment | null;
+  assigned: Node[];
 }
 
 const slotOf = (n: Node): string | null =>
   n instanceof Element ? (n.getAttribute("slot") ?? "") : n instanceof Text && !n.data.trim() ? null : "";
 
 /**
- * <slot> for Light DOM: at creation time the user's child nodes are placed into the matching positions;
- * afterwards a MutationObserver handles new children added directly to the element and removal of assigned nodes.
+ * <slot> for Light DOM: each slot is the range between two comments. Placement is decided from where the nodes are, never from the order of mutation records:
+ * after every change in the element, each user node at the element's top level or in a slot range is put into the range of its slot.
  */
 export class LightSlots {
   #slots: Slot[] = [];
-  #own = new Set<Node>();
-  #observer: MutationObserver;
+  #own = new WeakSet<Node>();
+  #observer = new MutationObserver(() => this.#place());
 
   constructor(
     private readonly host: HTMLElement,
     private readonly onChange: (name: string) => void,
-  ) {
-    this.#observer = new MutationObserver((records) => this.#flush(records));
+  ) {}
+
+  own(n: Node): void {
+    this.#own.add(n);
   }
 
   project(frag: DocumentFragment, given: Node[]): void {
-    for (const n of frag.childNodes) this.#own.add(n);
+    const user = new Set(given);
     for (const el of frag.querySelectorAll("slot")) {
       const name = el.getAttribute("name") ?? "";
       const nodes = given.filter((n) => slotOf(n) === name);
       const start = document.createComment(`slot:${name}`);
       const end = document.createComment(`/slot:${name}`);
-      this.#own.add(start).add(end);
       const fallback = [...el.childNodes];
+      for (const n of [start, end, ...fallback]) this.own(n);
+      let parked: DocumentFragment | null = null;
+      if (nodes.length) {
+        parked = document.createDocumentFragment();
+        parked.append(...fallback);
+      }
       el.replaceWith(start, ...(nodes.length ? nodes : fallback), end);
-      this.#slots.push({ name, end, fallback, assigned: new Set(nodes) });
+      this.#slots.push({ name, start, end, parked, assigned: nodes });
     }
+    for (const n of frag.childNodes) if (!user.has(n)) this.own(n);
   }
 
   /** Like the native slot.assignedNodes(): the nodes currently assigned to the slot (fallback content excluded). */
   assigned(name: string): Node[] {
-    const slot = this.#slots.find((x) => x.name === name);
-    return slot ? [...slot.assigned] : [];
+    return [...(this.#slots.find((x) => x.name === name)?.assigned ?? [])];
   }
 
   observe(): void {
+    this.#place();
     this.#observer.observe(this.host, { childList: true, subtree: true, attributes: true, attributeFilter: ["slot"] });
   }
 
   disconnect(): void {
-    this.#flush(this.#observer.takeRecords());
+    if (this.#observer.takeRecords().length) this.#place();
     this.#observer.disconnect();
   }
 
-  /** Put a node into its slot; with no matching slot it is not rendered, like the native behavior. */
-  #assign(n: Node, changed: Set<Slot>): void {
-    const target = this.#slots.find((s) => s.name === slotOf(n));
-    if (!target) {
-      if (slotOf(n) !== null) n.parentNode?.removeChild(n);
-      return;
-    }
-    if (target.assigned.size === 0) for (const f of target.fallback) f.parentNode?.removeChild(f);
-    target.assigned.add(n);
-    target.end.before(n);
-    changed.add(target);
+  #range(s: Slot): Node[] {
+    const nodes: Node[] = [];
+    if (s.start.parentNode !== s.end.parentNode) return nodes;
+    for (let n = s.start.nextSibling; n && n !== s.end; n = n.nextSibling) nodes.push(n);
+    return nodes;
   }
 
-  #unassign(n: Node, slot: Slot, changed: Set<Slot>): void {
-    slot.assigned.delete(n);
-    changed.add(slot);
-    if (slot.assigned.size === 0) for (const f of slot.fallback) slot.end.before(f);
-  }
+  #user = (n: Node): boolean => !this.#own.has(n) && slotOf(n) !== null;
 
-  #flush(records: MutationRecord[]): void {
-    const changed = new Set<Slot>();
-    for (const r of records) {
-      if (r.type === "attributes") {
-        // An assigned node got a different slot attribute: reassign it immediately, like the native behavior
-        const n = r.target;
-        const current = this.#slots.find((s) => s.assigned.has(n));
-        if (!current || current.name === slotOf(n)) continue;
-        this.#unassign(n, current, changed);
-        this.#assign(n, changed);
-        continue;
+  #place(): void {
+    const at = new Map<Node, Slot | null>();
+    for (const n of this.host.childNodes) at.set(n, null);
+    for (const s of this.#slots) for (const n of this.#range(s)) at.set(n, s);
+    for (const [n, here] of at) {
+      if (!this.#user(n)) continue;
+      const target = this.#slots.find((s) => s.name === slotOf(n));
+      // With no matching slot the node is not rendered, like the native behavior
+      if (!target) n.parentNode?.removeChild(n);
+      else if (here !== target) target.end.before(n);
+    }
+    const changed: string[] = [];
+    for (const s of this.#slots) {
+      const range = this.#range(s);
+      const nodes = range.filter(this.#user);
+      if (nodes.length && !s.parked) {
+        s.parked = document.createDocumentFragment();
+        s.parked.append(...range.filter((n) => this.#own.has(n)));
+      } else if (!nodes.length && s.parked) {
+        s.end.before(s.parked);
+        s.parked = null;
       }
-      for (const n of r.removedNodes) {
-        if (n.parentNode) continue; // it was only moved, not really removed
-        for (const s of this.#slots) if (s.assigned.has(n)) this.#unassign(n, s, changed);
-      }
-      if (r.target !== this.host) continue;
-      for (const n of r.addedNodes) {
-        if (this.#own.has(n) || this.#slots.some((s) => s.assigned.has(n))) continue;
-        this.#assign(n, changed);
+      if (nodes.length !== s.assigned.length || nodes.some((n, i) => n !== s.assigned[i])) {
+        s.assigned = nodes;
+        changed.push(s.name);
       }
     }
-    for (const s of changed) this.onChange(s.name);
+    for (const name of changed) this.onChange(name);
   }
 }

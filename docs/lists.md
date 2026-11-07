@@ -166,6 +166,7 @@ Notes:
 - `data-if` cannot be placed on an item's root element; wrap it in one more layer.
 - `data-each` cannot be nested. Split it into two templates: put the inner list in its own `.html` (a child component with its own `data-each`) and use that component's tag inside the outer item.
 - `<slot>` cannot be placed inside an item.
+- A `<template data-each>` may sit at the top level of a Light DOM template, next to a `<slot>`: its items are the component's own nodes, so they stay at the list and are never assigned to a slot or reported by `slotchange`.
 - `data-each` does not work on a `<template>` inside `<svg>` or `<math>` (`each-in-svg`): there the parser makes `<template>` an ordinary SVG or MathML element, with no content to repeat. Create the repeated SVG elements in TypeScript (`document.createElementNS` in `render`), or repeat an HTML element or a component that contains its own `<svg>`.
 
 ### Moving items, connecting and subscriptions

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { generateDirs, watchAll } from "../src/lib/codegen.ts";
-import { Memo, Workspace } from "../src/lib/components.ts";
+import { componentIndex, Memo, Workspace } from "../src/lib/components.ts";
 import { lintProject, lintRun, lintTemplate } from "../src/lib/lint.ts";
 import type { Group } from "../src/lib/lint.ts";
 import plugin from "../src/lib/oxlint-plugin.ts";
@@ -523,5 +523,50 @@ describe("the memo a host keeps between runs", () => {
     new Workspace(memo).index([src]);
     new Workspace(memo);
     expect([has(join(dir, "lib/u.tsx")), has(join(other, "o.ts"))]).toEqual([false, false]);
+  });
+});
+
+describe("a folder that vanishes during a run", () => {
+  it("is listed as empty by lint and codegen", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const { listTs } = await import("../src/lib/components.ts");
+    const { listHtml } = await import("../src/lib/codegen.ts");
+    const root = mkdtempSync(join(tmpdir(), "nativele-vanish-"));
+    mkdirSync(join(root, "gone"));
+    mkdirSync(join(root, "kept"));
+    writeFileSync(join(root, "kept/a.ts"), "export {};\n");
+    writeFileSync(join(root, "kept/a.html"), "<p></p>\n");
+    symlinkSync(join(root, "nowhere"), join(root, "dangling"));
+    for (const list of [listTs, listHtml]) {
+      const ws = new Workspace();
+      ws.entries(root);
+      rmSync(join(root, "gone"), { recursive: true });
+      expect(list(root, ws).map((f) => f.slice(root.length + 1))).toEqual([list === listTs ? "kept/a.ts" : "kept/a.html"]);
+      mkdirSync(join(root, "gone"));
+    }
+    rmSync(root, { recursive: true });
+  });
+});
+
+describe("a link to nothing", () => {
+  it("is absent: not listed, so codegen does not read it", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const { listHtml } = await import("../src/lib/codegen.ts");
+    const root = mkdtempSync(join(tmpdir(), "nativele-dangling-"));
+    writeFileSync(join(root, "a.html"), "<p></p>\n");
+    symlinkSync(join(root, "nowhere.html"), join(root, "card.html"));
+    expect(listHtml(root).map((f) => f.slice(root.length + 1))).toEqual(["a.html"]);
+    expect(generateDirs([root]).map((f) => f.slice(root.length + 1))).toContain("a.html.ts");
+    rmSync(root, { recursive: true });
+  });
+});
+
+describe("an import of ./x.html without .js", () => {
+  it("is not followed to a module", () => {
+    const asked: string[] = [];
+    const file = join(tmpdir(), "nativele-no-js/a.ts");
+    const text = (f: string) => (asked.push(f), f === file ? `import t from "./card.html";\nexport class A extends Component(t) {}\n` : null);
+    componentIndex([file], { text });
+    expect(asked).toEqual([file]);
   });
 });

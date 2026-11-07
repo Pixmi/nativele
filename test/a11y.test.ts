@@ -283,6 +283,12 @@ describe("rule coverage and messages", () => {
     expect(checkA11y(`<h1>a</h1><h4>b</h4>`)[0]?.message).toMatch(/<h4> skips a heading level/);
     expect(checkA11y(`<div aria-labelledby="nope"></div>`)[0]?.message).toContain(`"nope"`);
   });
+  it("a missing name or alt says that a data-ref leaves it to TypeScript, and the data-ref does", () => {
+    for (const html of [`<img src="a.png">`, `<button></button>`, `<input>`, `<h2></h2>`]) {
+      expect(checkA11y(html)[0]?.message).toContain("if TypeScript sets it, give the element a data-ref");
+      expect(checkA11y(html.replace(/^<(\w+)/, `<$1 data-ref="x"`))).toEqual([]);
+    }
+  });
   it("ignore silences each rule by id", () => {
     for (const [rule, html] of Object.entries(INPUTS)) expect(rules(html, [rule]), rule).not.toContain(rule);
   });

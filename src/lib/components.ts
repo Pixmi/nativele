@@ -1,9 +1,28 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 export const TAGS_FILE = "ts-dom-tags.ts";
 
 export const isTs = (file: string) => file.endsWith(".ts") && !file.endsWith(".d.ts") && !file.endsWith(".html.ts") && basename(file) !== TAGS_FILE;
+
+/** A folder that vanishes between listing its parent and reading it (a host that outlives the edit) counts as empty, and a link to nothing as absent. */
+function readEntries(dir: string): { name: string; folder: boolean }[] {
+  const entry = (e: Dirent): { name: string; folder: boolean }[] => {
+    if (!e.isSymbolicLink()) return [{ name: e.name, folder: e.isDirectory() }];
+    try {
+      return [{ name: e.name, folder: statSync(join(dir, e.name)).isDirectory() }];
+    } catch {
+      return [];
+    }
+  };
+  try {
+    return readdirSync(dir, { withFileTypes: true }).flatMap(entry);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    throw e;
+  }
+}
 
 export function listTs(dir: string, ws = new Workspace()): string[] {
   const out: string[] = [];
@@ -16,7 +35,7 @@ export function listTs(dir: string, ws = new Workspace()): string[] {
 }
 
 /** The offset just past the string literal, template literal or comment that starts at `i` (the end of `code` when it is not closed), or `i` when none starts there. */
-function skipNonCode(code: string, i: number): number {
+export function skipNonCode(code: string, i: number): number {
   const c = code[i];
   if (c === '"' || c === "'" || c === "`") {
     let j = i + 1;
@@ -123,10 +142,9 @@ export function literalKeys(code: string, open: number): { name: string; at: num
   return out;
 }
 
-/** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
-const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
-export const TEMPLATE_SPEC = new RegExp(`^${TEMPLATE_PATH}$`);
-const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_PATH}["']`, "g");
+const TEMPLATE_HTML = String.raw`(\.{1,2}\/[^"']+\.html)`;
+export const TEMPLATE_SPEC = new RegExp(String.raw`^${TEMPLATE_HTML}\.js$`);
+const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_HTML}(\.js)?["']`, "g");
 
 export interface TemplateImport {
   /** The local name of the default import, when the template is imported as one. */
@@ -407,7 +425,7 @@ export class Workspace implements Sources {
   entries(dir: string): { name: string; folder: boolean }[] {
     if (this.#base) return this.#base.entries(dir);
     let found = this.#entries.get(dir);
-    if (!found) this.#entries.set(dir, (found = readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, folder: e.isDirectory() || (e.isSymbolicLink() && statSync(join(dir, e.name)).isDirectory()) }))));
+    if (!found) this.#entries.set(dir, (found = readEntries(dir)));
     return found;
   }
   /** The files `find` lists under `dir`, listed once in the run. */
@@ -503,7 +521,8 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const target = (from: string, spec: string): string | undefined => {
     if (!spec.startsWith(".")) return undefined;
     const base = resolve(dirname(from), spec);
-    const html = /^(.*\.html)(?:\.js)?$/.exec(base)?.[1];
+    if (base.endsWith(".html")) return undefined;
+    const html = /^(.*\.html)\.js$/.exec(base)?.[1];
     if (html) return html;
     const stem = base.replace(/\.(?:m?js|jsx)$/, "");
     const candidates = [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`))];

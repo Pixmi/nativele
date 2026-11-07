@@ -4,7 +4,7 @@ description: "Decide where state lives in an app built with Nativele (component 
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "zustand@5.0.16 @reduxjs/toolkit@2.14.0 redux@5.0.1 nanostores@1.5.5 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "zustand @reduxjs/toolkit redux nanostores"
@@ -33,7 +33,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-07 in Google Chrome 157. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
+Verified on 2026-11-08 in Google Chrome 157. With a different major version of a state library, treat the adapter and every limitation about that library as unverified.
 
 ## Set-up
 
@@ -48,7 +48,7 @@ Verified on 2026-11-07 in Google Chrome 157. With a different major version of a
    Do not move an existing Zustand or Redux store into `createStore` to use Nativele, and do not add a state library for data that `state` or `createStore` already holds.
 
 2. Keep each store in its own module outside the components folder, for example `src/stores/`, and import it from the components that use it. `ts-dom check src/nv` runs `tsc` over the whole project, so it type-checks these modules too.
-3. For Zustand and Redux, add the adapter below as `src/stores/from-store.ts`. `this.bind` takes a `ReadableStore`, an object with `get()` and `subscribe(fn)`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state. A Zustand or Redux store has `getState()` instead of `get()`, and a Redux listener gets no value, so neither can be passed as it is (limitations 1 and 2). The adapter reads the state itself, applies a selector, and calls back only when the selected value changes under `Object.is`:
+3. For Zustand and Redux, and any other store read with a getter plus `subscribe(listener)` (a client with `getSnapshot()`, as `useSyncExternalStore` expects, takes the same adapter through `fromStore({ getState: () => client.getSnapshot(), subscribe: (listener) => client.subscribe(listener) }, select)`), add the adapter below as `src/stores/from-store.ts`. `this.bind` takes a `ReadableStore`, an object with `get()` and `subscribe(fn)`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state. A Zustand or Redux store has `getState()` instead of `get()`, and a Redux listener gets no value, so neither can be passed as it is (limitations 1 and 2). The adapter reads the state itself, applies a selector, and calls back only when the selected value changes under `Object.is`:
 
    ```ts
    // src/stores/from-store.ts
