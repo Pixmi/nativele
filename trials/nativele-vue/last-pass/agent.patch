@@ -1,0 +1,266 @@
+diff --git a/.gitignore b/.gitignore
+index a547bf3..87652ac 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -22,3 +22,5 @@ dist-ssr
+ *.njsproj
+ *.sln
+ *.sw?
++*.html.ts
++ts-dom-tags.ts
+diff --git a/src/App.vue b/src/App.vue
+index 388b05e..a25c1a9 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,7 +1,56 @@
+ <script setup lang="ts">
+-import HelloWorld from './components/HelloWorld.vue'
++import { computed, ref, watch } from "vue";
++import type { Item } from "./nv/inventory-item.js";
++import { total } from "./nv/inventory-store.js";
++import SummaryPanel from "./SummaryPanel.vue";
++import InventoryFooter from "./InventoryFooter.vue";
++
++const items = ref<Item[]>([
++  { id: 1, name: "apple", qty: 3 },
++  { id: 2, name: "pear", qty: 0 },
++  { id: 3, name: "plum", qty: 7 },
++]);
++const selectedId = ref<number | null>(null);
++const selections = ref(0);
++const showSummary = ref(true);
++
++const selected = computed(() => items.value.find((i) => i.id === selectedId.value) ?? null);
++
++watch(items, (list) => total.set(list.reduce((sum, i) => sum + i.qty, 0)), { deep: true, immediate: true });
++
++function select(id: number): void {
++  selectedId.value = id;
++  selections.value++;
++}
++
++function setQty(value: number): void {
++  const index = items.value.findIndex((i) => i.id === selectedId.value);
++  if (index >= 0) items.value[index] = { ...items.value[index]!, qty: value };
++}
++
++function reverse(): void {
++  items.value = [...items.value].reverse();
++}
+ </script>
+ 
+ <template>
+-  <HelloWorld />
++  <h1>Inventory</h1>
++  <button type="button" @click="reverse">Reverse order</button>
++  <nv-inventory-item
++    v-for="item in items"
++    :key="item.id"
++    :item="item"
++    :lowThreshold="2"
++    @item-select="(e) => select(e.detail.id)"
++  >
++    <span v-if="item.qty === 0" slot="badge">out of stock</span>
++  </nv-inventory-item>
++  <p>Selected: {{ selected ? selected.name : "none" }}</p>
++  <p>Selections: {{ selections }}</p>
++  <nv-qty-input v-if="selected" :value="selected.qty" @value-change="(e) => setQty(e.detail.value)" />
++  <button type="button" @click="showSummary = !showSummary">Toggle summary</button>
++  <KeepAlive>
++    <summary-panel v-if="showSummary" />
++  </KeepAlive>
++  <inventory-footer />
+ </template>
+diff --git a/src/InventoryFooter.vue b/src/InventoryFooter.vue
+new file mode 100644
+index 0000000..faf4675
+--- /dev/null
++++ b/src/InventoryFooter.vue
+@@ -0,0 +1,3 @@
++<template>
++  <footer>Inventory footer</footer>
++</template>
+diff --git a/src/SummaryPanel.vue b/src/SummaryPanel.vue
+new file mode 100644
+index 0000000..00dd380
+--- /dev/null
++++ b/src/SummaryPanel.vue
+@@ -0,0 +1,3 @@
++<template>
++  <nv-inventory-summary />
++</template>
+diff --git a/src/TypesCheck.vue b/src/TypesCheck.vue
+new file mode 100644
+index 0000000..a6ab612
+--- /dev/null
++++ b/src/TypesCheck.vue
+@@ -0,0 +1,8 @@
++<template>
++  <!-- @vue-expect-error value is a number -->
++  <nv-qty-input value="1" />
++  <!-- @vue-expect-error item has the wrong shape -->
++  <nv-inventory-item :item="{ id: '1' }" />
++  <!-- @vue-expect-error detail is { id: number } -->
++  <nv-inventory-item @item-select="(e) => e.detail.name" />
++</template>
+diff --git a/src/main.ts b/src/main.ts
+index 2425c0f..a9ec5a8 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,5 +1,8 @@
+-import { createApp } from 'vue'
+-import './style.css'
+-import App from './App.vue'
++import "./nv/inventory-item.js";
++import "./nv/qty-input.js";
++import "./nv/inventory-summary.js";
++import { createApp } from "vue";
++import "./style.css";
++import App from "./App.vue";
+ 
+-createApp(App).mount('#app')
++createApp(App).mount("#app");
+diff --git a/src/nativele-vue.d.ts b/src/nativele-vue.d.ts
+new file mode 100644
+index 0000000..2670a11
+--- /dev/null
++++ b/src/nativele-vue.d.ts
+@@ -0,0 +1,17 @@
++import type { HTMLAttributes } from "vue";
++
++type NativeleTag = Extract<keyof HTMLElementTagNameMap, `${string}-${string}`>;
++type Camelize<S extends string> = S extends `${infer A}-${infer B}` ? `${A}${Capitalize<Camelize<B>>}` : S;
++type NativeleProps<E> = E extends { readonly props: infer P } ? { [K in keyof P & keyof E]?: E[K] } : unknown;
++type NativeleEvents<E> = E extends { readonly "~emits"?: infer M }
++  ? { [K in keyof NonNullable<M> & string as `on${Capitalize<Camelize<K>>}`]?: (event: CustomEvent<NonNullable<M>[K]>) => void }
++  : unknown;
++type NativeleComponents = {
++  [K in NativeleTag]: new () => {
++    $props: HTMLAttributes & NativeleProps<HTMLElementTagNameMap[K]> & NativeleEvents<HTMLElementTagNameMap[K]>;
++  };
++};
++
++declare module "vue" {
++  interface GlobalComponents extends NativeleComponents {}
++}
+diff --git a/src/nv/inventory-item.html b/src/nv/inventory-item.html
+new file mode 100644
+index 0000000..c004679
+--- /dev/null
++++ b/src/nv/inventory-item.html
+@@ -0,0 +1,4 @@
++<span>{{ name }}</span>
++<em data-if="low">low stock</em>
++<slot name="badge"></slot>
++<button type="button" data-on-click="pick">Select</button>
+diff --git a/src/nv/inventory-item.ts b/src/nv/inventory-item.ts
+new file mode 100644
+index 0000000..0690caa
+--- /dev/null
++++ b/src/nv/inventory-item.ts
+@@ -0,0 +1,23 @@
++import { Component, define, event } from "@nativele/ts-dom";
++import tpl from "./inventory-item.html.js";
++
++export interface Item {
++  id: number;
++  name: string;
++  qty: number;
++}
++
++export class InventoryItem extends Component(tpl, {
++  shadow: true,
++  props: { item: { id: 0, name: "", qty: 0 } as Item, lowThreshold: 0 },
++  derive: {
++    name: (v) => v.item.name,
++    low: (v) => v.item.qty < v.lowThreshold,
++  },
++  emits: { "item-select": event<{ id: number }>() },
++}) {
++  pick(): void {
++    this.emit("item-select", { id: this.props.item.id });
++  }
++}
++define("nv-inventory-item", InventoryItem);
+diff --git a/src/nv/inventory-store.ts b/src/nv/inventory-store.ts
+new file mode 100644
+index 0000000..b3b5760
+--- /dev/null
++++ b/src/nv/inventory-store.ts
+@@ -0,0 +1,3 @@
++import { createStore } from "@nativele/ts-dom";
++
++export const total = createStore(0);
+diff --git a/src/nv/inventory-summary.html b/src/nv/inventory-summary.html
+new file mode 100644
+index 0000000..6c3eef2
+--- /dev/null
++++ b/src/nv/inventory-summary.html
+@@ -0,0 +1 @@
++<p>Total: {{ total }}</p>
+diff --git a/src/nv/inventory-summary.ts b/src/nv/inventory-summary.ts
+new file mode 100644
+index 0000000..71d8bcc
+--- /dev/null
++++ b/src/nv/inventory-summary.ts
+@@ -0,0 +1,12 @@
++import { Component, define } from "@nativele/ts-dom";
++import tpl from "./inventory-summary.html.js";
++import { total } from "./inventory-store.js";
++
++export class InventorySummary extends Component(tpl, {
++  state: { total: 0 },
++}) {
++  override connected(): void {
++    this.bind(total, (value) => this.set({ total: value }));
++  }
++}
++define("nv-inventory-summary", InventorySummary);
+diff --git a/src/nv/qty-input.html b/src/nv/qty-input.html
+new file mode 100644
+index 0000000..d33800d
+--- /dev/null
++++ b/src/nv/qty-input.html
+@@ -0,0 +1 @@
++<input type="number" data-ref="input" data-on-input="onInput" />
+diff --git a/src/nv/qty-input.ts b/src/nv/qty-input.ts
+new file mode 100644
+index 0000000..fd10803
+--- /dev/null
++++ b/src/nv/qty-input.ts
+@@ -0,0 +1,18 @@
++import { Component, define, event } from "@nativele/ts-dom";
++import tpl from "./qty-input.html.js";
++
++export class QtyInput extends Component(tpl, {
++  props: { value: 0 },
++  emits: { "value-change": event<{ value: number }>() },
++}) {
++  onInput(): void {
++    const input = this.refs.input;
++    if (input.value === "") return;
++    this.emit("value-change", { value: input.valueAsNumber });
++  }
++  override render(view: { value: number }): void {
++    const next = String(view.value);
++    if (this.refs.input.value !== next) this.refs.input.value = next;
++  }
++}
++define("nv-qty-input", QtyInput);
+diff --git a/vite.config.ts b/vite.config.ts
+index 7ba572c..a91c7db 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -1,7 +1,7 @@
+-import vue from '@vitejs/plugin-vue'
+-import { defineConfig } from 'vite'
++import vue from "@vitejs/plugin-vue";
++import { defineConfig } from "vite";
++import { tsDom } from "@nativele/ts-dom/vite";
+ 
+-// https://vite.dev/config/
+ export default defineConfig({
+-  plugins: [vue()],
+-})
++  plugins: [tsDom({ dirs: ["src/nv"] }), vue({ template: { compilerOptions: { isCustomElement: (tag) => tag.startsWith("nv-") } } })],
++});
