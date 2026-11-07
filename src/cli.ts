@@ -2,11 +2,12 @@
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { A11Y_RULES } from "./lib/a11y.ts";
-import { CHECK_RULES, runCheck } from "./lib/check.ts";
+import { CHECK_RULES, runCheck, splitDirs } from "./lib/check.ts";
 import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, scanDefines, watchAll } from "./lib/codegen.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, watchAll } from "./lib/codegen.ts";
+import { scanDefines } from "./lib/components.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, runLint } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]
@@ -152,13 +153,14 @@ const ignored = new Set(globs("ignore"));
 const kept = <T extends { rule: string; severity: string }>(issues: T[]) => issues.filter((i) => i.severity === "error" || !ignored.has(i.rule));
 const dirs = args.filter((a) => !a.startsWith("--"));
 if (!dirs.length) dirs.push("src");
+const { dirs: found, missing } = splitDirs(dirs);
 
 try {
   if (cmd === "gen" && flags.has("--check")) {
-    const defs = scanDefines(dirs);
-    const results = dirs.map((d) => checkGenerated(d, generate, defs, dirs));
+    const defs = scanDefines(found);
+    const results = found.map((d) => checkGenerated(d, generate, defs, found));
     const stale = results.flatMap((r) => r.stale);
-    const errors = [...results.flatMap((r) => r.errors), ...crossDirDuplicates(dirs).map((d) => formatDiagnostics(d.file, [d]))];
+    const errors = [...missing.map(formatIssue), ...results.flatMap((r) => r.errors), ...crossDirDuplicates(found).map((d) => formatDiagnostics(d.file, [d]))];
     if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));
     else {
       for (const s of stale) console.error(`${relative(process.cwd(), s.file)}:1:1 error [stale-generated] The generated file is ${s.reason}. Fix: run ts-dom gen.`);
@@ -168,16 +170,18 @@ try {
     if (stale.length || errors.length) process.exitCode = 1;
   } else if (cmd === "gen") {
     let failed = false;
+    for (const m of missing) console.error(formatIssue(m));
+    if (missing.length) process.exitCode = 1;
     try {
-      generateDirs(dirs, generate);
+      generateDirs(found, generate);
     } catch (e) {
       if (!(e instanceof CodegenError) || !flags.has("--watch")) throw e;
       console.error(e.message);
       failed = true;
     }
-    if (flags.has("--watch")) {
-      console.log(`[ts-dom] watching ${dirs.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
-      watchAll(dirs, {
+    if (flags.has("--watch") && found.length) {
+      console.log(`[ts-dom] watching ${found.join(", ")}${failed ? " (the first generation had errors)" : ""}`);
+      watchAll(found, {
         ...generate,
         onGenerate: (f) => console.log(`[ts-dom] generated ${f}`),
         onError: (m) => console.error(m),
@@ -200,7 +204,7 @@ try {
     if (issues.some((i) => i.severity === "error" || (flags.has("--strict") && i.severity === "warning"))) process.exitCode = 1;
     if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
-    const issues = kept(runLint(dirs, { a11y: flags.has("--a11y") })).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
+    const issues = kept([...missing, ...runLint(found, { a11y: flags.has("--a11y") })]).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
     else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
     const errors = issues.filter((i) => i.severity === "error").length;

@@ -13,6 +13,8 @@ export interface Schema {
   slots: string;
   /** The template's only top-level element (a `<style>` does not count), or `never` when there is not exactly one. */
   rootElement: Element;
+  /** The template's path relative to the scanned directory, which a type error about the template names. */
+  file?: string;
 }
 
 /**

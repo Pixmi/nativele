@@ -16,7 +16,6 @@ export interface Skill {
 
 const STALE_DAYS = 183;
 
-/** The skills folder shipped with this package (next to its package.json). */
 export function skillsRoot(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   while (!existsSync(join(dir, "package.json")) || !existsSync(join(dir, "skills"))) {
@@ -95,18 +94,15 @@ export function staleReason(skill: Skill, version: string, today = new Date()): 
   return null;
 }
 
-/** The folder a project keeps its skills in: .claude/skills when the project has .claude, otherwise .agents/skills. */
 export function skillsTarget(cwd: string, to?: string): string {
   if (to) return resolve(cwd, to);
   return existsSync(join(cwd, ".claude")) ? join(cwd, ".claude", "skills") : join(cwd, ".agents", "skills");
 }
 
-/** Every place a project may already hold a copy of a Skill. */
 export function installedCopies(cwd: string, name: string): string[] {
   return [join(cwd, ".claude", "skills", name), join(cwd, ".agents", "skills", name)].filter((d) => existsSync(join(d, "SKILL.md")));
 }
 
-/** Copy a Skill (its files, not its example project) into `target/<name>`; returns the folder written. */
 export function addSkill(skill: Skill, target: string): string {
   const dest = join(target, skill.name);
   cpSync(skill.dir, dest, { recursive: true, filter: (src) => !src.startsWith(join(skill.dir, "example")) });

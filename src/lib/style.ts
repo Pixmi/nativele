@@ -1,4 +1,3 @@
-/** Limit scoped styles to a tag: use the native @scope when available, otherwise fall back to CSS nesting. */
 export function scopeCss(css: string, tag: string): string {
   if (typeof CSSScopeRule !== "undefined") return `@scope (${tag}) {\n${css}\n}`;
   return `${tag} {\n${css.replaceAll(":scope", "&")}\n}`;
@@ -9,7 +8,6 @@ export interface Sheet {
   scoped: boolean;
 }
 
-/** Take the template's top-level <style> elements out of the template (they are removed from it). */
 export function extractSheets(content: DocumentFragment): Sheet[] {
   const sheets: Sheet[] = [];
   // children is a live collection and removing from it changes the iteration, so copy it first
@@ -22,7 +20,6 @@ export function extractSheets(content: DocumentFragment): Sheet[] {
   return sheets;
 }
 
-/** Inject every stylesheet only once per document. */
 export function createInjector(sheets: Sheet[]): (host: HTMLElement) => void {
   const injected = new WeakMap<Document, Set<string>>();
   return (host) => {

@@ -4,7 +4,7 @@ description: "Style Nativele components with Tailwind CSS v4 in a Vite app that 
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "tailwindcss@4.3.4 @tailwindcss/vite@4.3.4 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "tailwindcss"
@@ -30,7 +30,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148, by reading computed styles with Playwright both against `vite` (dev) and against `vite build` served by `vite preview`, in an app made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository. With a different major version of Tailwind, treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, by reading computed styles with Playwright both against `vite` (dev) and against `vite build` served by `vite preview`, in an app made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository. With a different major version of Tailwind, treat every step as unverified.
 
 ## Set-up
 
@@ -56,7 +56,7 @@ The starting point: `src/style.css` is `@import "tailwindcss";`, `src/main.ts` i
    @source "../../shared-nv";
    ```
 
-   For Nativele, a package of the workspace generates and checks its own components and the app imports it, as `npx ts-dom skills nativele-monorepo` sets up. A plain folder outside the project that the app scans itself goes into `tsDom({ dirs })`, the arguments of `ts-dom check` and `ts-dom doctor`, and the tsconfig (`nativele-typescript`); keep each component's `.ts` next to its template there (a template whose importer is in another folder is reported as `no-importer`), and the folder must resolve `@nativele/ts-dom` itself, or `tsc` reports `TS2307` for its generated `.html.ts`.
+   For Nativele, a package of the workspace generates and checks its own components and the app imports it, as `npx ts-dom skills nativele-monorepo` sets up. A plain folder outside the project that the app scans itself goes into `tsDom({ dirs })`, the arguments of `ts-dom check` and `ts-dom doctor`, and the tsconfig (`nativele-typescript`); keep each component's `.ts` next to its template there (a template whose class is in a folder that is not scanned is reported as `no-importer`), and the folder must resolve `@nativele/ts-dom` itself, or `tsc` reports `TS2307` for its generated `.html.ts`.
 
 5. Only for `shadow: true` components: add one module that turns the same CSS into a constructable stylesheet, and adopt it in each Shadow component's constructor (limitation 3 explains why and what it costs):
 

@@ -33,3 +33,23 @@ describe("Events that do not bubble (real Chrome)", () => {
     expect(seen).toEqual(["canplay", "close"]);
   });
 });
+
+describe("Events with no on<name> property on HTMLElement (real Chrome)", () => {
+  it("focusin, focusout and touchstart are delegated in the bubble phase, so a stopPropagation below the handler is respected", async () => {
+    const seen = await page.evaluate(() => {
+      const box = document.createElement("media-box") as HTMLElement & { seen: string[]; refs: { field: HTMLInputElement } };
+      document.body.append(box);
+      const { field } = box.refs;
+      const touch = () => field.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+      field.focus();
+      field.blur();
+      touch();
+      for (const type of ["focusin", "focusout", "touchstart"]) field.addEventListener(type, (e) => e.stopPropagation());
+      field.focus();
+      field.blur();
+      touch();
+      return box.seen;
+    });
+    expect(seen).toEqual(["focusin", "focusout", "touchstart"]);
+  });
+});

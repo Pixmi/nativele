@@ -236,7 +236,7 @@ describe("codegen marks where the item component comes from", () => {
   it("local, unexported or external", async () => {
     const { generateModule } = await import("../src/lib/codegen.ts");
     const html = `<template data-each="rows" data-key="id" data-prop="row"><x-row></x-row></template>`;
-    const def = (exported: boolean) => [{ tag: "x-row", className: "Row", file: "row.ts", exported, isDefault: false }];
+    const def = (exported: boolean) => [{ tag: "x-row", className: "Row", file: "row.ts", classFile: "row.ts", exported, isDefault: false }];
     expect(generateModule(html, {}, [], def(true))).toContain(`source: "local"`);
     expect(generateModule(html, {}, [], def(false))).toContain(`source: "unexported"`);
     expect(generateModule(html)).toContain(`source: "external"`);

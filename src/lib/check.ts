@@ -2,10 +2,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, scanDefines, staleGenerated, templateImports } from "./codegen.ts";
+import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
+import { classSpan, componentClassHeads, indexDirs, scanDefines, Workspace } from "./components.ts";
+import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
-import { classSpan, componentClassHeads, readTemplates, runLint } from "./lint.ts";
+import { lintRun } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
 
 export const CHECK_RULES = {
@@ -91,16 +93,11 @@ const membersAfter = (message: string, key: string): [string, string][] => {
   return out;
 };
 
-const templatesOf = (tsFile: string): string[] => {
-  if (!existsSync(tsFile)) return [];
-  return templateImports(readFileSync(tsFile, "utf8")).map((i) => resolve(dirname(tsFile), i.html)).filter((f) => existsSync(f));
-};
-
 /**
  * Turn the tsc errors that come from the template contract into issues that point at the template, or at the line to change, with a Fix hint.
- * Other errors are kept as `tsc` issues.
+ * Other errors are kept as `tsc` issues. `dirs` are the scanned folders, which the template path in a contract error is relative to.
  */
-export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssue[] {
+export function mapTscErrors(errors: readonly TscError[], cwd: string, dirs: readonly string[] = [cwd], index: ComponentIndex = indexDirs(dirs.map((d) => resolve(cwd, d)).filter((d) => existsSync(d)))): LintIssue[] {
   const rel = (f: string) => relative(cwd, f);
   const out: LintIssue[] = [];
   const analyses = new Map<string, ReturnType<typeof analyze>>();
@@ -109,19 +106,26 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     if (!a) analyses.set(html, (a = analyze(readFileSync(html, "utf8"))));
     return a;
   };
-  const locate = (tsFile: string, keys: string[]) => {
-    for (const html of templatesOf(tsFile)) {
-      for (const key of keys) {
-        const loc = analysisOf(html).locs.get(key);
-        if (loc) return { file: html, ...loc };
-      }
+  const templateOf = (e: TscError): string | undefined => {
+    const named = /\btemplate: "([^"]+)"/.exec(e.message)?.[1];
+    if (!named) return undefined;
+    const found = [...new Set(dirs.map((d) => resolve(cwd, d, named)))].filter((f) => existsSync(f));
+    const file = resolve(cwd, e.file);
+    return found.length > 1 ? (found.find((t) => index.byTemplate.get(t)?.some((c) => c.file === file || c.defines.some((d) => resolve(d.file) === file))) ?? found[0]) : found[0];
+  };
+  const locate = (e: TscError, keys: string[]) => {
+    const html = templateOf(e);
+    for (const key of html ? keys : []) {
+      const loc = analysisOf(html as string).locs.get(key);
+      if (loc) return { file: html as string, ...loc };
     }
     return undefined;
   };
-  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file.
+  // A class whose Component(...) call has a contract error is typed as that error, so define() and member accesses on that class fail too, in any file, and their messages name the class.
   // In its own file those follow-up errors repeat the first one and are dropped; in other files they are kept, pointing at the error they follow from.
-  // Inside the body of such a class `this` has no usable type either, so errors there (a bind callback's parameter without a type, say) follow from it as well.
-  const brokenClasses = new Map<string, TscError>();
+  // Inside its body a callback passed to a member of `this` loses its contextual type, so an implicitly any parameter there follows from it as well.
+  const brokenClasses = new Map<string, { name: string; cause: TscError }>();
+  const classKey = (file: string, name?: string) => `${file}\0${name ?? ""}`;
   const brokenBodies: { file: string; from: number; to: number }[] = [];
   for (const e of errors) {
     if (!/missingStateKeys|conflictingKeys|reservedPropNames|nativeEventNames/.test(e.message)) continue;
@@ -129,7 +133,8 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     const lines = text.split("\n");
     const head = componentClassHeads(lines[e.line - 1] ?? "")[0];
     if (!head?.name) continue;
-    if (!brokenClasses.has(head.name)) brokenClasses.set(head.name, e);
+    const key = classKey(resolve(cwd, e.file), head.name);
+    if (!brokenClasses.has(key)) brokenClasses.set(key, { name: head.name, cause: e });
     const span = classSpan(text, lines.slice(0, e.line - 1).join("\n").length + (e.line > 1 ? 1 : 0) + head.open);
     if (span) brokenBodies.push({ file: rel(resolve(cwd, e.file)), from: e.line, to: text.slice(0, span.bodyEnd).split("\n").length });
   }
@@ -143,7 +148,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     let named = false;
     for (const name of namesAfter(e.message, "missingStateKeys")) {
       named = true;
-      const found = locate(file, [`text:${name}`, `if:${name}`]);
+      const found = locate(e, [`text:${name}`, `if:${name}`]);
       issue(
         "missing-binding",
         `"${name}" is used by {{ ${name} }} or data-if="${name}" but the component declares no state, prop or derived value of that name (tsc at ${where}). Fix: add "${name}" to state, props or derive, or remove it from the template.`,
@@ -152,7 +157,7 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     }
     for (const name of namesAfter(e.message, "missingHandlers")) {
       named = true;
-      const found = locate(file, [`event:${name}`]);
+      const found = locate(e, [`event:${name}`]);
       issue(
         "missing-handler",
         `data-on-*="${name}" refers to a method the component class does not define (tsc at ${where}). Fix: add a public method \`${name}(e: Event, hit: EventHit)\` to the class.`,
@@ -161,13 +166,14 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     }
     for (const [name, type] of membersAfter(e.message, "wrongHandlerParameters")) {
       named = true;
-      const sites = templatesOf(file).flatMap((html) => analysisOf(html).eventSites.filter((x) => x.method === name).map((x) => ({ html, ...x })));
+      const html = templateOf(e);
+      const sites = html ? analysisOf(html).eventSites.filter((x) => x.method === name).map((x) => ({ html, ...x })) : [];
       const first = sites[0];
       const bound = sites.map((x) => `data-on-${x.event} on <${x.tag}>`);
       const child = type.includes("CustomEvent<") ? sites.find((x) => x.tag.includes("-")) : undefined;
       issue(
         "handler-event-type",
-        `${name}() is bound to ${bound.length ? [...new Set(bound)].join(" and ") : "a data-on-* attribute"}, which delivers ${type}, but its first parameter does not accept that event (tsc at ${where}). Fix: type the first parameter as \`${type}\`${child ? ` (for data-on-${child.event} on <${child.tag}> that is \`EmitEvent<Child, "${child.event}">\` with the class that defines <${child.tag}>)` : ""}, or as \`Event\`.`,
+        `${name}() is bound to ${bound.length ? [...new Set(bound)].join(" and ") : "a data-on-* attribute"}, which delivers ${type}, but its first parameter does not accept that event (tsc at ${where}). Fix: type the first parameter as \`${type}\`${child ? ` (for data-on-${child.event} on <${child.tag}> that is \`EmitEvent<Child, "${child.event}">\` with the class that defines <${child.tag}>)` : ""}${type === "Event" ? "" : ", or as `Event`"}.`,
         first && { file: rel(first.html), line: first.line, col: first.col },
       );
     }
@@ -186,20 +192,30 @@ export function mapTscErrors(errors: readonly TscError[], cwd: string): LintIssu
     } else if (file.endsWith(".html.ts") || file.endsWith(`${sep}ts-dom-tags.ts`)) issue("tsc", `${e.code}: ${e.message} This file is generated, so an edit to it is overwritten. Fix: run ts-dom gen for the folder that holds it; if it is left over from a template or folder that is no longer scanned, delete it.`);
     else issue("tsc", `${e.code}: ${e.message} Fix: change the TypeScript at this location so the types agree; ts-dom rules --explain=tsc.`);
   }
-  const brokenFiles = new Set([...brokenClasses.values()].map((e) => rel(resolve(cwd, e.file))));
-  const classIn = (message: string) => {
+  const named = new Map<string, string[]>();
+  for (const c of index.components) if (c.name) named.set(c.name, [...(named.get(c.name) ?? []), classKey(c.file, c.name)]);
+  // A type name in a message is the class it names in the file the error is in; outside the index, only a name no other class has.
+  const brokenIn = (message: string, file: string) => {
     const types = [...message.matchAll(/'([^']*)'/g)].flatMap((m) => topLevelMembers(m[1] as string).map((t) => t.replace(/^typeof\s+/, "")));
-    return [...brokenClasses.keys()].find((c) => types.includes(c));
+    for (const t of types) {
+      const target = index.resolve(file, t);
+      let key: string | undefined;
+      if (target?.kind === "class") key = classKey(target.file, target.name);
+      else if (!target && (named.get(t)?.length ?? 0) <= 1) key = [...brokenClasses].find(([, b]) => b.name === t)?.[0];
+      const broken = key && brokenClasses.get(key);
+      if (broken) return { ...broken, own: (key as string).startsWith(`${file}\0`) };
+    }
+    return undefined;
   };
   return out.flatMap((i) => {
-    const cls = i.rule === "tsc" ? classIn(i.message) : undefined;
-    if (i.rule === "tsc" && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
+    const file = resolve(cwd, i.file);
+    const cls = i.rule === "tsc" ? brokenIn(i.message, file) : undefined;
+    if (i.rule === "tsc" && /^TS70(06|31): /.test(i.message) && brokenBodies.some((b) => b.file === i.file && i.line > b.from && i.line <= b.to)) return [];
     if (cls === undefined) return [i];
-    if (brokenFiles.has(i.file) || /(^|[\\/])node_modules[\\/]/.test(i.file)) return [];
-    const cause = brokenClasses.get(cls) as TscError;
-    const first = firstIssueOf.get(cause);
-    const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cause.file))}:${cause.line}:${cause.col}`;
-    return [{ ...i, message: `${i.message.replace(/ Fix: .*$/s, "")} This error follows from the contract error of ${cls} at ${at}, which makes tsc type ${cls} as that error instead of an element. Fix: fix that error first; this one then goes away.` }];
+    if (cls.own || /(^|[\\/])node_modules[\\/]/.test(i.file)) return [];
+    const first = firstIssueOf.get(cls.cause);
+    const at = first ? `${first.file}:${first.line}:${first.col} [${first.rule}]` : `${rel(resolve(cwd, cls.cause.file))}:${cls.cause.line}:${cls.cause.col}`;
+    return [{ ...i, message: `${i.message.replace(/ Fix: .*$/s, "")} This error follows from the contract error of ${cls.name} at ${at}, which makes tsc type ${cls.name} as that error instead of an element. Fix: fix that error first; this one then goes away.` }];
   });
 }
 
@@ -241,6 +257,18 @@ function findTsc(cwd: string): { name: string; bin: string } | null {
   return null;
 }
 
+/** The given folders that exist, as given, and a `dir-not-found` issue for each that does not; every command that takes folders goes through this. */
+export function splitDirs(given: readonly string[], cwd = process.cwd()): { dirs: string[]; missing: LintIssue[] } {
+  const dirs: string[] = [];
+  const missing: LintIssue[] = [];
+  for (const d of given) {
+    const file = relative(cwd, resolve(cwd, d)) || ".";
+    if (existsSync(resolve(cwd, d))) dirs.push(d);
+    else missing.push({ file, line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${file} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
+  }
+  return { dirs, missing };
+}
+
 /**
  * Everything an agent needs in one pass: template diagnostics, generated files, TypeScript errors mapped back to the templates, and the lint rules.
  * Returns the issues sorted by file and position.
@@ -250,35 +278,34 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   const generate = options.generate ?? {};
   const issues: LintIssue[] = [];
   const rel = (f: string) => relative(cwd, f);
-  const dirs: string[] = [];
-  for (const d of options.dirs.map((x) => resolve(cwd, x))) {
-    if (existsSync(d)) dirs.push(d);
-    else issues.push({ file: rel(d) || ".", line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${rel(d) || "."} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
-  }
+  const split = splitDirs(options.dirs, cwd);
+  const dirs = split.dirs.map((d) => resolve(cwd, d));
+  issues.push(...split.missing);
 
-  const templates = readTemplates(dirs);
-  for (const t of templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.analysis.diagnostics) issues.push({ file: rel(t.file), ...d });
+  const ws = new Workspace();
+  const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws });
+  for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
   for (const dir of dirs) {
     try {
-      renderTags(dir);
+      renderTags(dir, ws);
     } catch (e) {
       if (!(e instanceof CodegenError)) throw e;
       issues.push({ file: rel(dir), line: 1, col: 1, rule: "duplicate-define", severity: "error", message: e.message.replace(/^[^[]*\[duplicate-define\]\s*/, "") });
     }
   }
-  for (const d of crossDirDuplicates(dirs)) issues.push({ ...d, file: rel(d.file) });
+  for (const d of crossDirDuplicates(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
 
   if (options.write === false) {
-    const defs = scanDefines(dirs);
+    const defs = scanDefines(dirs, ws);
     for (const dir of dirs) {
-      for (const s of staleGenerated(dir, generate, defs, dirs)) {
+      for (const s of staleGenerated(dir, generate, defs, dirs, ws)) {
         issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
       }
     }
   } else {
     try {
-      generateDirs(dirs, generate);
+      generateDirs(dirs, generate, ws);
     } catch (e) {
       if (!(e instanceof CodegenError)) throw e;
     }
@@ -293,7 +320,7 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     const runs = configs.length ? configs.map((c) => ["-p", c]) : [options.project ? ["-p", options.project] : []];
     const parsed: TscError[] = [];
     for (const extra of runs) {
-      const run = spawnSync(process.execPath, [tsc.bin, "--noEmit", "--pretty", "false", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+      const run = spawnSync(process.execPath, [tsc.bin, "--noEmit", "--pretty", "false", "--noErrorTruncation", ...extra], { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
       const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
       const errors = parseTscOutput(output);
       parsed.push(...errors);
@@ -302,10 +329,10 @@ export function runCheck(options: CheckOptions): LintIssue[] {
         issues.push({ file: extra[1] ? rel(extra[1]) : ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `${tsc.name} did not check the types: ${detail} Fix: make \`npx ${tsc.name} --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
       }
     }
-    issues.push(...mapTscErrors(parsed, cwd));
+    issues.push(...mapTscErrors(parsed, cwd, dirs, ws.index(dirs)));
   }
 
-  issues.push(...runLint(dirs, { a11y: !!options.a11y, cwd, templates }));
+  issues.push(...lint.issues);
   const seen = new Set<string>();
   return issues
     .filter((i) => {

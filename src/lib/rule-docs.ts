@@ -270,9 +270,11 @@ this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.labe
 this.lists.rows.replace(rows, (r) => r.id, (r, { text }) => (text.label = r.label));`,
   },
   "no-importer": {
-    why: "A template that no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten.",
+    why: "A template that no component class passes to Component() and no TypeScript file imports never becomes a component, so it is dead code or an import that was forgotten. A module that only re-exports it (export { default as tpl } from \"./card.html.js\") does not use it.",
     bad: `// card.html exists, but no .ts file contains
-// import tpl from "./card.html.js"`,
+// import tpl from "./card.html.js"
+// templates/index.ts only re-exports it, and no class uses that export
+export { default as cardTpl } from "./card.html.js";`,
     good: `// card.ts
 import tpl from "./card.html.js";`,
   },
@@ -311,7 +313,7 @@ override render(view: { name: string }) {
 }`,
   },
   "unchecked-custom-elements": {
-    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of (an element from another library, a component outside the scanned folders, or a tag defined in several packages and not exactly once in the template's package) those checks are skipped, and this one warning per run lists the tags so the gap is visible. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template. For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders (an element from another library, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned
 npx ts-dom lint src/pages`,
     good: `npx ts-dom lint src/pages src/ui
@@ -319,7 +321,7 @@ npx ts-dom lint src/pages`,
 npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
   },
   "custom-event-on-native": {
-    why: "A child's custom event does not bubble, so a handler on a native element would never receive it. Events are handled on the tag of the component that emits them.",
+    why: "An event a child component emits without bubbles: true reaches only the child's own tag, so a handler on a native element around it would never receive it. Events are handled on the tag of the component that emits them; an event declared with event<...>({ bubbles: true }) can be caught on a wrapper. A name no component in the scanned folders emits is not reported, nor a name the element fires natively, whether every element does (click) or only that element does (enterpictureinpicture on a <video>, afterprint on <body>).",
     bad: `<div data-on-quantity-change="update">
   <qty-input></qty-input>
 </div>`,
@@ -356,12 +358,12 @@ this.refs.list.items = ["a", "b"];`,
 <img src="divider.png" alt="">`,
   },
   "control-name": {
-    why: "A button or link with no text, hole, slot or aria-label has no accessible name, so assistive technology announces it as an unnamed control.",
+    why: "A button or link with no text, hole, slot or aria-label has no accessible name, so assistive technology announces it as an unnamed control. Its content includes what a component inside it renders, with that component's slots filled; a custom element whose template lint cannot read is not judged.",
     bad: `<button data-on-click="close"><svg></svg></button>`,
     good: `<button data-on-click="close" aria-label="Close"><svg></svg></button>`,
   },
   "form-label": {
-    why: "A form control without a label cannot be identified by screen readers, and clicking the label text will not focus it.",
+    why: "A form control without a label cannot be identified by screen readers, and clicking the label text will not focus it. A control put in a component's slot is wrapped by a <label> around that slot in the component's template.",
     bad: `<input data-ref="email">`,
     good: `<label>Email <input data-ref="email"></label>`,
   },
@@ -376,7 +378,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<dialog aria-label="Confirm delete"><p>Delete?</p></dialog>`,
   },
   "heading-empty": {
-    why: "An empty heading adds an empty stop to the heading navigation of assistive technology.",
+    why: "An empty heading adds an empty stop to the heading navigation of assistive technology. Its content includes what a component inside it renders, with that component's slots filled; a custom element whose template lint cannot read is not judged.",
     bad: `<h2></h2>`,
     good: `<h2>{{ title }}</h2>`,
   },
@@ -391,7 +393,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button aria-pressed="true">bold</button>`,
   },
   "role-tabindex": {
-    why: "An element with an interactive role promises keyboard use, but a non-focusable element cannot be reached with the keyboard.",
+    why: "An element with an interactive role promises keyboard use, but a non-focusable element cannot be reached with the keyboard. This rule owns such an element, with or without data-on-click; click-semantics is about elements without an interactive role.",
     bad: `<div role="button" data-on-click="save">save</div>`,
     good: `<button data-on-click="save">save</button>`,
   },
@@ -467,7 +469,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button>save</button>`,
   },
   "click-semantics": {
-    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control, or a component with one, is fine: a click on the control, by keyboard too, reaches the label's handler. An element this rule reports is not reported again by role-tabindex, which has the same fix. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. An element around a control (a label, a list around its links), or a component whose template has one, is fine: a click on the control, by keyboard too, reaches the handler around it. What a component renders includes the content its slots get. An element with an interactive role is role-tabindex's to report, so each element is judged by one of the two rules, whichever of them is on. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose template lint cannot read (see unchecked-content for the causes) may handle the keyboard itself and is not checked.",
     bad: `<div data-on-click="open">open</div>
 <!-- x-card.html: <div class="card"><span>{{ title }}</span></div> -->
 <x-card data-on-click="open"></x-card>`,
@@ -475,6 +477,13 @@ this.refs.list.items = ["a", "b"];`,
 <!-- x-card.html: <div class="card"><button type="button">{{ title }}</button></div> -->
 <x-card data-on-click="open"></x-card>
 <wa-button data-on-click="open">open</wa-button>`,
+  },
+  "unchecked-content": {
+    why: "click-semantics, control-name and heading-empty judge what an element holds once the components inside it render. A custom element whose template lint cannot read, and a <slot> of the template being checked, which the component's user fills, may hold the operable element or the name that decides the rule. When the content lint can read would fail the rule, lint does not report it, as that would be wrong whenever the unreadable content is what makes the element right (a <div data-on-click> around a <wa-button>), and gives this one warning per element instead, naming the rules and the content, so nothing is left unchecked without a trace. For each custom element it names why lint cannot read its template, with the fix for that cause: the three causes unchecked-custom-elements lists (no define() in the scanned folders, a define() class lint cannot follow to a class extending Component(...), a tag defined in several packages), the class passes Component() a template lint cannot follow to an .html file imported by a relative path (a template built by a function, or one from a package), or the template file the class imports does not exist. A slot's fallback content is read, so a slot whose fallback names the element decides it. A custom element with data-on-click and no contract at all (one of the first three causes) is reported by unchecked-custom-elements instead. Silence it with --ignore=unchecked-content once the elements it names are right.",
+    bad: `<div data-on-click="open"><wa-icon name="x"></wa-icon> Open</div>
+<button type="button"><slot></slot></button>`,
+    good: `<button type="button" data-on-click="open"><wa-icon name="x"></wa-icon> Open</button>
+<button type="button"><slot>Save</slot></button>`,
   },
 
   // CHECK_RULES

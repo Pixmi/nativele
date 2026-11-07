@@ -2,6 +2,7 @@ import type { List } from "./list.ts";
 import type { TextOf } from "./list.ts";
 import { LightSlots } from "./slots.ts";
 import type { ReadableStore } from "./store.ts";
+import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import { attrNameOf, RESERVED_NAMES } from "./reserved.ts";
 import { createInjector, extractSheets } from "./style.ts";
 import type { El, Schema, Template } from "./template.ts";
@@ -113,6 +114,8 @@ export type EventHit<Item = unknown, KeyField extends keyof Item = never> = [Key
 export interface ComponentInstance<S extends Schema> extends HTMLElement {
   /** Type inference only (define() uses it to check the data-on-* methods and the events they receive); does not exist at runtime. */
   readonly "~events"?: S["events"];
+  /** Type inference only (define() names the template in its errors); does not exist at runtime. */
+  readonly "~template"?: S["file"];
   readonly refs: S["refs"];
   readonly lists: Lists<S>;
   /** Maps to {{ name }}: assigning a value updates every place the hole appears. */
@@ -122,9 +125,14 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
   show(name: S["ifs"], on: boolean): void;
   /** Subscribe to a store: calls fn immediately once, and unsubscribes automatically when the element is removed. */
   bind<T>(store: ReadableStore<T>, fn: (value: T) => void): void;
-  /** Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually. */
+  /**
+   * Add an event listener that is removed automatically when the element is removed. Returns a function to remove it manually.
+   * `fn` receives `Event`, or the narrower event its parameter names when the target declares it for `type` (see EventOf); a name the target does not declare is not checked. A name HTMLElementEventMap lists types an unannotated parameter.
+   */
   on<K extends keyof HTMLElementEventMap>(target: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions): () => void;
+  // Before the lookup below: inside its class the component itself is the polymorphic `this`, for which the lookup is deferred.
   on(target: EventTarget, type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions): () => void;
+  on<T extends EventTarget, K extends string, E extends Event = Event>(target: T, type: K, fn: (e: [EventOf<T, K>] extends [never] ? E : EventOf<T, K>) => void, opts?: AddEventListenerOptions): () => void;
   /** Register a cleanup function that runs when the element is removed. */
   onCleanup(fn: () => void): void;
   /** The nodes currently assigned to the slot (fallback content excluded). In Shadow mode this is the native `slot.assignedNodes()`. */
@@ -166,10 +174,14 @@ export type EmitEvent<I, N extends string> = I extends { readonly "~emits"?: inf
     : never
   : never;
 
-const NON_BUBBLING = new Set([
-  "focus", "blur", "mouseenter", "mouseleave", "pointerenter", "pointerleave", "load", "error", "scroll", "scrollend", "toggle", "beforetoggle", "cancel", "close", "invalid",
-  "abort", "canplay", "canplaythrough", "durationchange", "emptied", "ended", "loadeddata", "loadedmetadata", "loadstart", "pause", "play", "playing", "progress", "ratechange", "seeked", "seeking", "stalled", "suspend", "timeupdate", "volumechange", "waiting",
-]);
+type OnProperty<T, N extends string> = `on${N}` extends keyof T ? (NonNullable<T[`on${N}` & keyof T]> extends (this: never, ev: infer V) => unknown ? V : never) : never;
+type FromEventMap<T, N extends string> = T extends HTMLElement ? (N extends keyof HTMLElementEventMap ? HTMLElementEventMap[N] : never) : never;
+
+/**
+ * The event that `type` delivers on `T`, from the first source that declares it: the events T's component emits, the type of T's `on<type>` property (`onenterpictureinpicture` on a `<video>`), then `HTMLElementEventMap`.
+ * `never` when no source declares the name, so it is not checked.
+ */
+export type EventOf<T, N extends string> = [EmitEvent<T, N>] extends [never] ? ([OnProperty<T, N>] extends [never] ? FromEventMap<T, N> : OnProperty<T, N>) : EmitEvent<T, N>;
 
 export function Component<S extends Schema>(
   tpl: Template<S>,
@@ -194,7 +206,7 @@ export function Component<
 >(
   tpl: Template<S>,
   opts: DataOptions<St, P, R, E>,
-): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E>;
+): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E> & { template: S["file"] };
 export function Component(
   tpl: Template<Schema>,
   opts: ComponentOptions & {
@@ -218,9 +230,8 @@ export function Component(
     if (stateKeys.includes(k) || propKeys.includes(k)) throw new Error(`[conflicting-keys] derive.${k} has the same name as a state or props field. Fix: rename the derived value.`);
   }
   for (const k of Object.keys(opts.emits ?? {})) {
-    if (`on${k}` in HTMLElement.prototype) throw new Error(`[native-event-name] emits.${k} has the same name as a native DOM event. Fix: rename the event (for example with a prefix such as "field-${k}").`);
+    if ((ELEMENT_EVENT_NAMES as readonly string[]).includes(k)) throw new Error(`[native-event-name] emits.${k} has the same name as a native DOM event. Fix: rename the event (for example with a prefix such as "field-${k}").`);
   }
-  // Only props whose default is a string / number / boolean can be set from HTML attributes
   const attrProps = new Map<string, { key: string; kind: "string" | "number" | "boolean" }>();
   for (const k of propKeys) {
     const t = typeof propDefaults[k];
@@ -228,10 +239,8 @@ export function Component(
   }
   const content = tpl.build();
 
-  // Light mode: extract the template's top-level <style> elements and inject them once per document, not once per instance
   const injectStyles = createInjector(shadow ? [] : extractSheets(content));
 
-  // Scan once at definition time: which data-on-* events and methods the template (list items included) uses
   const eventTypes = new Set<string>();
   const methodNames = new Set<string>();
   (function scan(root: ParentNode) {
@@ -259,7 +268,6 @@ export function Component(
     #built = false;
     #started = false;
 
-    // state
     #state: Record<string, unknown> = { ...(opts.state as Record<string, unknown> | undefined) };
     #props: Record<string, unknown> = { ...propDefaults };
     #derived: Record<string, unknown> = {};
@@ -324,12 +332,10 @@ export function Component(
       }
       conds.hideAll(); // hidden by default; TypeScript decides when to show them
       this.root.append(frag);
-      // Event delegation: one listener per event type on the root.
-      // Native bubbling events use the bubble phase (so a user's stopPropagation is respected);
-      // the rest (non-bubbling native events and custom events emitted by child components) need the capture phase.
+      // Whether an event bubbles is known only per dispatch (scroll bubbles from the document but not from an element), so each type gets
+      // a bubble-phase listener for bubbling events, which respects a stopPropagation below, and a capture-phase one for the rest.
       for (const type of eventTypes) {
-        const nativeBubbling = `on${type}` in HTMLElement.prototype && !NON_BUBBLING.has(type);
-        this.root.addEventListener(type, (e) => this.#dispatch(e), !nativeBubbling);
+        for (const capture of [false, true]) this.root.addEventListener(type, (e) => e.bubbles === capture || this.#dispatch(e), capture);
       }
     }
 
@@ -364,7 +370,6 @@ export function Component(
       }
     }
 
-    // ---- state ----
     get state(): Record<string, unknown> {
       return this.#state;
     }
@@ -390,7 +395,7 @@ export function Component(
         if (next === this.#state) next = { ...next };
         next[k] = p[k];
       }
-      if (next === this.#state) return; // nothing changed: no update and no render() call
+      if (next === this.#state) return;
       this.#dirtyFrom ??= this.#merged();
       this.#state = next;
       this.#flushIfIdle();
@@ -476,7 +481,6 @@ export function Component(
       this.render({ ...to, ...derived }, new Set(keys));
     }
 
-    // ---- everything else ----
     show(name: string, on: boolean): void {
       this.#show(name, on);
     }
@@ -517,7 +521,6 @@ export function Component(
           }
         }
         if (hasState) {
-          // First render: write all the current data into the view
           this.#ready = true;
           this.#dirtyFrom = null;
           this.#rendering = true;
@@ -557,21 +560,18 @@ export function Component(
 }
 
 // The event type is resolved here, not in the template module: a component whose template uses its own tag would otherwise reference itself in its own base type.
-type HandlerEvent<B> = B extends readonly [infer T extends string, infer N extends string]
-  ? [EmitEvent<El<T>, N>] extends [never]
-    ? N extends keyof HTMLElementEventMap
-      ? HTMLElementEventMap[N]
-      : Event
-    : EmitEvent<El<T>, N>
-  : never;
+type HandlerEvent<B> = B extends readonly [infer T extends string, infer N extends string] ? EventOf<El<T>, N> : never;
 type Missing<I, E> = Exclude<keyof E, keyof I>;
 // Method parameters are compared bivariantly, so assigning the method type would accept a parameter narrower than the event: compare the parameter itself.
 type Mismatched<I, E> = {
   [K in keyof E & keyof I]: I[K] extends (...args: infer A) => unknown ? (A extends [] ? never : [HandlerEvent<E[K]>] extends [A[0]] ? never : K) : never;
 }[keyof E & keyof I];
-type CheckHandlers<I> = I extends { readonly "~events"?: infer E }
-  ? ([Missing<I, NonNullable<E>>] extends [never] ? unknown : { missingHandlers: Missing<I, NonNullable<E>> }) &
-      ([Mismatched<I, NonNullable<E>>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, NonNullable<E>>]: HandlerEvent<NonNullable<E>[K]> } })
+type HandlerProblems<I, E> = ([Missing<I, E>] extends [never] ? unknown : { missingHandlers: Missing<I, E> }) &
+  ([Mismatched<I, E>] extends [never] ? unknown : { wrongHandlerParameters: { [K in Mismatched<I, E>]: HandlerEvent<E[K]> } });
+type CheckHandlers<I> = I extends { readonly "~events"?: infer E; readonly "~template"?: infer F }
+  ? IsClean<HandlerProblems<I, NonNullable<E>>> extends true
+    ? unknown
+    : HandlerProblems<I, NonNullable<E>> & { template: F }
   : unknown;
 
 /**

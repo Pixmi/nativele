@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
-import { contractsAt, contractsFor } from "../src/lib/lint.ts";
+import { childrenAt, contractsFor } from "../src/lib/lint.ts";
 
 const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
 const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
@@ -98,10 +98,11 @@ describe("click-semantics", () => {
     expect(rules(`<button data-on-click="go">x</button><a href="/" data-on-click="go">x</a><p contenteditable data-on-click="go">x</p>`)).toEqual([]);
     expect(rules(`<div role="button" tabindex="0" data-on-click="go">x</div>`)).toEqual([]);
   });
-  it("data-on-click on an interactive role without tabindex gets one warning, click-semantics, whatever the other rule's setting", () => {
-    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
-    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual(["click-semantics"]);
-    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual(["click-semantics"]);
+  it("an interactive role without tabindex is reported by role-tabindex, with data-on-click too and whatever click-semantics's setting; click-semantics leaves it alone", () => {
+    expect(rules(`<div role="button" data-on-click="go">x</div>`)).toEqual(["role-tabindex"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["click-semantics"])).toEqual(["role-tabindex"]);
+    expect(rules(`<div role="button" data-on-click="go">x</div>`, ["role-tabindex"])).toEqual([]);
+    expect(rules(`<div role="button" data-ref="x" data-on-click="go">x</div>`)).toEqual([]);
     expect(rules(`<div role="button">x</div>`)).toEqual(["role-tabindex"]);
   });
   it("role-tabindex still reports a custom element whose click click-semantics accepts", () => {
@@ -122,7 +123,7 @@ describe("click-semantics", () => {
       mkdirSync(dirname(join(root, name)), { recursive: true });
       writeFileSync(join(root, name), text);
     }
-    return { root, check: (html: string) => checkA11y(html, [], contractsAt(contractsFor([root]), join(root, page))) };
+    return { root, check: (html: string) => checkA11y(html, [], childrenAt(contractsFor([root]), join(root, page))) };
   }
   const children = scanned(
     {
@@ -141,8 +142,9 @@ describe("click-semantics", () => {
     expect(rules(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
     expect(children.check(`<wa-button data-on-click="go">Save</wa-button>`)).toEqual([]);
   });
-  it("a scanned component whose template has an operable element (or an unreadable custom element) does not warn", () => {
-    expect(children.check(`<x-action data-on-click="go"></x-action><x-edit data-on-click="go"></x-edit><x-wrap data-on-click="go"></x-wrap>`)).toEqual([]);
+  it("a scanned component whose template has an operable element does not warn, and one whose template holds an unreadable custom element is not checked", () => {
+    expect(children.check(`<x-action data-on-click="go"></x-action><x-edit data-on-click="go"></x-edit>`)).toEqual([]);
+    expect(children.check(`<x-wrap data-on-click="go"></x-wrap>`).map((d) => d.rule)).toEqual(["unchecked-content"]);
   });
   it("a scanned component whose template has no operable element warns and names the template", () => {
     const [d, ...rest] = children.check(`<div><x-card data-on-click="go"></x-card></div>`);
@@ -155,8 +157,9 @@ describe("click-semantics", () => {
   it("the component tag with an interactive role plus tabindex does not warn", () => {
     expect(children.check(`<x-card role="button" tabindex="0" data-on-click="go"></x-card>`)).toEqual([]);
   });
-  it("a label wrapping a component counts the component's template, and an unreadable custom element as operable", () => {
-    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label><label data-on-click="go"><wa-switch></wa-switch> b</label>`)).toEqual([]);
+  it("a label wrapping a component counts the component's template, and one wrapping an unreadable custom element is not checked", () => {
+    expect(children.check(`<label data-on-click="go"><x-action></x-action> a</label>`)).toEqual([]);
+    expect(children.check(`<label data-on-click="go"><wa-switch></wa-switch> b</label>`).map((d) => d.rule)).toEqual(["unchecked-content"]);
     expect(children.check(`<label data-on-click="go"><x-card></x-card> a</label>`).map((d) => d.rule)).toEqual(["click-semantics"]);
   });
   it("a tag defined in several packages, none of them the template's, is not checked", () => {
@@ -164,13 +167,39 @@ describe("click-semantics", () => {
     const multi = scanned({ "a/package.json": "{}", "a/x-card.ts": component("Card", "x-card"), "a/x-card.html": card, "b/package.json": "{}", "b/x-card.ts": component("Card", "x-card"), "b/x-card.html": card }, "page.html");
     expect(multi.check(`<x-card data-on-click="go"></x-card>`)).toEqual([]);
   });
+  it("unchecked-content names why lint cannot read each tag, with the fix for that cause", () => {
+    const why = scanned(
+      {
+        "x-gen.ts": `import { Component, define } from "@nativele/ts-dom";\nimport { makeTpl } from "./make.ts";\nexport class Gen extends Component(makeTpl()) {}\ndefine("x-gen", Gen);\n`,
+        "make.ts": `export const makeTpl = () => null as never;\n`,
+        "x-vendor.ts": `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "vendor/x.html.js";\nexport class Vendor extends Component(tpl) {}\ndefine("x-vendor", Vendor);\n`,
+        "x-gone.ts": component("Gone", "x-gone"),
+        "x-plain.ts": `import { define } from "@nativele/ts-dom";\nclass Plain extends HTMLElement {}\ndefine("x-plain", Plain);\n`,
+      },
+      "page.html",
+    );
+    const message = (tag: string) => why.check(`<div data-on-click="go"><${tag}></${tag}></div>`)[0]?.message ?? "";
+    const rel = (f: string) => relative(process.cwd(), join(why.root, f));
+    for (const [tag, file] of [["x-gen", "x-gen.ts:3"], ["x-vendor", "x-vendor.ts:3"]] as const) {
+      expect(message(tag)).toContain(`<${tag}> (the class passes Component() a template lint cannot follow to an .html file imported by a relative path: ${rel(file)})`);
+      expect(message(tag)).toContain(`for <${tag}>, pass Component() a template imported by a relative path`);
+      expect(message(tag)).not.toContain("does not exist");
+    }
+    expect(message("x-gone")).toContain(`<x-gone> (the template file the class imports does not exist: ${rel("x-gone.html")})`);
+    expect(message("x-gone")).toContain("for <x-gone>, restore the template file or correct the import path in the class");
+    expect(message("x-plain")).toContain(`<x-plain> (define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders: ${rel("x-plain.ts")}:3)`);
+    expect(message("x-plain")).not.toContain("add the folder");
+    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders)");
+    expect(message("wa-icon")).toContain("for <wa-icon>, add the folders that define the project's own components to the scanned folders");
+  });
 });
 
 describe("a11y should not false-positive", () => {
   it("controls with a name", () => {
     expect(rules(`<button>Go</button><button aria-label="x"></button><button>{{ label }}</button>`)).toEqual([]);
     expect(rules(`<a href="/"><img src="a" alt="home"></a>`)).toEqual([]);
-    expect(rules(`<button><slot></slot></button>`)).toEqual([]);
+    expect(rules(`<button><slot>Save</slot></button>`)).toEqual([]);
+    expect(rules(`<button><slot></slot></button>`)).toEqual(["unchecked-content"]);
   });
   it("elements managed by TS (with data-ref) skip the missing-name checks", () => {
     expect(rules(`<button data-ref="b"></button><img data-ref="i"><input data-ref="n"><h1 data-ref="t"></h1>`)).toEqual([]);
@@ -214,6 +243,7 @@ describe("rule coverage and messages", () => {
     "landmark-label": `<nav>a</nav><nav>b</nav>`,
     "redundant-role": `<button role="button">x</button>`,
     "click-semantics": `<div data-on-click="go">x</div>`,
+    "unchecked-content": `<div data-on-click="go"><wa-icon></wa-icon> Open</div>`,
   };
   it("every A11Y_RULES key is produced by at least one input", () => {
     for (const rule of Object.keys(A11Y_RULES)) {
@@ -395,7 +425,7 @@ describe("Vite plugin", () => {
     d.handlers.unlink?.(`${t.dir}/src/kid.ts`);
     expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
   });
-  it("dev: a template save uses the cached define() scan; only a .ts change rescans", async () => {
+  it("dev: a template save sees the define() calls as they are on disk", async () => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const t = await setup({ "x.html": `<x-kid></x-kid>` });
     t.plugin.buildStart.call(t.ctx);
@@ -404,8 +434,6 @@ describe("Vite plugin", () => {
     writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}\ndefine("x-kid", Kid);`);
     writeFileSync(`${t.dir}/src/x.html`, `<x-kid></x-kid><b></b>`);
     t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
-    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).not.toContain("kid.js");
-    t.plugin.handleHotUpdate({ file: `${t.dir}/src/kid.ts`, server: d.server });
     expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`import "./kid.js";`);
   });
   it("dev: errors go to the logger of the server that saw the change", async () => {

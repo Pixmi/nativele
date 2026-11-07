@@ -56,7 +56,7 @@ describe("ts-dom check on a project", () => {
 });
 
 describe("ts-dom check: missing-handler", () => {
-  it("is reported once, by tsc through define(), when define() is in another file", () => {
+  it("is reported once, at the template, when define() is in another file", () => {
     const dir = join(process.cwd(), "check-handler-tmp");
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir);
@@ -72,8 +72,9 @@ describe("ts-dom check: missing-handler", () => {
         out = (e as { stdout: string }).stdout;
       }
       const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
-      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/register.ts", 3, 19, "missing-handler"]]);
+      expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-handler-tmp/panel.html", 1, 1, "missing-handler"]]);
       expect(issues[0]?.message).toContain(`"save"`);
+      expect(issues[0]?.message).toContain("tsc at check-handler-tmp/register.ts:3:19");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -97,7 +98,7 @@ describe("ts-dom check: unchecked-custom-elements", () => {
       };
       const issues = check();
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["check-unchecked-tmp/one.html", 1, 1, "unchecked-custom-elements"]]);
-      expect(issues[0]?.message).toContain("No define() in the scanned folders: <vendor-picker>, <vendor-chart>.");
+      expect(issues[0]?.message).toContain("<vendor-picker>, <vendor-chart>: no define() in the scanned folders.");
       expect(check("--ignore=unchecked-custom-elements")).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -137,6 +138,34 @@ describe("ts-dom check: handler parameter types", () => {
     }
   }, 30_000);
 
+  it("types an event from the first source that declares it, leaves a name no source declares unchecked, and keeps checking an event typed Event", () => {
+    const dir = join(process.cwd(), "check-events-tmp");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir);
+    try {
+      const H = `import { Component, define, event } from "@nativele/ts-dom";\nimport type { EmitEvent } from "@nativele/ts-dom";\n`;
+      writeFileSync(join(dir, "tsconfig.json"), `{ "extends": "../tsconfig.json", "include": ["."] }`);
+      writeFileSync(join(dir, "child.html"), `<button type="button" data-on-click="fire">Fire</button>\n`);
+      writeFileSync(join(dir, "child.ts"), `${H}import tpl from "./child.html.js";\nexport class Child extends Component(tpl, { emits: { "child-picked": event<{ id: number }>({ bubbles: true }) } }) {\n  fire(): void {\n    this.emit("child-picked", { id: 1 });\n  }\n}\ndefine("x-child", Child);\n`);
+      writeFileSync(join(dir, "page.html"), `<video data-ref="video" data-on-enterpictureinpicture="pip"></video>\n<div data-on-child-picked="picked"><x-child></x-child></div>\n<input aria-label="f" data-on-change="changed" />\n`);
+      writeFileSync(
+        join(dir, "page.ts"),
+        `${H}import tpl from "./page.html.js";\nimport type { Child } from "./child.ts";\nexport class Page extends Component(tpl) {\n  pip(e: PictureInPictureEvent): void {\n    void e.pictureInPictureWindow;\n  }\n  picked(e: EmitEvent<Child, "child-picked">): void {\n    void e.detail.id;\n  }\n  changed(_e: InputEvent): void {}\n  override connected(): void {\n    this.on(this.refs.video, "enterpictureinpicture", (e: PictureInPictureEvent) => void e.pictureInPictureWindow);\n  }\n}\ndefine("x-page", Page);\n`,
+      );
+      let out = "";
+      try {
+        execFileSync(process.execPath, ["src/cli.ts", "check", "check-events-tmp", "--project=check-events-tmp/tsconfig.json", "--json"], { encoding: "utf8" });
+      } catch (e) {
+        out = (e as { stdout: string }).stdout;
+      }
+      const issues = (JSON.parse(out) as { issues: { file: string; line: number; col: number; rule: string; message: string }[] }).issues;
+      expect(issues.map((i) => [i.file, i.line, i.rule])).toEqual([["check-events-tmp/page.html", 3, "handler-event-type"]]);
+      expect(issues[0]?.message).toMatch(/Fix: type the first parameter as `Event`\.$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("reads several handlers and union types out of one tsc message", () => {
     const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
     try {
@@ -149,7 +178,7 @@ describe("ts-dom check: handler parameter types", () => {
             line: 9,
             col: 15,
             code: "TS2345",
-            message: "Argument of type 'typeof Card' is not assignable to parameter of type 'typeof Card & { wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.\nProperty 'wrongHandlerParameters' is missing in type 'typeof Card' but required in type '{ wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.",
+            message: "Argument of type 'typeof Card' is not assignable to parameter of type 'typeof Card & { wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; } & { template: \"card.html\"; }'.\nProperty 'wrongHandlerParameters' is missing in type 'typeof Card' but required in type '{ wrongHandlerParameters: { onBoth: CustomEvent<void> | PointerEvent; onChange: Event; }; }'.",
           },
         ],
         dir,
@@ -159,7 +188,8 @@ describe("ts-dom check: handler parameter types", () => {
         ["handler-event-type", 2, 53],
       ]);
       expect(issues[0]?.message).toContain("onBoth() is bound to data-on-click on <button> and data-on-row-closed on <x-row>, which delivers CustomEvent<void> | PointerEvent");
-      expect(issues[1]?.message).toContain("Fix: type the first parameter as `Event`");
+      expect(issues[1]?.message).toContain("Fix: type the first parameter as `Event`.");
+      expect(issues[0]?.message).toContain(", or as `Event`.");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -195,7 +225,7 @@ describe("ts-dom check: more cases", () => {
     expect(issues.map((i) => i.rule).sort()).toEqual(["missing-binding", "reserved-prop"]);
   });
 
-  it("errors inside the body of a class with a contract error follow from it and are left out; errors after the class are kept", async () => {
+  it("inside the body of a class with a contract error, only the errors that follow from it are left out; independent errors there and after the class are kept", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const dir = mkdtempSync(join(tmpdir(), "nativele-check-"));
@@ -206,13 +236,16 @@ describe("ts-dom check: more cases", () => {
     const issues = mapTscErrors(
       [
         { file: "c.ts", line: 1, col: 27, code: "TS2507", message: `Type '{ missingStateKeys: "nope"; }' is not a constructor function type.` },
+        { file: "c.ts", line: 4, col: 10, code: "TS2339", message: "Property 'bind' does not exist on type 'Card'." },
         { file: "c.ts", line: 4, col: 23, code: "TS7006", message: "Parameter 's' implicitly has an 'any' type." },
+        { file: "c.ts", line: 5, col: 13, code: "TS2322", message: "Type 'number' is not assignable to type 'string'." },
         { file: "c.ts", line: 9, col: 20, code: "TS2339", message: "Property 'lenght' does not exist on type '{ a: number; }'." },
       ],
       dir,
     );
     expect(issues.map((i) => [i.rule, i.line])).toEqual([
       ["missing-binding", 1],
+      ["tsc", 5],
       ["tsc", 9],
     ]);
   });
@@ -340,7 +373,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     writeFileSync(join(dir, "hello-card.ts"), `import tpl from "./hello-card.html.js";\nexport class HelloCard extends Component(tpl, { props: { name: "" } }) {}\ndefine("hello-card", HelloCard);\n`);
     const issues = mapTscErrors(
       [
-        { file: "hello-card.ts", line: 2, col: 32, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` },
+        { file: "hello-card.ts", line: 2, col: 32, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; } & { template: "hello-card.html"; }' is not a constructor function type.` },
         { file: "hello-card.ts", line: 3, col: 22, code: "TS2345", message: "Argument of type 'typeof HelloCard' is not assignable to parameter of type 'abstract new (...args: never[]) => HTMLElement'." },
         { file: "host.ts", line: 9, col: 27, code: "TS2345", message: "Argument of type 'HelloCard & { extra: number; }' is not assignable to parameter of type 'string | Node'." },
         { file: "main.ts", line: 4, col: 6, code: "TS2339", message: "Property 'name' does not exist on type 'HelloCard'." },
@@ -366,7 +399,7 @@ describe("ts-dom check: causes the tsc text alone does not name", () => {
     writeFileSync(join(dir, "index.ts"), `import tpl from "./index.html.js";\nexport class Index extends Component(tpl) {}\nconst rows: Record<string, number> = row;\n`);
     writeFileSync(join(dir, "task.html"), `<p>{{ missing }}</p>\n`);
     writeFileSync(join(dir, "task.ts"), `import tpl from "./task.html.js";\nexport class Task extends Component(tpl) {}\n`);
-    const broken = (file: string, line: number) => ({ file, line, col: 21, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; }' is not a constructor function type.` });
+    const broken = (file: string, line: number) => ({ file, line, col: 21, code: "TS2507", message: `Type '{ missingStateKeys: "missing"; } & { template: "${file.replace(/\.ts$/, ".html")}"; }' is not a constructor function type.` });
     const issues = mapTscErrors(
       [
         broken("index.ts", 2),

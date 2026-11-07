@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { A11Y_RULES, checkA11y } from "./a11y.ts";
-import { componentClasses, contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateCode, UNUSED_MARKUP_RULES, unusedMarkup } from "./lint.ts";
-import type { Contracts } from "./lint.ts";
-import { analyze, TEMPLATE_SPEC } from "./codegen.ts";
+import { dirname, relative, resolve, sep } from "node:path";
+import { A11Y_RULES } from "./a11y.ts";
+import { analyze } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
+import { Memo, TEMPLATE_SPEC, Workspace } from "./components.ts";
+import { DATA_FLOW_RULES, lintProject, lintTemplate, UNUSED_MARKUP_RULES } from "./lint.ts";
+import type { Group, LintProject, TemplateFindings } from "./lint.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
@@ -17,8 +17,6 @@ interface Context {
   report(d: { message: string; node: unknown }): void;
 }
 
-type Group = "unused-markup" | "data-flow" | "a11y";
-
 const ignoreSchema = [
   {
     type: "object",
@@ -27,32 +25,63 @@ const ignoreSchema = [
   },
 ];
 
-/** Child component contracts, scanned once per process from the working directory. */
-let contracts: Contracts | null = null;
-const getContracts = () => (contracts ??= contractsFor([process.cwd()]));
+const memo = new Memo();
 
-// Each template is analyzed once for a given file text and template text, and each group runs once on it, however many rules ask for it.
-const cache = new Map<string, { code: string; html: string; analysis: Analysis; diags: Partial<Record<Group, Diagnostic[]>> }>();
-function groupDiagnostics(group: Group, html: string, code: string, spec: string, filename: string): Diagnostic[] {
-  const key = `${filename}\0${spec}`;
-  let hit = cache.get(key);
-  if (!hit || hit.code !== code || hit.html !== html) cache.set(key, (hit = { code, html, analysis: analyze(html), diags: {} }));
-  const a = hit.analysis;
-  return (hit.diags[group] ??=
-    group === "unused-markup" ? unusedMarkup(html, templateCode(code, spec), a) : group === "a11y" ? checkA11y(html, [], contractsAt(getContracts(), filename), a.root) : dataFlow(html, componentClasses(code, spec), contractsAt(getContracts(), filename), a));
+/**
+ * The lints oxlint makes in one turn of the event loop (in the editor, those that one change starts; on the command line, a batch of files) are one run: they read each file once, and the project they need is built once from it.
+ * The linted file is read as oxlint gives it, which in the editor can be an unsaved buffer; only the lint of that file sees it, in a project of its own (`buffered`), so what a lint reports does not depend on how oxlint spreads its lints over turns.
+ */
+let run: { ws: Workspace; p?: LintProject; buffered: Map<string, LintProject>; nodes: WeakMap<object, Through> } | undefined;
+
+interface Through {
+  file: string;
+  p: LintProject;
+  templates: { html: string; label: string }[];
+  parse: (text: string) => Analysis;
 }
 
-function readTemplate(filename: string, html: string): string | null {
-  try {
-    return readFileSync(resolve(dirname(filename), html), "utf8");
-  } catch {
-    return null; // a missing file is reported by tsc / the bundler
+/** The templates the import `node` brings into `file`, with `text` as the file's content, and the project they are linted in. The rules of one lint of the file visit the same node, so they share it, and parse each template at most once. */
+function through(node: ImportNode, file: string, text: string): Through {
+  if (!run) {
+    run = { ws: new Workspace(memo), buffered: new Map(), nodes: new WeakMap() };
+    setImmediate(() => (run = undefined));
   }
+  const known = run.nodes.get(node);
+  if (known?.file === file) return known;
+  const ws = run.ws.overlay(file, text);
+  let p = ws === run.ws ? (run.p ??= lintProject(ws, [process.cwd()], process.cwd())) : run.buffered.get(file);
+  if (p?.ws.text(file) !== text) run.buffered.set(file, (p = lintProject(ws, [process.cwd()], process.cwd())));
+  const parsed = new Map<string, Analysis>();
+  const parse = (t: string) => parsed.get(t) ?? (parsed.set(t, analyze(t)).get(t) as Analysis);
+  const found = { file, p, templates: templatesThrough(p, file, node.source.value), parse };
+  run.nodes.set(node, found);
+  return found;
+}
+
+const ofGroup = (r: TemplateFindings, group: Group): Diagnostic[] => (group === "unused-markup" ? (r.usage ?? []) : group === "a11y" ? r.a11y : r.flow);
+
+/**
+ * The templates whose findings belong on the import of `spec` in `file`: those of the classes declared in `file` that get their template through this import,
+ * and the template the import names itself when no class anywhere uses it.
+ */
+function templatesThrough({ index }: LintProject, file: string, spec: string): { html: string; label: string }[] {
+  const facts = index.modules.get(file);
+  const locals = new Set(facts?.imports.filter((i) => i.spec === spec).map((i) => i.local));
+  const out = new Map<string, string>();
+  for (const c of index.byFile.get(file) ?? []) if (c.template && c.arg && locals.has(c.arg)) out.set(c.template, "");
+  const named = TEMPLATE_SPEC.exec(spec)?.[1];
+  const direct = named && resolve(dirname(file), named);
+  if (direct && !index.byTemplate.has(direct) && index.importers.get(direct)?.some((i) => i.file === file)) out.set(direct, "");
+  const pathTo = (html: string) => {
+    const rel = relative(dirname(file), html).split(sep).join("/");
+    return rel.startsWith("../") ? rel : `./${rel}`;
+  };
+  return [...out.keys()].map((html) => ({ html, label: html === direct ? spec : pathTo(html) }));
 }
 
 /**
- * Build an oxlint rule that checks every `import x from "./name.html.js"` and reports the findings
- * on the import line (an oxlint plugin can only report inside the file being linted).
+ * Build an oxlint rule that reports the findings of each template on the import that brings it into the file of the class that uses it
+ * (an oxlint plugin can only report inside the file being linted).
  * The message starts with the HTML location, the rule id and what to do: `./x.html.js:3:5 [unused-ref] ...`.
  * `only` limits the rule to one rule id of the group; without it the rule reports the whole group, minus `ignore`.
  */
@@ -62,16 +91,13 @@ function templateRule(group: Group, description: string, only?: string) {
     create(context: Context) {
       return {
         ImportDeclaration(node: ImportNode) {
-          const spec = node.source.value;
-          const path = TEMPLATE_SPEC.exec(spec)?.[1];
-          if (!path) return;
-          const html = readTemplate(context.filename, path);
-          if (html === null) return;
-          const code = context.sourceCode.text;
           const ignore = context.options?.[0]?.ignore ?? [];
-          for (const d of groupDiagnostics(group, html, code, spec, context.filename)) {
-            if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
-            context.report({ message: `${spec}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
+          const { p, templates, parse } = through(node, resolve(context.filename), context.sourceCode.text);
+          for (const { html, label } of templates) {
+            for (const d of ofGroup(lintTemplate(p, html, [group], parse), group)) {
+              if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
+              context.report({ message: `${label}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
+            }
           }
         },
       };
@@ -86,7 +112,7 @@ const { "unchecked-custom-elements": _unchecked, ...dataFlowRules } = DATA_FLOW_
 export default {
   meta: { name: "ts-dom" },
   rules: {
-    /** The HTML declares markup that this file never uses. Reported as errors. */
+    /** The HTML declares markup that the component class never uses. Reported as errors. */
     "unused-markup": templateRule("unused-markup", "Markup declared in the HTML (data-ref, data-if, data-each, {{ }}, data-on-*) must be used by the component class"),
     /** ARIA and basic accessibility problems in the template. Off by default. */
     a11y: templateRule("a11y", "Check the template for ARIA and basic accessibility problems"),

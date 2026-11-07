@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, watch, wri
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
+import { Memo, scanDefines, TAGS_FILE, Workspace } from "./components.ts";
+import type { DefineDef } from "./components.ts";
 import { HOLE_ANY, holeName, IDENT } from "./holes.ts";
 import { RESERVED_NAMES } from "./reserved.ts";
 
@@ -458,7 +460,8 @@ export function generateModule(html: string, options: GenerateOptions = {}, impo
   return moduleOf(analyze(html), options, imports, defs);
 }
 
-function moduleOf(a: Analysis, options: GenerateOptions, imports: readonly string[], defs: readonly DefineDef[]): string {
+/** `file` is the template's path relative to the scanned directory: the type carries it, so a tsc error about the template names the file it is about. */
+function moduleOf(a: Analysis, options: GenerateOptions, imports: readonly string[], defs: readonly DefineDef[], file?: string): string {
   const runtime = options.runtime ?? "@nativele/ts-dom";
   const lists = [...a.lists]
     .map(([n, s]) => {
@@ -475,7 +478,7 @@ function moduleOf(a: Analysis, options: GenerateOptions, imports: readonly strin
   slots: ${union(a.slots)};
   rootElement: ${rootElementType(a.root)};
   text: ${union(a.scope.text)};
-  events: ${members([...a.events].map((m) => `${q(m)}: ${[...new Set(a.eventSites.filter((s) => s.method === m).map((s) => `[${q(s.tag)}, ${q(s.event)}]`))].join(" | ")}`))};
+  events: ${members([...a.events].map((m) => `${q(m)}: ${[...new Set(a.eventSites.filter((s) => s.method === m).map((s) => `[${q(s.tag)}, ${q(s.event)}]`))].join(" | ")}`))};${file === undefined ? "" : `\n  file: ${q(file)};`}
 }`;
   const needsEl = type.includes("El<");
   // Child components used by the template: import the modules that define them
@@ -487,7 +490,6 @@ ${needsEl ? `import type { El } from ${q(runtime)};\n` : ""}export default templ
 `;
 }
 
-/** x.html → x.html.ts */
 export function modulePathFor(htmlPath: string): string {
   return `${htmlPath}.ts`;
 }
@@ -497,7 +499,6 @@ export function isFullPage(html: string): boolean {
   return /^\s*(<!--[\s\S]*?-->\s*)*<(!doctype|html)\b/i.test(html);
 }
 
-/** `file:line:col severity [rule] message` — one line per diagnostic. */
 export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
   return ds.map((d) => `${file}:${d.line}:${d.col} ${d.severity} [${d.rule}] ${d.message}`).join("\n");
 }
@@ -505,16 +506,16 @@ export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
 export class CodegenError extends Error {}
 
 /** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. */
-export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[]): { out: string; next: string } {
-  const html = readFileSync(htmlPath, "utf8");
+export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace()): { out: string; next: string } {
+  const html = ws.text(resolve(htmlPath)) ?? readFileSync(htmlPath, "utf8");
   if (options.whitespace === undefined) options = { ...options, whitespace: recordedWhitespace(modulePathFor(htmlPath)) };
   const analysis = analyze(html);
   const errors = analysis.diagnostics.filter((d) => d.severity === "error");
   if (errors.length) throw new CodegenError(formatDiagnostics(htmlPath, errors));
-  const known = typeof defs === "string" ? scanDefines(defs) : (defs ?? []);
+  const known = typeof defs === "string" ? scanDefines(defs, ws) : (defs ?? []);
   const here = dirname(htmlPath);
   const imports = [...new Set(known.filter((d) => analysis.customTags.has(d.tag)).map((d) => relImport(here, d.file)))].sort();
-  return { out: modulePathFor(htmlPath), next: moduleOf(analysis, options, imports, known) };
+  return { out: modulePathFor(htmlPath), next: moduleOf(analysis, options, imports, known, relative(dir, htmlPath).split(sep).join("/")) };
 }
 
 /**
@@ -522,8 +523,8 @@ export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs
  * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
  * are imported automatically from the modules that define them.
  */
-export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[]): string {
-  const { out, next } = renderFile(htmlPath, options, defs);
+export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace): string {
+  const { out, next } = renderFile(htmlPath, options, defs, dir, ws);
   let prev = "";
   try {
     prev = readFileSync(out, "utf8");
@@ -534,18 +535,24 @@ export function generateFile(htmlPath: string, options: GenerateOptions = {}, de
   return out;
 }
 
-export function listHtml(dir: string): string[] {
+export function listHtml(dir: string, ws = new Workspace()): string[] {
+  const out = htmlUnder(dir, ws);
+  ws.memo.listed(resolve(dir), new Set(out.map((f) => resolve(f))), (f) => f.endsWith(".html"));
+  return out;
+}
+
+function htmlUnder(dir: string, ws: Workspace): string[] {
   const out: string[] = [];
-  for (const name of readdirSync(dir)) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const name = entry.name;
     if (name === "node_modules" || name === "dist") continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...listHtml(full));
-    else if (name.endsWith(".html") && !isFullPage(readFileSync(full, "utf8"))) out.push(full);
+    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...htmlUnder(full, ws));
+    else if (name.endsWith(".html") && !isFullPage(ws.text(resolve(full)) ?? "")) out.push(full);
   }
   return out;
 }
 
-const TAGS_FILE = "ts-dom-tags.ts";
 const TAGS_HEADER = "// Generated by ts-dom. Do not edit.";
 // Recorded in a module generated with whitespace "collapse", so a later run without the option keeps the project's choice.
 const COLLAPSE_MARK = "// whitespace: collapse";
@@ -558,125 +565,6 @@ export interface TagDef {
   isDefault: boolean;
 }
 
-export function listTs(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "dist") continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...listTs(full));
-    else if (name.endsWith(".ts") && !name.endsWith(".d.ts") && !name.endsWith(".html.ts") && name !== TAGS_FILE) out.push(full);
-  }
-  return out;
-}
-
-export interface DefineDef {
-  tag: string;
-  className: string;
-  /** The .ts file containing the define() call (absolute, or relative to the working directory) */
-  file: string;
-  /** The class is exported, so a type can be generated for it */
-  exported: boolean;
-  isDefault: boolean;
-  /** Position of the define() call */
-  line?: number;
-  col?: number;
-}
-
-/** The offset just past the string literal, template literal or comment that starts at `i` (the end of `code` when it is not closed), or `i` when none starts there. */
-function skipNonCode(code: string, i: number): number {
-  const c = code[i];
-  if (c === '"' || c === "'" || c === "`") {
-    let j = i + 1;
-    for (; j < code.length && code[j] !== c; j++) if (code[j] === "\\") j++;
-    return Math.min(j + 1, code.length);
-  }
-  if (c === "/" && code[i + 1] === "/") {
-    const end = code.indexOf("\n", i);
-    return end < 0 ? code.length : end;
-  }
-  if (c === "/" && code[i + 1] === "*") {
-    const end = code.indexOf("*/", i + 2);
-    return end < 0 ? code.length : end + 2;
-  }
-  return i;
-}
-
-/** Ranges [start, end) of the string literals, template literals and comments of a piece of TypeScript source. */
-function nonCodeRanges(code: string): [number, number][] {
-  const out: [number, number][] = [];
-  for (let i = 0; i < code.length; i++) {
-    const end = skipNonCode(code, i);
-    if (end > i) {
-      out.push([i, end]);
-      i = end - 1;
-    }
-  }
-  return out;
-}
-
-/** From `start`, find the position that closes `open` (skipping strings and comments); -1 when it is not closed. */
-export function matchClose(code: string, start: number, open: string, close: string): number {
-  let depth = 0;
-  for (let i = start; i < code.length; i++) {
-    const end = skipNonCode(code, i);
-    if (end > i) i = end - 1;
-    else if (code[i] === open) depth++;
-    // The > of an arrow in a type parameter list closes nothing.
-    else if (code[i] === close && !(close === ">" && code[i - 1] === "=") && --depth === 0) return i;
-  }
-  return -1;
-}
-
-/** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
-const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
-export const TEMPLATE_SPEC = new RegExp(`^${TEMPLATE_PATH}$`);
-const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_PATH}["']`, "g");
-
-export interface TemplateImport {
-  /** The local name of the default import, when the template is imported as one. */
-  local?: string;
-  spec: string;
-  /** The template's path relative to the importing module: the specifier without `.js`. */
-  html: string;
-  js: boolean;
-}
-
-/** Every `import x from "./x.html.js"` (or other `from` clause naming a template by a relative path) in `code`, outside strings and comments. */
-export function templateImports(code: string): TemplateImport[] {
-  const found = [...code.matchAll(TEMPLATE_IMPORT)];
-  const skip = found.length ? nonCodeRanges(code) : [];
-  return found.filter((m) => !skip.some(([a, b]) => m.index >= a && m.index < b)).map((m) => {
-    const html = m[2] as string;
-    return { ...(m[1] ? { local: m[1] } : {}), spec: html + (m[3] ?? ""), html, js: m[3] !== undefined };
-  });
-}
-
-/**
- * Scan one or more directories for every `define("my-tag", MyClass)` call; a file under two of them is read once.
- * Calls that only appear inside a string or a comment (for example sample code in a test or in documentation) are ignored.
- */
-export function scanDefines(dirs: string | readonly string[]): DefineDef[] {
-  const defs: DefineDef[] = [];
-  const re = /\bdefine\(\s*(["'])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g;
-  const files = new Map<string, string>();
-  for (const dir of typeof dirs === "string" ? [dirs] : dirs) for (const f of listTs(dir)) if (!files.has(resolve(f))) files.set(resolve(f), f);
-  for (const file of files.values()) {
-    const code = readFileSync(file, "utf8");
-    const skip = nonCodeRanges(code);
-    const inCode = (pos: number) => !skip.some(([a, b]) => pos >= a && pos < b);
-    const has = (re: RegExp) => [...code.matchAll(re)].some((m) => inCode(m.index));
-    for (const m of code.matchAll(re)) {
-      if (!inCode(m.index)) continue;
-      const [, , tag, className] = m as unknown as [string, string, string, string];
-      const named = has(new RegExp(`export\\s+class\\s+${className}\\b`, "g")) || has(new RegExp(`export\\s*\\{[^}]*\\b${className}\\b[^}]*\\}`, "g"));
-      const isDefault = has(new RegExp(`export\\s+default\\s+class\\s+${className}\\b`, "g"));
-      const before = code.slice(0, m.index);
-      defs.push({ tag, className, file, exported: named || isDefault, isDefault, line: before.split("\n").length, col: m.index - before.lastIndexOf("\n") });
-    }
-  }
-  return defs.sort((a, b) => a.tag.localeCompare(b.tag));
-}
-
 const relImport = (fromDir: string, file: string) => {
   const r = relative(fromDir, file).split(sep).join("/").replace(/\.ts$/, ".js");
   return r.startsWith(".") ? r : `./${r}`;
@@ -686,9 +574,9 @@ const relImport = (fromDir: string, file: string) => {
  * A tag that two of the directories define with different classes, reported at its second define() call.
  * A tag defined twice within one directory is reported by `generateTags` instead.
  */
-export function crossDirDuplicates(dirs: readonly string[]): (Diagnostic & { file: string })[] {
+export function crossDirDuplicates(dirs: readonly string[], ws?: Workspace): (Diagnostic & { file: string })[] {
   const byTag = new Map<string, DefineDef[]>();
-  for (const d of scanDefines(dirs)) byTag.set(d.tag, [...(byTag.get(d.tag) ?? []), d]);
+  for (const d of scanDefines(dirs, ws)) byTag.set(d.tag, [...(byTag.get(d.tag) ?? []), d]);
   const inside = (dir: string, file: string) => resolve(file).startsWith(resolve(dir) + sep);
   const out: (Diagnostic & { file: string })[] = [];
   for (const [tag, defs] of byTag) {
@@ -701,18 +589,18 @@ export function crossDirDuplicates(dirs: readonly string[]): (Diagnostic & { fil
 }
 
 /** Scan `define("my-tag", MyClass)` calls and return the components a type can be generated for (the class must be exported). */
-export function scanTags(dir: string): TagDef[] {
-  return scanDefines(dir)
+export function scanTags(dir: string, ws?: Workspace): TagDef[] {
+  return scanDefines(dir, ws)
     .filter((d) => d.exported)
-    .map((d) => ({ tag: d.tag, className: d.className, from: relImport(dir, d.file), isDefault: d.isDefault }));
+    .map((d) => ({ tag: d.tag, className: d.className, from: relImport(dir, d.classFile), isDefault: d.isDefault }));
 }
 
 /**
  * Generate `ts-dom-tags.ts`: register every `define("tag", Class)` component in HTMLElementTagNameMap
  * so that `refs.x` for `<tag data-ref="x">` in a template is fully typed (props, methods and emitted events).
  */
-export function generateTags(dir: string): string | null {
-  const { out, next } = renderTags(dir);
+export function generateTags(dir: string, ws?: Workspace): string | null {
+  const { out, next } = renderTags(dir, ws);
   if (next === null) {
     if (existsSync(out) && readFileSync(out, "utf8").startsWith(TAGS_HEADER)) unlinkSync(out);
     return null;
@@ -728,8 +616,8 @@ export function generateTags(dir: string): string | null {
 }
 
 /** What `generateTags` would write, without writing it; `next` is null when the directory defines no exported component. */
-export function renderTags(dir: string): { out: string; next: string | null } {
-  const defs = scanTags(dir);
+export function renderTags(dir: string, ws?: Workspace): { out: string; next: string | null } {
+  const defs = scanTags(dir, ws);
   const out = join(dir, TAGS_FILE);
   const seen = new Map<string, TagDef>();
   for (const d of defs) {
@@ -758,13 +646,14 @@ export interface StaleFile {
  * Templates with error diagnostics are left out and their messages returned in `errors`.
  * `scanned` are all the directories of the run: a ts-dom-tags.ts in a subfolder is an orphan unless that subfolder is one of them.
  */
-export function planGenerated(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir), scanned: readonly string[] = [dir]): { files: Map<string, string | null>; errors: string[] } {
+export function planGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace()): { files: Map<string, string | null>; errors: string[] } {
+  const known = defs ?? scanDefines(dir, ws);
   const files = new Map<string, string | null>();
   const errors: string[] = [];
-  for (const f of listHtml(dir)) {
+  for (const f of listHtml(dir, ws)) {
     if (!isSelected(dir, f, options)) continue;
     try {
-      const { out, next } = renderFile(f, options, defs);
+      const { out, next } = renderFile(f, options, known, dir, ws);
       files.set(out, next);
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
@@ -772,7 +661,7 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs: 
     }
   }
   try {
-    const tags = renderTags(dir);
+    const tags = renderTags(dir, ws);
     files.set(tags.out, tags.next);
   } catch (e) {
     if (e instanceof CodegenError) errors.push(e.message);
@@ -783,13 +672,13 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs: 
 }
 
 /** Generated files under `dir` that differ from what `ts-dom gen` would write now. */
-export function staleGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[]): StaleFile[] {
-  return checkGenerated(dir, options, defs, scanned).stale;
+export function staleGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[], ws?: Workspace): StaleFile[] {
+  return checkGenerated(dir, options, defs, scanned, ws).stale;
 }
 
 /** `staleGenerated`, plus the errors that would make `ts-dom gen` fail (template diagnostics, a tag defined twice). */
-export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[]): { stale: StaleFile[]; errors: string[] } {
-  const plan = planGenerated(dir, options, defs, scanned);
+export function checkGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned?: readonly string[], ws?: Workspace): { stale: StaleFile[]; errors: string[] } {
+  const plan = planGenerated(dir, options, defs, scanned, ws);
   const out: StaleFile[] = [];
   for (const [file, next] of plan.files) {
     const prev = existsSync(file) ? readFileSync(file, "utf8") : null;
@@ -817,20 +706,21 @@ function listGenerated(dir: string, scanned: readonly string[], top = true): str
  * Generate every `x.html.ts` (and the tag map) under a directory; collects all errors and throws them together.
  * `defs` are the define() calls templates import child components from (default: those under `dir`).
  */
-export function generateAll(dir: string, options: GenerateOptions = {}, defs: readonly DefineDef[] = scanDefines(dir), scanned: readonly string[] = [dir]): string[] {
+export function generateAll(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace()): string[] {
+  const known = defs ?? scanDefines(dir, ws);
   const written: string[] = [];
   const errors: string[] = [];
-  for (const f of listHtml(dir)) {
+  for (const f of listHtml(dir, ws)) {
     if (!isSelected(dir, f, options)) continue;
     try {
-      written.push(generateFile(f, options, defs));
+      written.push(generateFile(f, options, known, dir, ws));
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
       else throw e;
     }
   }
   try {
-    const tags = generateTags(dir);
+    const tags = generateTags(dir, ws);
     if (tags) written.push(tags);
   } catch (e) {
     if (e instanceof CodegenError) errors.push(e.message);
@@ -842,25 +732,26 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs: re
 }
 
 /** `generateAll` for every directory, with the define() calls of all of them: a template imports a child component defined in another directory. */
-export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}): string[] {
-  const defs = scanDefines(dirs);
+export function generateDirs(dirs: readonly string[], options: GenerateOptions = {}, ws = new Workspace()): string[] {
+  const defs = scanDefines(dirs, ws);
   const written: string[] = [];
   const errors: string[] = [];
   for (const dir of dirs) {
     try {
-      written.push(...generateAll(dir, options, defs, dirs));
+      written.push(...generateAll(dir, options, defs, dirs, ws));
     } catch (e) {
       if (e instanceof CodegenError) errors.push(e.message);
       else throw e;
     }
   }
-  for (const d of crossDirDuplicates(dirs)) errors.push(formatDiagnostics(d.file, [d]));
+  for (const d of crossDirDuplicates(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
   if (errors.length) throw new CodegenError(errors.join("\n"));
   return written;
 }
 
-/** Watch .html (and define() calls in .ts) under the directories and regenerate; returns a stop function. Errors go to onError and never stop the watcher. */
+/** Watch .html (and define() calls in .ts) under the directories and regenerate, each time reading the files again; returns a stop function. Errors go to onError and never stop the watcher. */
 export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: (file: string) => void; onError?: (message: string) => void } = {}): () => void {
+  const memo = new Memo();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const watchers = dirs.map((dir) =>
     watch(dir, { recursive: true }, (_event, name) => {
@@ -869,7 +760,7 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         clearTimeout(timers.get("tags"));
         timers.set("tags", setTimeout(() => {
           try {
-            for (const f of generateDirs(dirs, opts)) opts.onGenerate?.(f);
+            for (const f of generateDirs(dirs, opts, new Workspace(memo))) opts.onGenerate?.(f);
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;
@@ -884,8 +775,10 @@ export function watchAll(dirs: string[], opts: GenerateOptions & { onGenerate?: 
         file,
         setTimeout(() => {
           try {
-            if (!existsSync(file) || !isSelected(dir, file, opts) || isFullPage(readFileSync(file, "utf8"))) return;
-            opts.onGenerate?.(generateFile(file, opts, scanDefines(dirs)));
+            const ws = new Workspace(memo);
+            const html = ws.text(resolve(file));
+            if (html === null || !isSelected(dir, file, opts) || isFullPage(html)) return;
+            opts.onGenerate?.(generateFile(file, opts, scanDefines(dirs, ws), dir, ws));
           } catch (e) {
             if (e instanceof CodegenError) opts.onError?.(e.message);
             else throw e;

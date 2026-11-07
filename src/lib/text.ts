@@ -2,7 +2,6 @@ import { HOLE_ANY, holeName } from "./holes.ts";
 
 export type TextValue = string | number | boolean | null | undefined;
 
-/** Split every {{ name }} in a subtree into its own Text node and return a writable `text` object. */
 export function mountHoles(root: ParentNode): Record<string, TextValue> {
   const nodes = new Map<string, Text[]>();
   const walker = document.createTreeWalker(root as Node, NodeFilter.SHOW_TEXT);

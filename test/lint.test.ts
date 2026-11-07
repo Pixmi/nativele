@@ -1,10 +1,29 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { componentClasses, contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, templateCode, unusedMarkup } from "../src/lib/lint.ts";
+import { componentIndex } from "../src/lib/components.ts";
+import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, TAG_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
+import { ELEMENT_EVENT_NAMES } from "../src/lib/events.ts";
 import type { Contract } from "../src/lib/lint.ts";
+
+/** A folder with `files` written into it. */
+const project = (files: Record<string, string>): string => {
+  const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(d, name), text);
+  return d;
+};
+/** The classes of `code`, as the index reads them from a module, that pass the template `html` (a file name next to it) to Component(). */
+const classesOf = (code: string, html: string) => {
+  const d = project({ "m.ts": code });
+  return componentIndex([join(d, "m.ts")]).byTemplate.get(join(d, html)) ?? [];
+};
+/** The unused-markup rules lint reports for the template `html` used by the module `code`. */
+const usage = (html: string, code: string) => {
+  const d = project({ "a.html": html, "a.ts": code });
+  return lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule);
+};
 
 describe("one file importing several templates", () => {
   const code = `
@@ -16,42 +35,30 @@ class List extends Component(listTpl) {
 class Card extends Component(cardTpl, { shadow: true }) {
   connected() { const s = "}{ ("; /* } */ }
 }`;
-  it("templateCode returns only the body of the matching class", () => {
-    expect(templateCode(code, "./list.html.js")).toContain("this.refs.title");
-    expect(templateCode(code, "./list.html.js")).not.toContain("class Card");
-    expect(templateCode(code, "./card.html.js")).not.toContain("this.refs.title.textContent");
+  it("each template has only the body of the class that uses it", () => {
+    expect(classesOf(code, "list.html").map((c) => c.body)).toEqual([`{\n  connected() { this.refs.title.textContent = "List"; }\n}`]);
+    expect(classesOf(code, "card.html").map((c) => c.body)).toEqual([`{\n  connected() { const s = "}{ ("; /* } */ }\n}`]);
   });
   it("reports an unused title in Card (List must not mask it)", () => {
-    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    writeFileSync(join(d, "list.html"), `<h1 data-ref="title"></h1>`);
-    writeFileSync(join(d, "card.html"), `<h1 data-ref="title"></h1>`);
-    writeFileSync(join(d, "w.ts"), code);
+    const d = project({ "list.html": `<h1 data-ref="title"></h1>`, "card.html": `<h1 data-ref="title"></h1>`, "w.ts": code });
     const issues = lintUsage([d], [join(d, "w.ts")]);
     expect(issues.map((i) => i.file.endsWith("card.html"))).toEqual([true]);
   });
   it("falls back to the whole file when no class is found", () => {
-    expect(templateCode(`import t from "./a.html.js"; make(t); refs.x`, "./a.html")).toContain("refs.x");
+    expect(usage(`<b data-ref="x"></b><i data-ref="dead"></i>`, `import t from "./a.html.js"; make(t); refs.x`)).toEqual(["unused-ref"]);
   });
 });
 
 describe("state and data-on-*", () => {
   const html = `<h1>{{ title }}</h1><p data-if="open"></p><button data-on-click="inc"></button>`;
-  it("templateCode detects the state option and adds the marker", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: { title: "" } }) { inc() {} }`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
-    const shorthand = `import t from "./a.html.js";\nclass A extends Component(t, { state }) { inc() {} }`;
-    expect(templateCode(shorthand, "./a.html.js")).toContain("ts-dom:stateful");
-    const plain = `import t from "./a.html.js";\nclass A extends Component(t, { shadow: true }) { inc() {} }`;
-    expect(templateCode(plain, "./a.html.js")).not.toContain("ts-dom:stateful");
-  });
-  it("with state, {{ }} and data-if are auto-bound and need not appear in code", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: {} }) { inc() {} }`;
-    expect(unusedMarkup(html, templateCode(code, "./a.html.js"))).toEqual([]);
+  it("with state, props or derive, {{ }} and data-if are auto-bound and need not appear in code", () => {
+    for (const option of [`{ state: { title: "" } }`, `{ state }`, `{ state: {} }`, `{ props: { label: "" } }`, `{ derive: { x: () => 1 } }`]) {
+      expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t, ${option}) { inc() {} }`)).toEqual([]);
+    }
   });
   it("without state, usage is still required", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t) { inc() {} }`;
-    const rules = unusedMarkup(html, templateCode(code, "./a.html.js")).map((d) => d.rule);
-    expect(rules).toEqual(expect.arrayContaining(["unused-text", "unused-if"]));
+    expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t, { shadow: true }) { inc() {} }`).sort()).toEqual(["unused-if", "unused-text"]);
+    expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t) { inc() {} }`).sort()).toEqual(["unused-if", "unused-text"]);
   });
   it("leaves a data-on-* method that does not exist to tsc", () => {
     expect(unusedMarkup(html, `class A { render() {} /*ts-dom:stateful*/ }`)).toEqual([]);
@@ -117,11 +124,11 @@ describe("lintUsage", () => {
 describe("reading component classes", () => {
   it("finds a class without a name and a generic class", () => {
     const code = `import t from "./a.html.js";\nexport default class extends Component(t) { a() {} }\nclass B<T extends Map<string, number>> extends Component(t) { b() {} }`;
-    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+    expect(classesOf(code, "a.html").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
   });
   it("reads type parameters with a default object type or a function type", () => {
     const code = `import t from "./a.html.js";\nclass A<T = {}> extends Component(t, {}) { a() {} }\nclass B<T extends (x: number) => void> extends Component(t) { b() {} }`;
-    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+    expect(classesOf(code, "a.html").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
   });
   it("does not count an import inside a string or a comment as the template's importer", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
@@ -133,13 +140,13 @@ describe("reading component classes", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(d, "kid.html"), `<p></p>`);
     writeFileSync(join(d, "kid.ts"), `import tpl from "./kid.html.js";\nexport class Kid<T> extends Component(tpl, { props: { label: "" } }) {}\ndefine("x-kid", Kid);`);
-    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract.props.keys() ?? [])]).toEqual(["label"]);
+    expect([...(contractsFor([d]).get("x-kid")?.[0]?.contract?.props.keys() ?? [])]).toEqual(["label"]);
   });
 });
 
 describe("data-flow checks", () => {
   const parentHtml = `<x-kid data-ref="kid" data-on-saved="onSaved"></x-kid><x-kid2 data-on-done="relay"></x-kid2>`;
-  const flow = (code: string, html = parentHtml) => dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"));
+  const flow = (code: string, html = parentHtml) => dataFlow(html, classesOf(`import t from "./p.html.js";\n${code}`, "p.html"));
 
   it("prop-forwarding: passes its own prop unchanged to a child component", () => {
     const code = `class P extends Component(t, { props: { name: "", count: 0 }, state: { s: 1 } }) {
@@ -180,19 +187,33 @@ describe("data-flow checks", () => {
     expect(r.length).toBe(1);
     expect(r[0]?.message).toMatch(/"count"/);
   });
-  it("custom-event-on-native: a custom event written on a native element", () => {
-    expect(dataFlow(`<div data-on-value-change="x"></div>`, []).some((d) => d.rule === "custom-event-on-native")).toBe(true);
-    expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [])).toEqual([]);
+  it("custom-event-on-native: an event a child emits without bubbles, written on a native element", () => {
+    const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["value-change"]), bubbles: new Set(bubbles) }]]);
+    const found = dataFlow(`<div data-on-value-change="x"><x-kid></x-kid></div>`, [], kid([])).filter((d) => d.rule === "custom-event-on-native");
+    expect(found.map((d) => d.message)).toEqual([expect.stringContaining(`"value-change" is an event that <x-kid> emits without bubbles: true`)]);
+    expect(dataFlow(`<div data-on-value-change="x"><x-kid></x-kid></div>`, [], kid(["value-change"]))).toEqual([]);
+    expect(dataFlow(`<div data-on-value-change="x"></div>`, [])).toEqual([]);
+    expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [], kid([]))).toEqual([]);
+  });
+  it("an event named like a window or media event is read from the child's emits", () => {
+    const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["message"]), bubbles: new Set(bubbles) }]]);
+    const rules = (html: string, b: string[] = []) => dataFlow(html, [], kid(b)).map((d) => d.rule);
+    expect(rules(`<x-kid data-on-message="h"></x-kid>`)).toEqual([]);
+    expect(rules(`<x-kid data-on-mesage="h"></x-kid>`)).toEqual(["unknown-event"]);
+    expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`)).toEqual(["custom-event-on-native"]);
+    expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`, ["message"])).toEqual([]);
+  });
+  it("custom-event-on-native: an event the element itself fires natively is its own event", () => {
+    const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["enterpictureinpicture", "encrypted", "afterprint"]), bubbles: new Set() }]]);
+    const rules = (html: string) => dataFlow(html, [], kid).map((d) => d.rule);
+    expect(rules(`<video data-on-enterpictureinpicture="h"></video><audio data-on-encrypted="h"></audio><svg data-on-afterprint="h"></svg>`)).toEqual([]);
+    expect(rules(`<div data-on-enterpictureinpicture="h"></div><audio data-on-enterpictureinpicture="h"></audio><div data-on-afterprint="h"></div>`)).toEqual(["custom-event-on-native", "custom-event-on-native", "custom-event-on-native"]);
   });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
     const r = flow(code).filter((d) => d.rule === "prop-forwarding");
     expect(r.length).toBe(1);
     expect(r[0]?.message).toMatch(/"a"/);
-  });
-  it("templateCode: the props option also enables stateful mode", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { props: { label: "" } }) {}`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
   });
 });
 
@@ -244,7 +265,7 @@ describe("child component contract rules", () => {
 import tpl from "./kid.html.js";
 export class Kid extends Component(tpl, {
   props: { label: "", maxCount: 0, open: false, items: [] as string[] },
-  emits: { saved: event<string>(), "value-change": event<number>() },
+  emits: { saved: event<string>(), "value-change": event<number>({ bubbles: true }) },
 }) {}
 define("x-kid", Kid);`;
   const dir = setup({ "kid.ts": child, "bare.ts": `export class Bare extends Component(tpl) {}\ndefine("x-bare", Bare);` });
@@ -261,7 +282,8 @@ define("x-kid", Kid);`;
       ["items", "other"],
     ]);
     expect([...(k?.emits ?? [])]).toEqual(["saved", "value-change"]);
-    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set() });
+    expect([...(k?.bubbles ?? [])]).toEqual(["value-change"]);
+    expect(contracts.get("x-bare")).toEqual({ props: new Map(), emits: new Set(), bubbles: new Set(), unread: { cause: "template-unfollowed", at: `${relative(process.cwd(), join(dir, "bare.ts"))}:1` } });
     expect(contracts.has("x-other")).toBe(false);
   });
   it("accepts declared props (kebab-case maps to camelCase) and declared events", () => {
@@ -317,7 +339,7 @@ define("x-kid", Kid);`;
     expect(dataFlow(`<x-kid foo="1" data-on-nope="n"></x-kid>`, [])).toEqual([]);
   });
   it("a hand-built contract works too", () => {
-    const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]) }]]);
+    const hand = new Map<string, Contract>([["x-hand", { props: new Map([["size", "number" as const]]), emits: new Set(["done"]), bubbles: new Set() }]]);
     expect(run(`<x-hand size="1" data-on-done="d"></x-hand>`, hand)).toEqual([]);
     expect(run(`<x-hand sise="1"></x-hand>`, hand)[0]?.message).toContain(`Did you mean "size"?`);
   });
@@ -422,11 +444,13 @@ describe("a tag defined more than once under the scanned folders", () => {
     expect(found).toHaveLength(1);
     const [d] = found;
     expect([d?.file.endsWith(join("app", "other.html")), d?.line, d?.col, d?.severity]).toEqual([true, 1, 18, "warning"]);
-    expect(d?.message).toContain("No define() in the scanned folders: <wa-input>, <wa-button>. Defined in several packages, and not exactly once in the template's package: <x-item> (");
+    expect(d?.message).toContain("<wa-input>, <wa-button>: no define() in the scanned folders. <x-item> (");
+    expect(d?.message).toContain("): defined in several packages, and not exactly once in the template's package.");
+    expect(d?.message).toContain("otherwise for <wa-input> and <wa-button>, add the folders that define the project's own components to the scanned folders; for <x-item>, keep one define() of a tag per package.");
     expect(d?.message).toContain("(unknown-prop, invalid-prop-value, unknown-event)");
     expect(d?.message).toContain("(click-semantics)");
     expect(d?.message).not.toContain("x-known");
-    expect(d?.message).toMatch(/Fix: nothing needs to change for elements from another library \(pass --ignore=unchecked-custom-elements/);
+    expect(d?.message).toMatch(/Fix: nothing needs to change for elements that are not Nativele components, such as another library's \(pass --ignore=unchecked-custom-elements/);
   });
   it("unchecked-custom-elements is not reported when every custom element has one definition", () => {
     const root = twoApps();
@@ -465,9 +489,8 @@ describe("formatIssue", () => {
 describe("data-flow: unguarded-input-value", () => {
   const html = `<input data-ref="name"><output data-ref="out"></output>`;
   const rules = async (classBody: string) => {
-    const { componentClasses, dataFlow } = await import("../src/lib/lint.ts");
     const code = `import tpl from "./f.html.js";\nclass F extends Component(tpl, { state: { name: "" } }) {\n${classBody}\n}`;
-    return dataFlow(html, componentClasses(code, "./f.html.js")).map((d) => d.rule);
+    return dataFlow(html, classesOf(code, "f.html")).map((d) => d.rule);
   };
   it("flags a render() that writes the value without comparing", async () => {
     expect(await rules(`  override render(v) {\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
@@ -479,4 +502,13 @@ describe("data-flow: unguarded-input-value", () => {
   it("leaves event handlers and elements that are not form controls alone", async () => {
     expect(await rules(`  clear() {\n    this.refs.name.value = "";\n  }\n  override render(v) {\n    this.refs.out.value = v.name;\n  }`)).toEqual([]);
   });
+});
+
+describe("native events: one list, the one lib.dom's element event maps declare", () => {
+  const kid: ReadonlyMap<string, Contract> = new Map([["x-kid", { props: new Map(), emits: new Set(["kid-done"]), bubbles: new Set() }]]);
+  for (const name of new Set([...ELEMENT_EVENT_NAMES, ...Object.values(TAG_EVENT_NAMES).flat()])) {
+    it(`data-on-${name} on a native element and on a child component tag is a native event`, () => {
+      expect(dataFlow(`<div data-on-${name}="h"></div><video data-on-${name}="h"></video><x-kid data-on-${name}="h"></x-kid>`, [], kid)).toEqual([]);
+    });
+  }
 });

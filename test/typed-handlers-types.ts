@@ -5,6 +5,7 @@ import type { EmitEvent, EventHit } from "@nativele/ts-dom";
 import type { FieldChild } from "./compose/child.ts";
 import tpl from "./typed/handlers.html.js";
 import treeTpl from "./typed/tree.html.js";
+import eventsTpl from "./typed/events.html.js";
 import "./typed/tree.ts";
 
 export class Typed extends Component(tpl) {
@@ -96,3 +97,52 @@ class WrongTree extends Component(treeTpl) {
 }
 // @ts-expect-error wrongHandlerParameters: onToggle receives the tree-toggle event of <x-tree>
 define("x-wrong-tree", WrongTree);
+
+// The event of a name comes from the first source that declares it: the child's emits, the element's on<name> property, then HTMLElementEventMap; a name none declares is not checked.
+export class Sources extends Component(eventsTpl) {
+  onPip(e: PictureInPictureEvent): void {
+    void e.pictureInPictureWindow;
+  }
+  onClosed(e: EmitEvent<FieldChild, "closed">): void {
+    void e.detail;
+  }
+  onChange(_e: Event): void {}
+  override connected(): void {
+    this.on(this.refs.video, "enterpictureinpicture", (e: PictureInPictureEvent) => void e.pictureInPictureWindow);
+    this.on(this.refs.video, "enterpictureinpicture", (e) => void e.type);
+    this.on(this.refs.field, "keydown", (e) => void e.key);
+    this.on(window, "resize", (e: UIEvent) => void e.detail);
+    this.on(this.refs.field, "vendor-ready", (e: CustomEvent<{ id: number }>) => void e.detail.id);
+    this.on(this.refs.field, "vendor-ready", (e) => void e.type);
+    this.on(this, "click", (e) => void e.clientX);
+    this.on(this, "vendor-ready", (e) => void e.type);
+    this.on(document, "keydown", (e: KeyboardEvent) => void e.key);
+    // @ts-expect-error a declared emit rejects another detail
+    this.on(this.refs.child, "closed", (e: CustomEvent<{ id: number }>) => void e.detail.id);
+    this.on(this.refs.child, "closed", (e: EmitEvent<FieldChild, "closed">) => void e.detail);
+    // @ts-expect-error the change event is typed Event, so on() rejects a narrower parameter too
+    this.on(this.refs.field, "change", (e: InputEvent) => void e.data);
+    // @ts-expect-error on() types a known event: keydown is a KeyboardEvent
+    this.on(this.refs.field, "keydown", (e: MouseEvent) => void e.button);
+  }
+}
+define("x-sources", Sources);
+
+class LooseSources extends Component(eventsTpl) {
+  onPip(_e: Event): void {}
+  onClosed(_e: Event): void {}
+  onChange(_e: Event): void {}
+}
+define("x-loose-sources", LooseSources);
+
+class WrongPip extends LooseSources {
+  override onPip(_e: KeyboardEvent): void {}
+}
+// @ts-expect-error wrongHandlerParameters: <video> declares enterpictureinpicture as a PictureInPictureEvent
+define("x-wrong-pip", WrongPip);
+
+class OtherBubbling extends LooseSources {
+  override onClosed(_e: EmitEvent<FieldChild, "value-change">): void {}
+}
+// A wrapper <div> declares no closed event, so the handler is not checked there.
+define("x-other-bubbling", OtherBubbling);

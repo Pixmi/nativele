@@ -1,8 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
-import { analyze, listHtml, listTs, matchClose, scanDefines, templateImports } from "./codegen.ts";
-import type { Analysis, DefineDef, Diagnostic } from "./codegen.ts";
+import type { A11yChild, A11yChildren } from "./a11y.ts";
+import { analyze, listHtml } from "./codegen.ts";
+import type { Analysis, Diagnostic } from "./codegen.ts";
+import { componentIndex, matchClose, Workspace } from "./components.ts";
+import { ELEMENT_EVENT_NAMES } from "./events.ts";
+import type { ComponentIndex } from "./components.ts";
+import { NOT_DEFINED, UNREAD, detailOf, unreadFixes } from "./unread.ts";
+import type { Unread } from "./unread.ts";
 
 export type { Diagnostic };
 
@@ -13,47 +18,10 @@ export interface LintIssue extends Diagnostic {
 
 const esc = (s: string) => s.replace(/[$]/g, "\\$&");
 
-/** Marker that templateCode() appends when it sees `Component(tpl, { state | props | derive })`. */
+/** Marker that ownerCode() adds when it sees `Component(tpl, { state | props | derive })`. */
 const STATEFUL_MARK = "/*ts-dom:stateful*/";
 
-// ---------------------------------------------------------------------------
-// Reading the component class out of TypeScript source (text based, no parser)
-// ---------------------------------------------------------------------------
-
-/** Find the local name of `import X from "<spec>"`. */
-function defaultImportName(code: string, spec: string): string | null {
-  return templateImports(code).find((i) => i.spec === spec && i.local)?.local ?? null;
-}
-
-const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
-const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
-
-/** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
-export function componentClassHeads(code: string): { name?: string; open: number }[] {
-  const out: { name?: string; open: number }[] = [];
-  for (const m of code.matchAll(CLASS_NAME)) {
-    let at = m.index + m[0].length;
-    if (code[at] === "<") {
-      const end = matchClose(code, at, "<", ">");
-      if (end < 0) continue;
-      at = end + 1;
-    }
-    EXTENDS_COMPONENT.lastIndex = at;
-    const e = EXTENDS_COMPONENT.exec(code);
-    if (e) out.push({ ...(m[1] ? { name: m[1] } : {}), open: at + e[0].length - 1 });
-  }
-  return out;
-}
-
-/** The `Component(...)` call whose `(` is at `open` and the class body after it: the offsets of the call's `)` and of the body's braces; null when one is not closed. */
-export function classSpan(code: string, open: number): { callEnd: number; bodyStart: number; bodyEnd: number } | null {
-  const callEnd = matchClose(code, open, "(", ")");
-  if (callEnd < 0) return null;
-  const bodyStart = code.indexOf("{", callEnd);
-  if (bodyStart < 0) return null;
-  const bodyEnd = matchClose(code, bodyStart, "{", "}");
-  return bodyEnd > 0 ? { callEnd, bodyStart, bodyEnd } : null;
-}
+const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
 
 export interface ComponentClass {
   /** Full text of the `Component(tpl, {...})` call, parentheses included. */
@@ -62,74 +30,13 @@ export interface ComponentClass {
   body: string;
 }
 
-/** Find every `class X extends Component(<tpl> ...)` and return its call and class body. Empty when none is found. */
-export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
-  const local = defaultImportName(code, htmlSpec);
-  if (!local) return [];
-  const arg = new RegExp(`\\(\\s*${esc(local)}\\b`, "y");
-  return componentClassHeads(code).flatMap(({ open }) => {
-    arg.lastIndex = open;
-    const span = arg.test(code) ? classSpan(code, open) : null;
-    return span ? [{ call: code.slice(open, span.callEnd + 1), body: code.slice(span.bodyStart, span.bodyEnd + 1) }] : [];
-  });
-}
-
-const DATA_OPTION = /\b(?:state|props|derive)\b\s*[:,}]/;
-
 /**
- * Return only the text of the classes that extend `Component(<tpl> ...)`,
- * so that a file importing several templates checks each one against its own class only.
- * Falls back to the whole file when no class can be found (for example when Component is wrapped in a helper).
+ * The code that uses a template: the bodies of the component classes that pass it to Component(), marked when their options have state, props or derive.
+ * A template no class uses is used by the modules that import it, so their whole text counts.
  */
-export function templateCode(code: string, htmlSpec: string): string {
-  const classes = componentClasses(code, htmlSpec);
-  if (classes.length) {
-    // The Component(...) arguments matter too: the state / props options live there.
-    return classes.map((c) => `${DATA_OPTION.test(c.call) ? `${STATEFUL_MARK}\n` : ""}${c.body}`).join("\n");
-  }
-  return /Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code;
-}
-
-/** A template as one lint run reads it: its text and analysis, shared by every check. */
-export interface LintTemplate {
-  dir: string;
-  file: string;
-  text: string;
-  analysis: Analysis;
-}
-
-/** Read and analyze every template under `dirs` once. */
-export function readTemplates(dirs: readonly string[]): LintTemplate[] {
-  return dirs.flatMap((dir) =>
-    listHtml(dir).map((file) => {
-      const text = readFileSync(file, "utf8");
-      return { dir, file, text, analysis: analyze(text) };
-    }),
-  );
-}
-
-/** A module that imports a template: its source and the specifier it imports the template with. */
-interface Importer {
-  code: string;
-  spec: string;
-}
-
-/** The modules that import each template, by the template's absolute path; each file is read once. */
-function importersByTemplate(tsFiles: readonly string[]): Map<string, Importer[]> {
-  const out = new Map<string, Importer[]>();
-  for (const f of new Set(tsFiles.map((t) => resolve(t)))) {
-    const code = readFileSync(f, "utf8");
-    const seen = new Set<string>();
-    for (const { html, spec } of templateImports(code)) {
-      const file = resolve(dirname(f), html);
-      if (seen.has(`${file}\0${spec}`)) continue;
-      seen.add(`${file}\0${spec}`);
-      const here = out.get(file);
-      if (here) here.push({ code, spec });
-      else out.set(file, [{ code, spec }]);
-    }
-  }
-  return out;
+function ownerCode(classes: readonly ComponentClass[], importers: readonly string[]): string {
+  if (classes.length) return classes.map((c) => `${DATA_OPTION.test(c.call) ? `${STATEFUL_MARK}\n` : ""}${c.body}`).join("\n");
+  return importers.map((code) => (/Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code)).join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +49,7 @@ export const UNUSED_MARKUP_RULES = {
   "unused-text": "{{ hole }} is never filled",
   "unused-list": "data-each is never rendered",
   "unused-item-name": "a name inside a data-each template is never referenced",
-  "no-importer": "no TypeScript file imports this template",
+  "no-importer": "no component class or module uses this template",
 } as const;
 
 const at = (a: Analysis, key: string) => a.locs.get(key) ?? { line: 1, col: 1 };
@@ -202,33 +109,19 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   return out;
 }
 
-/** Check every HTML template under `dirs` against the TypeScript files that import it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return usage(readTemplates(dirs), importersByTemplate(tsFiles), cwd);
+  const ws = new Workspace();
+  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
 }
 
-function usage(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, cwd: string): LintIssue[] {
-  const issues: LintIssue[] = [];
-  for (const { file: html, text, analysis } of templates) {
-    const name = basename(html);
-    const by = importers.get(resolve(html)) ?? [];
-    const file = relative(cwd, html);
-    if (!by.length) {
-      issues.push({
-        file,
-        rule: "no-importer",
-        severity: "error",
-        line: 1,
-        col: 1,
-        message: `No TypeScript file imports this template. Fix: add \`import tpl from "./${name}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
-      });
-      continue;
-    }
-    const code = by.map((i) => templateCode(i.code, i.spec)).join("\n");
-    for (const d of unusedMarkup(text, code, analysis)) issues.push({ file, ...d });
-  }
-  return issues;
-}
+const noImporter = (file: string, html: string): LintIssue => ({
+  file,
+  rule: "no-importer",
+  severity: "error",
+  line: 1,
+  col: 1,
+  message: `No component class passes this template to Component(), and no TypeScript file imports it (a module that only re-exports it does not use it). Fix: add \`import tpl from "./${basename(html)}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
+});
 
 // ---------------------------------------------------------------------------
 // data-flow: keep props flowing down and events flowing up, one level at a time
@@ -246,10 +139,24 @@ export const DATA_FLOW_RULES = {
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
-/** Common native events. A data-on-* on a native element whose event is not listed here is treated as a custom event. */
-const NATIVE_EVENTS = new Set(
-  `click dblclick auxclick mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave contextmenu wheel keydown keyup keypress input beforeinput change submit reset invalid select focus blur focusin focusout scroll resize load unload error abort toggle cancel close drag dragstart dragend dragenter dragleave dragover drop copy cut paste compositionstart compositionupdate compositionend touchstart touchmove touchend touchcancel pointerdown pointerup pointermove pointerover pointerout pointerenter pointerleave pointercancel gotpointercapture lostpointercapture animationstart animationend animationiteration transitionstart transitionend transitionrun transitioncancel play pause ended playing timeupdate volumechange seeking seeked loadeddata loadedmetadata canplay waiting slotchange fullscreenchange online offline hashchange popstate storage message`.split(/\s+/),
-);
+const WINDOW_EVENT_NAMES = ["afterprint", "beforeprint", "beforeunload", "gamepadconnected", "gamepaddisconnected", "hashchange", "languagechange", "message", "messageerror", "offline", "online", "pagehide", "pagereveal", "pageshow", "pageswap", "popstate", "rejectionhandled", "storage", "unhandledrejection", "unload"] as const;
+
+/**
+ * The event names an element fires natively beyond ELEMENT_EVENT_NAMES, by tag: the `on*` properties its lib.dom interface adds to those of HTMLElement, SVGElement or MathMLElement,
+ * the same properties the types read the event of a `data-on-*` from (test/native-events-types.ts proves the lists equal to them for every tag). Kept out of events.ts, which the runtime imports.
+ */
+export const TAG_EVENT_NAMES = {
+  audio: ["encrypted", "waitingforkey"],
+  video: ["encrypted", "waitingforkey", "enterpictureinpicture", "leavepictureinpicture"],
+  body: WINDOW_EVENT_NAMES,
+  frameset: WINDOW_EVENT_NAMES,
+  svg: WINDOW_EVENT_NAMES,
+} as const;
+
+const ELEMENT_EVENTS: ReadonlySet<string> = new Set(ELEMENT_EVENT_NAMES);
+const TAG_EVENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map(Object.entries(TAG_EVENT_NAMES).map(([tag, names]) => [tag, new Set(names)]));
+const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...Object.values(TAG_EVENT_NAMES).flat()]);
+const firesNatively = (tag: string, name: string) => ELEMENT_EVENTS.has(name) || !!TAG_EVENTS.get(tag)?.has(name);
 
 /** Attributes that are valid on any element and are never props. */
 const GLOBAL_ATTRS = new Set(
@@ -332,8 +239,12 @@ export type PropKind = "string" | "number" | "boolean" | "other";
 export interface Contract {
   props: Map<string, PropKind>;
   emits: Set<string>;
-  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and text. */
-  template?: { file: string; html: string };
+  /** The emitted events declared with `bubbles: true`. */
+  bubbles: Set<string>;
+  /** The component's template, when its `import x from "./x.html.js"` can be found and the file exists: path relative to the `cwd` given to contractsFor, and its current text. */
+  readonly template?: { file: string; readonly html: string };
+  /** Why there is no `template`, when there is none. */
+  readonly unread?: Unread;
 }
 
 function kindOf(valueText: string): PropKind {
@@ -344,46 +255,55 @@ function kindOf(valueText: string): PropKind {
   return "other";
 }
 
-/** Every definition of each tag found by contractsFor, with the folder of the package that defines it. */
-export type Contracts = Map<string, { pkg: string; contract: Contract }[]>;
-
-/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; `folders` keeps the answer for every folder on the way. */
-function packageOf(dir: string, folders: Map<string, string>): string {
-  let pkg = folders.get(dir);
-  if (pkg === undefined) {
-    pkg = existsSync(join(dir, "package.json")) ? dir : dirname(dir) === dir ? "" : packageOf(dirname(dir), folders);
-    folders.set(dir, pkg);
+/** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
+export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
+  /** What contractsAt and childrenAt have worked out for each package. */
+  readonly byPackage = new Map<string, { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> }>();
+  /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
+  readonly packageOf: (dir: string) => string;
+  /** The folder the paths in messages are relative to. */
+  readonly cwd: string;
+  constructor(packageOf: (dir: string) => string, cwd: string) {
+    super();
+    this.packageOf = packageOf;
+    this.cwd = cwd;
   }
-  return pkg;
 }
 
-/** What contractsAt has worked out for one Contracts object: the package of each folder, and the contracts of each package. */
-const lookups = new WeakMap<Contracts, { folders: Map<string, string>; byPackage: Map<string, ReadonlyMap<string, Contract>> }>();
-function lookupOf(all: Contracts) {
-  let l = lookups.get(all);
-  if (!l) lookups.set(all, (l = { folders: new Map(), byPackage: new Map() }));
-  return l;
+/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none. */
+function packageOf(ws: Workspace, dir: string): string {
+  return ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, dirname(dir));
 }
 
 /**
  * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[], cwd = process.cwd(), defs: readonly DefineDef[] = scanDefines(dirs)): Contracts {
-  const out: Contracts = new Map();
-  const { folders } = lookupOf(out);
-  for (const def of defs) {
-    const code = readFileSync(def.file, "utf8");
-    const head = componentClassHeads(code).find((h) => h.name === def.className);
-    const close = head ? matchClose(code, head.open, "(", ")") : -1;
-    if (!head || close < 0) continue;
-    const call = code.slice(head.open, close + 1);
-    const contract: Contract = { props: new Map(optionEntries(call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(optionKeys(call, "emits")) };
-    const tpl = /^\(\s*([A-Za-z_$][\w$]*)/.exec(call)?.[1];
-    const spec = tpl && templateImports(code).find((i) => i.local === tpl)?.html;
-    const html = spec && resolve(dirname(def.file), spec);
-    if (html && existsSync(html)) contract.template = { file: relative(cwd, html), html: readFileSync(html, "utf8") };
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract }]);
+export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
+  const pkgOf = (dir: string) => packageOf(ws, dir);
+  const out = new Contracts(pkgOf, cwd);
+  for (const def of index.defines) {
+    const c = def.component;
+    let contract: Contract | null = null;
+    const template = c?.template;
+    if (c) {
+      const emits = optionEntries(c.call, "emits");
+      const own = template ? { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } } : undefined;
+      const unfollowed: Unread = { cause: "template-unfollowed", at: `${relative(cwd, c.file)}:${c.line}` };
+      contract = {
+        props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])),
+        emits: new Set(emits.map((e) => e.key)),
+        bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)),
+        get template() {
+          return template && ws.text(template) !== null ? own : undefined;
+        },
+        get unread(): Unread | undefined {
+          if (!template) return unfollowed;
+          return ws.text(template) === null ? { cause: "template-missing", file: relative(cwd, template) } : undefined;
+        },
+      };
+    }
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}` }]);
   }
   return out;
 }
@@ -394,16 +314,31 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), defs: readonly
  * exactly one, so a template is never checked against a component it does not use.
  */
 export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, Contract> {
-  const { folders, byPackage } = lookupOf(all);
-  const pkg = packageOf(dirname(resolve(file)), folders);
-  let out = byPackage.get(pkg);
+  return atPackage(all, file).contracts;
+}
+
+/** The components a template in `file` can hold, as checkA11y reads them: the contract of each tag contractsAt has, and why each other tag defined in the scanned folders has none. */
+export function childrenAt(all: Contracts, file: string): A11yChildren {
+  return atPackage(all, file).children;
+}
+
+/** The contracts and children at the package of `file`, and the text of what `children` holds for each tag (or all of it), as lintTemplate compares it. */
+function atPackage(all: Contracts, file: string): { contracts: ReadonlyMap<string, Contract>; children: A11yChildren; definitions: Map<string, string> } {
+  const pkg = all.packageOf(dirname(resolve(file)));
+  let out = all.byPackage.get(pkg);
   if (!out) {
-    const own = new Map<string, Contract>();
+    const contracts = new Map<string, Contract>();
+    const children = new Map<string, A11yChild>();
     for (const [tag, defs] of all) {
       const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
-      if (here.length === 1) own.set(tag, here[0]!.contract);
+      const one = here.length === 1 ? here[0] : undefined;
+      if (one?.contract) {
+        contracts.set(tag, one.contract);
+        children.set(tag, one.contract);
+      } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
+      else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
     }
-    byPackage.set(pkg, (out = own));
+    all.byPackage.set(pkg, (out = { contracts, children, definitions: new Map() }));
   }
   return out;
 }
@@ -451,16 +386,17 @@ export function dataFlow(
   };
 
   for (const site of a.eventSites) {
-    if (!site.tag.includes("-") && !NATIVE_EVENTS.has(site.event)) {
-      report(
-        "custom-event-on-native",
-        `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is not a native event. Events emitted by a child component do not bubble by default, so only the child's own tag receives them. Fix: put data-on-${site.event} on the child component tag that emits it.`,
-        `event:${site.method}`,
-      );
-    }
+    if (site.tag.includes("-") || firesNatively(site.tag, site.event)) continue;
+    const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
+    if (!emitters.length || emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
+    const tags = emitters.map(([tag]) => `<${tag}>`).join(", ");
+    report(
+      "custom-event-on-native",
+      `data-on-${site.event} is on the native element <${site.tag}>, but "${site.event}" is an event that ${tags} emits without bubbles: true, so only the tag of the component that emits it receives it. Fix: put data-on-${site.event} on ${emitters.length === 1 ? tags : "the tag of the component that emits it"}, or declare the event with event<...>({ bubbles: true }) in its emits.`,
+      `event:${site.method}`,
+    );
   }
 
-  // Child components used by the template: check attributes and events against their declared contract.
   for (const use of a.customUses) {
     const contract = contracts.get(use.tag);
     if (!contract) continue;
@@ -498,7 +434,6 @@ export function dataFlow(
     }
   }
 
-  // Custom element refs: ref name -> tag
   const customRefs = new Map<string, string>();
   for (const refs of [a.scope.refs, ...[...a.lists.values()].map((l) => l.refs)]) {
     for (const [name, type] of refs) {
@@ -574,40 +509,118 @@ export function dataFlow(
   return out;
 }
 
-/** Run the data-flow checks on every template under `dirs` against the TypeScript files that import it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return flow(readTemplates(dirs), importersByTemplate(tsFiles), contractsFor(dirs, cwd), cwd);
+  const ws = new Workspace();
+  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
 }
 
-function flow(templates: readonly LintTemplate[], importers: ReadonlyMap<string, Importer[]>, contracts: Contracts, cwd: string): LintIssue[] {
-  const issues: LintIssue[] = [];
-  const unchecked = new Map<string, { first: LintIssue; packages?: string[] }>();
-  for (const { file: html, text, analysis } of templates) {
-    const file = relative(cwd, html);
-    const classes = (importers.get(resolve(html)) ?? []).flatMap((i) => componentClasses(i.code, i.spec));
+export type Group = "unused-markup" | "data-flow" | "a11y";
+
+/** What lint finds in one template; a group that was not run has no findings. */
+export interface TemplateFindings {
+  /** The template's own diagnostics, as ts-dom gen reports them. */
+  diagnostics: Diagnostic[];
+  /** unused-markup; null when no class or module uses the template. */
+  usage: Diagnostic[] | null;
+  flow: Diagnostic[];
+  a11y: Diagnostic[];
+  /** The first use of each custom element tag in the template. */
+  uses: { tag: string; line: number; col: number }[];
+}
+
+/** What the lint of the templates of one project reads: the files, the index and the child contracts. */
+export interface LintProject {
+  ws: Workspace;
+  index: ComponentIndex;
+  contracts: Contracts;
+  cwd: string;
+}
+
+/** The project of the TypeScript files under `dirs`, as the run of `ws` reads it. */
+export function lintProject(ws: Workspace, dirs: readonly string[], cwd = process.cwd(), index = ws.index(dirs)): LintProject {
+  return { ws, index, contracts: contractsFor([...dirs], cwd, ws, index), cwd };
+}
+
+const ALL = "*";
+
+/** A view of `map` that adds each key it is asked about to `uses`, and ALL when it is read whole. */
+function recording<V>(map: ReadonlyMap<string, V>, uses: Set<string>): ReadonlyMap<string, V> {
+  const all = () => (uses.add(ALL), map);
+  return {
+    get: (k) => (uses.add(k), map.get(k)),
+    has: (k) => (uses.add(k), map.has(k)),
+    get size() {
+      return all().size;
+    },
+    forEach: (fn, thisArg) => all().forEach(fn, thisArg),
+    entries: () => all().entries(),
+    keys: () => all().keys(),
+    values: () => all().values(),
+    [Symbol.iterator]: () => all()[Symbol.iterator](),
+  };
+}
+
+const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknown) => (v instanceof Map || v instanceof Set ? [...v] : v));
+
+/**
+ * The findings of one template for `groups`. They depend only on the template's text, the code of the classes and modules that use it, and the definitions of the tags they look up,
+ * so the workspace's memo keeps them for the template with all of these, and they are used again while each is the same in the run that asks.
+ * `parse` is how the template is analyzed when the memo does not have its findings.
+ */
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
+  const file = resolve(html);
+  const text = p.ws.text(file) ?? "";
+  const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
+  const importers = (p.index.importers.get(file) ?? []).map((i) => p.ws.text(i.file) ?? "");
+  const { contracts, children, definitions } = atPackage(p.contracts, file);
+  const definition = (tag: string): string => {
+    let d = definitions.get(tag);
+    if (d === undefined) definitions.set(tag, (d = contents(tag === ALL ? [...children] : [children.get(tag)])));
+    return d;
+  };
+  const kind = `findings:${[...groups].sort().join(",")}`;
+  const from = [text, classes.length, ...classes.flatMap((c) => [c.call, c.body]), ...importers];
+  const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
+  if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
+  const tags = new Set<string>();
+  const analysis = parse(text);
+  const uses = new Map<string, { tag: string; line: number; col: number }>();
+  for (const u of analysis.customUses) if (!uses.has(u.tag)) uses.set(u.tag, { tag: u.tag, line: u.line, col: u.col });
+  const value: TemplateFindings = {
+    diagnostics: analysis.diagnostics,
+    usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
+    flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis) : [],
+    a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
+    uses: [...uses.values()],
+  };
+  return p.ws.memo.set(file, kind, from, { definitions: [...tags].map((tag) => [tag, definition(tag)]), value }).value;
+}
+
+/** `unchecked-custom-elements`: the tags the templates use that `contracts` has no contract of, reported once at the first use. */
+function uncheckedTags(found: readonly { file: string; html: string; uses: TemplateFindings["uses"] }[], contracts: Contracts): LintIssue[] {
+  const unchecked = new Map<string, { first: LintIssue; unread: Unread }>();
+  for (const { file, html, uses } of found) {
     const here = contractsAt(contracts, html);
-    for (const d of dataFlow(text, classes, here, analysis)) issues.push({ file, ...d });
-    for (const use of analysis.customUses) {
+    const children = childrenAt(contracts, html);
+    for (const use of uses) {
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
-      const defs = contracts.get(use.tag);
-      const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-      unchecked.set(use.tag, defs ? { first, packages: defs.map((d) => relative(cwd, d.pkg) || ".") } : { first });
+      unchecked.set(use.tag, { first: { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" }, unread: children.get(use.tag)?.unread ?? NOT_DEFINED });
     }
   }
-  const missing = [...unchecked].filter(([, u]) => !u.packages);
-  const ambiguous = [...unchecked].filter(([, u]) => u.packages);
-  const head = [...missing, ...ambiguous][0]?.[1].first;
-  if (head) {
-    const groups = [
-      ...(missing.length ? [`No define() in the scanned folders: ${missing.map(([tag]) => `<${tag}>`).join(", ")}`] : []),
-      ...(ambiguous.length ? [`Defined in several packages, and not exactly once in the template's package: ${ambiguous.map(([tag, u]) => `<${tag}> (${u.packages?.join(", ")})`).join(", ")}`] : []),
-    ];
-    issues.push({
+  const all = [...unchecked];
+  const head = [...all.filter(([, u]) => u.unread.cause === "undefined"), ...all.filter(([, u]) => u.unread.cause !== "undefined")][0]?.[1].first;
+  if (!head) return [];
+  const groups = (["undefined", "not-component", "ambiguous"] as const).flatMap((cause) => {
+    const tags = all.filter(([, u]) => u.unread.cause === cause).map(([tag, u]) => (detailOf(u.unread) ? `<${tag}> (${detailOf(u.unread)})` : `<${tag}>`));
+    return tags.length ? [`${tags.join(", ")}: ${UNREAD[cause].what}`] : [];
+  });
+  const fixes = unreadFixes(new Map(all.map(([tag, u]) => [tag, u.unread])));
+  return [
+    {
       ...head,
-      message: `Lint has no single definition to read for ${unchecked.size === 1 ? "one custom element" : `${unchecked.size} custom elements`} used in the templates, so their attributes and events (unknown-prop, invalid-prop-value, unknown-event) and data-on-click on them (click-semantics) are not checked. ${groups.join(". ")}. This is reported once per run, at the first use of the first tag. Fix: nothing needs to change for elements from another library (pass --ignore=unchecked-custom-elements to silence this); for the project's own components, add their folders to the scanned folders, and keep one definition of a tag per package.`,
-    });
-  }
-  return issues;
+      message: `Lint has no single definition to read for ${unchecked.size === 1 ? "one custom element" : `${unchecked.size} custom elements`} used in the templates, so their attributes and events (unknown-prop, invalid-prop-value, unknown-event) and data-on-click on them (click-semantics) are not checked. ${groups.join(". ")}. This is reported once per run, at the first use of the first tag. Fix: nothing needs to change for elements that are not Nativele components, such as another library's (pass --ignore=unchecked-custom-elements to silence this); otherwise ${fixes.join("; ")}.`,
+    },
+  ];
 }
 
 export interface LintOptions {
@@ -615,22 +628,44 @@ export interface LintOptions {
   a11y?: boolean;
   /** The folder issue paths are relative to. Default: the working directory. */
   cwd?: string;
-  /** The templates under `dirs`, when the caller has already read them (see readTemplates). */
-  templates?: readonly LintTemplate[];
+  /** The files of this run. Default: a new workspace. */
+  ws?: Workspace;
+  /** The groups to run instead of those `a11y` selects. */
+  groups?: readonly Group[];
+  index?: ComponentIndex;
+  contracts?: Contracts;
 }
 
 /**
- * The whole lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks.
- * Each template is parsed once, and the TypeScript sources and child definitions are read once, for all of them.
+ * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
+ * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
-export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), templates = readTemplates(dirs) }: LintOptions = {}): LintIssue[] {
-  const importers = importersByTemplate(dirs.flatMap(listTs));
-  const contracts = contractsFor(dirs, cwd);
-  const checks = a11y ? templates.flatMap((t) => checkA11y(t.text, [], contractsAt(contracts, t.file), t.analysis.root).map((d) => ({ file: relative(cwd, t.file), ...d }))) : [];
-  return [...usage(templates, importers, cwd), ...flow(templates, importers, contracts, cwd), ...checks];
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
+  const index = given.index ?? ws.index(dirs);
+  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, index);
+  const usage: LintIssue[] = [];
+  const flow: LintIssue[] = [];
+  const checks: LintIssue[] = [];
+  const found: { file: string; html: string; uses: TemplateFindings["uses"] }[] = [];
+  const templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] = [];
+  for (const dir of dirs) {
+    for (const html of listHtml(dir, ws)) {
+      const file = relative(cwd, html);
+      const r = lintTemplate(p, html, groups);
+      templates.push({ dir, file: html, diagnostics: r.diagnostics });
+      if (r.usage === null) usage.push(noImporter(file, html));
+      else for (const d of r.usage) usage.push({ file, ...d });
+      for (const d of r.flow) flow.push({ file, ...d });
+      for (const d of r.a11y) checks.push({ file, ...d });
+      found.push({ file, html, uses: r.uses });
+    }
+  }
+  if (groups.includes("data-flow")) flow.push(...uncheckedTags(found, p.contracts));
+  return { issues: [...usage, ...flow, ...checks], templates };
 }
 
-/** `file:line:col severity [rule] message` for a lint issue. */
+export const runLint = (dirs: string[], options?: LintOptions): LintIssue[] => lintRun(dirs, options).issues;
+
 export function formatIssue(i: LintIssue): string {
   return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
 }

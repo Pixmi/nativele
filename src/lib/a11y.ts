@@ -1,14 +1,22 @@
 import { parseFragment } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
 import type { Diagnostic } from "./codegen.ts";
+import { and, NOT_DEFINED, noContract, unreadFixes, unreadWhy } from "./unread.ts";
+import type { Unread as Why } from "./unread.ts";
 
 type Node = DefaultTreeAdapterMap["node"];
 type Element = DefaultTreeAdapterMap["element"];
 type Template = DefaultTreeAdapterMap["template"];
 type Fragment = DefaultTreeAdapterMap["documentFragment"];
 
-/** A component the template can use, by tag: its template file and text when they could be read (see `contractsFor`). */
-export type A11yChildren = ReadonlyMap<string, { template?: { file: string; html: string } }>;
+/** A tag defined in the scanned folders: its template file and text when they can be read, and otherwise why not. */
+export interface A11yChild {
+  readonly template?: { file: string; html: string };
+  readonly unread?: Why;
+}
+/** The tags the template can use, by tag (see `childrenAt`); a tag that is not here has no define() in the scanned folders. */
+export type A11yChildren = ReadonlyMap<string, A11yChild>;
+const unreadOf = (children: A11yChildren, tag: string): Why => children.get(tag)?.unread ?? NOT_DEFINED;
 
 /** Every check, by rule id (usable in `ignore`), with a short description. */
 export const A11Y_RULES = {
@@ -33,6 +41,7 @@ export const A11Y_RULES = {
   "landmark-label": "several landmarks of the same kind are not told apart by aria-label",
   "redundant-role": "the role repeats the element's native role",
   "click-semantics": "data-on-click is on an element that keyboard and assistive technology users cannot operate",
+  "unchecked-content": "click-semantics, control-name or heading-empty cannot judge an element, because what decides it is content lint cannot read",
 } as const;
 export type A11yRule = keyof typeof A11Y_RULES;
 
@@ -56,6 +65,14 @@ const IMPLICIT_ROLE: Record<string, string> = {
   h1: "heading", h2: "heading", h3: "heading", h4: "heading", h5: "heading", h6: "heading",
 };
 const NO_LABEL_INPUT = new Set(["hidden", "submit", "reset", "button", "image"]);
+
+/** The rules that judge composed content: what an element fails with, and the fix that needs no content lint cannot read. */
+const COMPOSED_RULES = {
+  "click-semantics": ["has no operable element a click could come from", "put data-on-click on a <button> or <a href>, or add an interactive role plus tabindex and keyboard handling"],
+  "control-name": ["has no accessible name", "add text or aria-label"],
+  "heading-empty": ["is empty", "add text or aria-label"],
+} as const;
+type ComposedRule = keyof typeof COMPOSED_RULES;
 
 const isEl = (n: Node): n is Element => "tagName" in n;
 const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
@@ -82,33 +99,95 @@ function operable(el: Element): boolean {
 }
 
 const descendants = (nodes: Node[]): Element[] => nodes.flatMap((c) => (isEl(c) ? [c, ...descendants(kids(c))] : []));
-const childElements = new WeakMap<{ html: string }, Element[]>();
+const isCustom = (el: Element) => el.tagName.includes("-") && el.namespaceURI === "http://www.w3.org/1999/xhtml";
 
 /**
- * Whether a click on the component `tag` can come from an operable element inside its template. A component whose
- * template cannot be read, like any other custom element, may handle the keyboard itself, so it counts as operable.
+ * A node of an element's composed content: what the page shows inside it once every component in it has rendered its template.
+ * `slots` is what the element using the component that the node's template belongs to puts in each named slot; none in the template being checked, whose slots are filled by whoever uses it.
+ * `path` holds the components being rendered, so a component that contains itself is rendered once.
  */
-function clickableInside(tag: string, children: A11yChildren, seen: Set<string>): boolean {
-  const template = children.get(tag)?.template;
-  if (template === undefined) return true;
-  if (seen.has(tag)) return false;
-  seen.add(tag);
-  let elements = childElements.get(template);
-  if (!elements) childElements.set(template, (elements = descendants(parseFragment(template.html).childNodes)));
-  return elements.some((el) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, seen)));
+interface Composed {
+  node: Node;
+  slots?: Map<string, Composed[]>;
+  path: ReadonlySet<string>;
 }
 
-/** Whether an element may contain readable content: text, holes, slots, TypeScript-managed elements, named descendants. */
-function hasContent(el: Element): boolean {
-  for (const c of kids(el)) {
-    if (c.nodeName === "#text") {
-      if ((c as { value: string }).value.trim()) return true;
-    } else if (isEl(c)) {
-      if (c.tagName === "style" || c.tagName === "script") continue;
-      if (c.tagName === "slot" || has(c, "data-ref")) return true;
-      if (nonEmpty(attr(c, "aria-label")) || nonEmpty(attr(c, "title"))) return true;
-      if (c.tagName === "img" && nonEmpty(attr(c, "alt"))) return true;
-      if (hasContent(c)) return true;
+/** The parsed templates of one checkA11y call, by template. */
+type Parsed = Map<{ html: string }, Node[]>;
+const templateNodes = (template: { html: string }, parsed: Parsed): Node[] => {
+  let nodes = parsed.get(template);
+  if (!nodes) parsed.set(template, (nodes = parseFragment(template.html).childNodes));
+  return nodes;
+};
+
+/** The elements of composed content that lint cannot read, each with how a message names it. */
+type Unread = Map<Element, string>;
+
+/**
+ * The children of a composed node. Content lint cannot read is added to `unread`: a custom element without a readable template, which has no children here,
+ * and a slot of the template being checked, which its user fills, so only its fallback content is read.
+ */
+function composedKids(c: Composed, children: A11yChildren, parsed: Parsed, unread: Unread): Composed[] {
+  const n = c.node;
+  if (!isEl(n)) return [];
+  const here = (nodes: Node[]) => nodes.map((node) => ({ ...c, node }));
+  if (n.tagName === "slot") {
+    const name = attr(n, "name");
+    if (!c.slots) {
+      unread.set(n, `<slot${name === undefined ? "" : ` name="${name}"`}> (the user of this component fills it)`);
+      return here(kids(n));
+    }
+    const given = c.slots.get(name ?? "");
+    return given?.length ? given : here(kids(n));
+  }
+  if (!isCustom(n)) return here(kids(n));
+  const template = children.get(n.tagName)?.template;
+  if (!template) {
+    unread.set(n, `<${n.tagName}>${c.path.size ? ` in the template of <${[...c.path].at(-1)}>` : ""} (${unreadWhy(unreadOf(children, n.tagName))})`);
+    return [];
+  }
+  if (c.path.has(n.tagName)) return [];
+  const slots = new Map<string, Composed[]>();
+  for (const k of here(kids(n))) {
+    const name = isEl(k.node) ? (attr(k.node, "slot") ?? "") : "";
+    slots.set(name, [...(slots.get(name) ?? []), k]);
+  }
+  const path = new Set([...c.path, n.tagName]);
+  return templateNodes(template, parsed).map((node) => ({ node, slots, path }));
+}
+
+/** Whether what an element puts in the slot `name` of the component `tag` is inside a <label> once the component renders it. */
+function slotInLabel(tag: string, name: string, children: A11yChildren, parsed: Parsed, path: ReadonlySet<string> = new Set()): boolean {
+  const template = children.get(tag)?.template;
+  if (!template || path.has(tag)) return false;
+  const inner = new Set([...path, tag]);
+  const walk = (nodes: Node[], inLabel: boolean): boolean =>
+    nodes.some((n) => {
+      if (!isEl(n)) return false;
+      if (n.tagName === "slot") return inLabel && (attr(n, "name") ?? "") === name;
+      const here = inLabel || n.tagName === "label";
+      if (!isCustom(n)) return walk(kids(n), here);
+      return kids(n).some((k) => walk([k], here || (isEl(k) && slotInLabel(n.tagName, attr(k, "slot") ?? "", children, parsed, inner))));
+    });
+  return walk(templateNodes(template, parsed), false);
+}
+
+/** Whether some element of the composed content of `c` that lint can read passes `test`. */
+function someInside(c: Composed, test: (el: Element) => boolean, children: A11yChildren, parsed: Parsed, unread: Unread): boolean {
+  return composedKids(c, children, parsed, unread).some((k) => (isEl(k.node) && test(k.node)) || someInside(k, test, children, parsed, unread));
+}
+
+/** Whether the composed content of `c` that lint can read holds readable content: text, holes, TypeScript-managed elements or named descendants. */
+function hasContent(c: Composed, children: A11yChildren, parsed: Parsed, unread: Unread): boolean {
+  for (const k of composedKids(c, children, parsed, unread)) {
+    const n = k.node;
+    if (n.nodeName === "#text") {
+      if ((n as { value: string }).value.trim()) return true;
+    } else if (isEl(n)) {
+      if (n.tagName === "style" || n.tagName === "script") continue;
+      if (has(n, "data-ref") || nonEmpty(attr(n, "aria-label")) || nonEmpty(attr(n, "title"))) return true;
+      if (n.tagName === "img" && nonEmpty(attr(n, "alt"))) return true;
+      if (hasContent(k, children, parsed, unread)) return true;
     }
   }
   return false;
@@ -119,21 +198,30 @@ const named = (el: Element) =>
 
 /**
  * Check a template for ARIA and basic accessibility problems. Returns warnings and never throws.
- * `children` are the components whose templates can be read (see `contractsFor` and `contractsAt`): data-on-click on
- * one of them is checked against its template, and data-on-click on any other custom element is not checked.
+ * `children` are the components whose templates can be read (see `contractsFor` and `contractsAt`): the content of a button, link, heading or data-on-click element
+ * includes what such a component renders inside it; when the rest of the content decides nothing because it holds another custom element or a slot of this template, unchecked-content is reported instead.
  * `root` is the template already parsed with source locations (`analyze(html).root`), so a run that has it does not parse again.
  */
 export function checkA11y(html: string, ignore: readonly string[] = [], children: A11yChildren = new Map(), root: Fragment = parseFragment(html, { sourceCodeLocationInfo: true })): Diagnostic[] {
   const out: Diagnostic[] = [];
   const skip = new Set(ignore);
 
-  // Collect ids and label[for] first
+  const parsed: Parsed = new Map();
+  const slotsInLabel = new Map<string, boolean>();
+  const slotInLabelOf = (tag: string, slot: string) => {
+    const key = `${tag}\0${slot}`;
+    let found = slotsInLabel.get(key);
+    if (found === undefined) slotsInLabel.set(key, (found = slotInLabel(tag, slot, children, parsed)));
+    return found;
+  };
   const ids = new Map<string, number>();
   const labelFor: { id: string; el: Element }[] = [];
   const all: { el: Element; parent: Element | null; inList: boolean; inLabel: boolean }[] = [];
-  (function collect(parent: { childNodes: Node[] }, domParent: Element | null, inList: boolean, inLabel: boolean) {
+  (function collect(parent: { childNodes: Node[] }, domParent: Element | null, inList: boolean, around: boolean) {
+    const component = "tagName" in parent && isCustom(parent as Element) ? (parent as Element).tagName : undefined;
     for (const n of parent.childNodes) {
       if (!isEl(n)) continue;
+      const inLabel = around || (component !== undefined && slotInLabelOf(component, attr(n, "slot") ?? ""));
       const list = inList || (n.tagName === "template" && has(n, "data-each"));
       const label = inLabel || n.tagName === "label";
       all.push({ el: n, parent: domParent, inList, inLabel });
@@ -157,7 +245,10 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     });
   };
 
-  const clickable = (el: Element) => operable(el) || (el.tagName.includes("-") && clickableInside(el.tagName, children, new Set()));
+  const top = (el: Element): Composed => ({ node: el, path: new Set() });
+  const content = (el: Element, unread: Unread) => hasContent(top(el), children, parsed, unread);
+  // A click on an operable element inside, by keyboard too, reaches the handler of the element around it.
+  const clickable = (el: Element, unread: Unread) => operable(el) || someInside(top(el), operable, children, parsed, unread);
 
   let lastHeading = 0;
   const landmarks = all.filter((x) => (x.el.tagName === "nav" || x.el.tagName === "aside") && attr(x.el, "role") !== "presentation");
@@ -165,11 +256,25 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     const tag = el.tagName;
     const managed = has(el, "data-ref"); // managed by TypeScript: the name may be set there, so skip the "missing name" checks
     const role = roleOf(el);
+    const notJudged: ComposedRule[] = [];
+    const unreadHere: Unread = new Map();
+    /** Whether `rule` fails on the content lint can read; when content it cannot read could change that, the rule is noted as not judged instead. */
+    const fails = (rule: ComposedRule, failsOn: (unread: Unread) => boolean): boolean => {
+      if (skip.has(rule)) return false;
+      const unread: Unread = new Map();
+      if (!failsOn(unread)) return false;
+      // A custom element with no contract is reported by unchecked-custom-elements.
+      if (unread.has(el) && noContract(unreadOf(children, tag))) return false;
+      if (!unread.size) return true;
+      notJudged.push(rule);
+      for (const [n, name] of unread) unreadHere.set(n, name);
+      return false;
+    };
 
     if (tag === "img" && !has(el, "alt") && !managed && role !== "presentation" && role !== "none") report("img-alt", el, `<img> has no alt attribute, so screen readers cannot describe it. Fix: add alt="description", or alt="" if the image is purely decorative.`);
 
-    if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && !hasContent(el)) {
-      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, a <slot>, aria-label or aria-labelledby.`);
+    if ((tag === "button" || tag === "summary" || (tag === "a" && has(el, "href"))) && !managed && !named(el) && fails("control-name", (u) => !content(el, u))) {
+      report("control-name", el, `<${tag}> has no accessible name. Fix: add text, a {{ hole }}, aria-label or aria-labelledby.`);
     }
 
     if (
@@ -184,7 +289,7 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
 
     if (tag === "iframe" && !managed && !named(el)) report("iframe-title", el, "<iframe> has no title. Fix: add a title attribute (or aria-label) that describes its content.");
     if (tag === "dialog" && !managed && !nonEmpty(attr(el, "aria-label")) && !nonEmpty(attr(el, "aria-labelledby"))) report("dialog-name", el, "<dialog> has no accessible name. Fix: add aria-label or aria-labelledby.");
-    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && !hasContent(el)) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
+    if (/^h[1-6]$/.test(tag) && !managed && !nonEmpty(attr(el, "aria-label")) && fails("heading-empty", (u) => !content(el, u))) report("heading-empty", el, `<${tag}> is empty. Fix: add text or a {{ hole }}, or remove the heading element.`);
 
     if (role !== undefined && !ROLES.has(role) && !role.startsWith("doc-") && !role.startsWith("graphics-")) {
       report("aria-role", el, `role="${role}" is not a valid ARIA role. Fix: check the spelling against the WAI-ARIA roles.`);
@@ -194,10 +299,9 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
     }
 
     const tabindex = attr(el, "tabindex");
-    // A control inside a label, clicked or activated by keyboard, reaches the label's handler.
-    const unoperableClick = has(el, "data-on-click") && !clickable(el) && !(tag === "label" && descendants(kids(el)).some(clickable));
-    // role-tabindex has the same fix as click-semantics, so an element click-semantics reports is not reported twice.
-    if (role && INTERACTIVE_ROLES.has(role) && !focusable(el) && tabindex === undefined && !managed && !unoperableClick) {
+    const interactiveRole = !!role && INTERACTIVE_ROLES.has(role);
+    const unoperableClick = has(el, "data-on-click") && !interactiveRole && fails("click-semantics", (u) => !clickable(el, u));
+    if (interactiveRole && !focusable(el) && tabindex === undefined && !managed) {
       report("role-tabindex", el, `<${tag} role="${role}"> is not natively focusable. Fix: add tabindex="0" and handle keyboard events, or use a native element such as <button>.`);
     }
     if (tabindex !== undefined && Number(tabindex) > 0) report("tabindex-positive", el, `tabindex="${tabindex}" disturbs the natural focus order. Fix: use tabindex="0" or "-1".`);
@@ -211,7 +315,15 @@ export function checkA11y(html: string, ignore: readonly string[] = [], children
       }
     }
 
-    // Semantic checks
+    if (notJudged.length) {
+      const custom = new Map([...unreadHere.keys()].filter((n) => n.tagName !== "slot").map((n) => [n.tagName, unreadOf(children, n.tagName)]));
+      report(
+        "unchecked-content",
+        el,
+        `<${tag}> was not checked for ${and(notJudged)}: its content holds ${and([...new Set(unreadHere.values())])}, and without what that renders, <${tag}> ${and(notJudged.map((r) => COMPOSED_RULES[r][0]))}. Fix: nothing needs to change if that content makes it right (pass --ignore=unchecked-content to silence this); otherwise ${[...notJudged.map((r) => `${notJudged.length > 1 ? `for ${r}, ` : ""}${COMPOSED_RULES[r][1]}`), ...unreadFixes(custom)].join("; ")}.`,
+      );
+    }
+
     if (/^h[1-6]$/.test(tag)) {
       const level = Number(tag[1]);
       if (lastHeading && level > lastHeading + 1) report("heading-order", el, `<${tag}> skips a heading level (the previous heading is h${lastHeading}). Fix: use h${lastHeading + 1} here, or restructure the headings.`);
