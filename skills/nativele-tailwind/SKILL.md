@@ -4,7 +4,7 @@ description: "Style Nativele components with Tailwind CSS v4 in a Vite app that 
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "tailwindcss@4.3.4 @tailwindcss/vite@4.3.4 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "tailwindcss"
@@ -30,7 +30,7 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148, by reading computed styles with Playwright both against `vite` (dev) and against `vite build` served by `vite preview`, in an app made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository. With a different major version of Tailwind, treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, by reading computed styles with Playwright both against `vite` (dev) and against `vite build` served by `vite preview`, in an app made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository. With a different major version of Tailwind, treat every step as unverified.
 
 ## Set-up
 

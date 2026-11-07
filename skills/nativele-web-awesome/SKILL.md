@@ -4,7 +4,7 @@ description: "Use Web Awesome (@awesome.me/webawesome, the successor of Shoelace
 metadata:
   tier: official
   nativele: ">=0.6.0 <0.7.0"
-  verified: "2026-11-06"
+  verified: "2026-11-07"
   tools: "@awesome.me/webawesome@3.14.0 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "@awesome.me/webawesome"
@@ -31,7 +31,7 @@ Web Awesome components are custom elements built with Lit, each with its own sha
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148, in the dev server and the production build, with the example project in the Nativele repository (`skills/nativele-web-awesome/example`). The example is a reference; it is not run in CI. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, in the dev server and the production build, in fresh projects made with `create-vite` and `nativele-vite`, and with the example project in the Nativele repository (`skills/nativele-web-awesome/example`). The example is a reference; it is not run in CI. With another major version of Web Awesome (Shoelace 2 is the previous one, under another package and prefix), treat every step as unverified.
 
 ## Set-up
 
