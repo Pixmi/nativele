@@ -195,6 +195,14 @@ describe("data-flow checks", () => {
     expect(dataFlow(`<div data-on-value-change="x"></div>`, [])).toEqual([]);
     expect(dataFlow(`<button data-on-click="x"></button><form data-on-submit="y"></form><x-kid data-on-value-change="z"></x-kid>`, [], kid([]))).toEqual([]);
   });
+  it("an event named like a window or media event is read from the child's emits", () => {
+    const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["message"]), bubbles: new Set(bubbles) }]]);
+    const rules = (html: string, b: string[] = []) => dataFlow(html, [], kid(b)).map((d) => d.rule);
+    expect(rules(`<x-kid data-on-message="h"></x-kid>`)).toEqual([]);
+    expect(rules(`<x-kid data-on-mesage="h"></x-kid>`)).toEqual(["unknown-event"]);
+    expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`)).toEqual(["custom-event-on-native"]);
+    expect(rules(`<div data-on-message="h"><x-kid></x-kid></div>`, ["message"])).toEqual([]);
+  });
   it("props / emits key parsing: skips commas inside strings and nested objects", () => {
     const code = `class P extends Component(t, { props: { a: "x, y: 1", b: { c: 1, d: 2 }, "e-f": 0, g: [1, 2] }, state: { z: 1 } }) { render(v) { this.refs.kid.a = v.a; this.refs.kid.c = v.c; this.refs.kid.d = v.d; } }`;
     const r = flow(code).filter((d) => d.rule === "prop-forwarding");

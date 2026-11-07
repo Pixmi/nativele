@@ -144,6 +144,7 @@ export const DATA_FLOW_RULES = {
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
+const ELEMENT_EVENTS: ReadonlySet<string> = new Set(ELEMENT_EVENT_NAMES);
 const NATIVE_EVENTS: ReadonlySet<string> = new Set([...ELEMENT_EVENT_NAMES, ...OTHER_NATIVE_EVENT_NAMES]);
 
 /** Attributes that are valid on any element and are never props. */
@@ -351,7 +352,7 @@ export function dataFlow(
   };
 
   for (const site of a.eventSites) {
-    if (site.tag.includes("-") || NATIVE_EVENTS.has(site.event)) continue;
+    if (site.tag.includes("-") || ELEMENT_EVENTS.has(site.event)) continue;
     const emitters = [...contracts].filter(([, c]) => c.emits.has(site.event));
     if (!emitters.length || emitters.some(([, c]) => c.bubbles.has(site.event))) continue;
     const tags = emitters.map(([tag]) => `<${tag}>`).join(", ");
