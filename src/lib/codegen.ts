@@ -514,8 +514,19 @@ export class CodegenError extends Error {
   }
 }
 
+const analyses = new WeakMap<Workspace, Map<string, Analysis>>();
+
+/** The analysis of the template text `html`, parsed once in the run of `ws`. */
+export function analysisIn(ws: Workspace, html: string): Analysis {
+  let run = analyses.get(ws);
+  if (!run) analyses.set(ws, (run = new Map()));
+  let a = run.get(html);
+  if (!a) run.set(html, (a = analyze(html)));
+  return a;
+}
+
 /** The error diagnostics and the custom element tags of the template `file` with the text `html`; `parse` analyzes it when the memo does not have them. */
-function shapeOf(file: string, html: string, ws: Workspace, parse = () => analyze(html)): { errors: Diagnostic[]; tags: ReadonlySet<string> } {
+function shapeOf(file: string, html: string, ws: Workspace, parse = () => analysisIn(ws, html)): { errors: Diagnostic[]; tags: ReadonlySet<string> } {
   const kept = ws.memo.get(file, "shape", [html]) as { errors: Diagnostic[]; tags: ReadonlySet<string> } | undefined;
   if (kept) return kept;
   const a = parse();
@@ -527,8 +538,7 @@ export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs
   const file = resolve(htmlPath);
   const html = ws.text(file) ?? readFileSync(htmlPath, "utf8");
   if (options.whitespace === undefined) options = { ...options, whitespace: recordedWhitespace(modulePathFor(htmlPath)) };
-  let analysis: Analysis | undefined;
-  const parse = () => (analysis ??= analyze(html));
+  const parse = () => analysisIn(ws, html);
   const { errors, tags } = shapeOf(file, html, ws, parse);
   if (errors.length) throw new CodegenError(formatDiagnostics(htmlPath, errors));
   const known = typeof defs === "string" ? scanDefines(defs, ws) : (defs ?? []);
