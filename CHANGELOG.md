@@ -11,7 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, chosen from the whole set by this policy (a minor version when any iteration has a breaking change or a new feature), its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## 0.7.2 (not published)
+## 0.7.2
 
 ### New checks
 
