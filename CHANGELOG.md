@@ -31,6 +31,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - A component tree of any depth type checks: a chain of components each holding the next one's tag no longer fails with "Type instantiation is excessively deep and possibly infinite" (TS2589) past about 45 levels, and a template that holds its own tag (a tree view), or the tag of a component whose template holds it back, as a `data-ref` or as its root element, no longer fails as circular. A component's type no longer reads the resolved types of its children's templates, so checking it costs the same at any depth.
 - `Schema["refs"]`, `Schema["rootElement"]` and `ListSchema["refs"]` are constrained to `object` instead of `Element`; codegen writes `El<tag>` there, so generated templates are typed as before.
+- The Vite plugin's accessibility check reuses the parse codegen made of the same template within a run, so a build parses each template once instead of twice.
 
 ### Skills
 
