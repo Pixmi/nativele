@@ -278,22 +278,20 @@ export function prepare(skill: string, workFlag?: string): string {
 export function replayPrepare(skill: string, workFlag?: string): string {
   const fixture = readFixture(skill);
   const last = join(fixtureDir(skill), "last-pass");
-  if (!existsSync(join(last, "agent.patch"))) throw new Error(`${skill} has no accepted agent output to replay (${relative(REPO, last)}/agent.patch)`);
+  for (const f of ["agent.patch", "package.json", "package-lock.json"]) if (!existsSync(join(last, f))) throw new Error(`${skill} has no accepted agent output to replay (${relative(REPO, last)}/${f} is missing)`);
   const work = newWork(skill, workFlag);
   const nativele = pack(work);
   must(fixture.start.command, work);
   const project = join(work, fixture.start.dir);
   copyFileSync(join(last, "package.json"), join(project, "package.json"));
-  if (existsSync(join(last, "package-lock.json"))) {
-    const lock = readJson<{ packages: Record<string, { version?: string; integrity?: string }> }>(join(last, "package-lock.json"));
-    const entry = lock.packages["node_modules/@nativele/ts-dom"];
-    if (entry) {
-      delete entry.integrity;
-      entry.version = nativele.version;
-    }
-    writeJson(join(project, "package-lock.json"), lock);
-    must("npm ci", project);
-  } else must("npm install", project);
+  const lock = readJson<{ packages: Record<string, { version?: string; integrity?: string }> }>(join(last, "package-lock.json"));
+  const entry = lock.packages["node_modules/@nativele/ts-dom"];
+  if (entry) {
+    delete entry.integrity;
+    entry.version = nativele.version;
+  }
+  writeJson(join(project, "package-lock.json"), lock);
+  must("npm ci", project);
   finishProject(project, fixture);
   const applied = git(project, `apply --whitespace=nowarn ${JSON.stringify(join(last, "agent.patch"))}`);
   if (applied.status !== 0) throw new Error(`the stored agent output no longer applies to the starter (a fixture change: run an agent trial):\n${applied.output}`);
@@ -511,37 +509,55 @@ export function judge(record: TrialRecord): TrialRecord["result"] {
   return record.checks.every((c) => c.pass) && !items.some((i) => i.class === "gap") ? "accepted" : "gaps";
 }
 
-export function accept(work: string): string {
+export interface Roots {
+  trials: string;
+  skills: string;
+}
+
+export function accept(work: string, roots: Roots = { trials: TRIALS, skills: skillsRoot() }): string {
   const state = workState(work);
   const project = join(work, state.project);
   const out = join(project, ".trial", "out");
   const record = readJson<TrialRecord>(join(out, "record.json"));
   if (record.kind !== "agent") throw new Error("only an agent trial can be accepted; a replay is not stored");
   if (record.sandbox === "violated") throw new Error(`the agent used forbidden sources, so this trial cannot be accepted; run it again:\n${record.violations?.join("\n")}`);
-  for (const f of ["agent.patch", "package.json"]) if (!existsSync(join(out, f))) throw new Error(`${join(out, f)} is missing; run check again`);
   record.result = judge(record);
-  const skillFile = join(skillsRoot(), record.skill, "SKILL.md");
-  const skill = parseSkill(readFileSync(skillFile, "utf8"), dirname(skillFile));
-  if (record.result === "accepted") {
-    if (skillHash(readFileSync(skillFile, "utf8")) !== record.skillHash) throw new Error(`${relative(REPO, skillFile)} changed after the trial; run a new trial on the current text`);
+  const accepted = record.result === "accepted";
+  if (accepted) {
+    for (const f of ["agent.patch", "package.json"]) if (!existsSync(join(out, f))) throw new Error(`${join(out, f)} is missing; run check again`);
+    if (!existsSync(join(out, "package-lock.json"))) throw new Error(`${join(out, "package-lock.json")} is missing: an accepted trial must carry a lockfile so a replay installs the same versions; commit one in the project, then run check again`);
+  }
+  const skillFile = join(roots.skills, record.skill, "SKILL.md");
+  const skillText = readFileSync(skillFile, "utf8");
+  const skill = parseSkill(skillText, dirname(skillFile));
+  if (accepted) {
+    if (skillHash(skillText) !== record.skillHash) throw new Error(`${skillFile} changed after the trial; run a new trial on the current text`);
     if (!skill || !inRange(record.nativele.version, skill.nativele)) throw new Error(`${record.nativele.version} is outside the Skill's nativele range; change the range first`);
   }
-  const resultsDir = join(fixtureDir(record.skill), "results");
-  mkdirSync(resultsDir, { recursive: true });
+  const fixture = join(roots.trials, record.skill);
+  const resultsDir = join(fixture, "results");
   record.round = nextRound(resultsDir);
   const file = join(resultsDir, `${record.date}-r${record.round}.json`);
-  if (existsSync(file)) throw new Error(`${relative(REPO, file)} already exists`);
-  if (record.result === "accepted") {
-    const last = join(fixtureDir(record.skill), "last-pass");
-    mkdirSync(last, { recursive: true });
-    for (const f of ["agent.patch", "package.json"]) copyFileSync(join(out, f), join(last, f));
-    if (existsSync(join(out, "package-lock.json"))) copyFileSync(join(out, "package-lock.json"), join(last, "package-lock.json"));
-    else rmSync(join(last, "package-lock.json"), { force: true });
-    writeFileSync(skillFile, stampSkill(readFileSync(skillFile, "utf8"), record.date, record.nativele.version));
-    say(`updated ${relative(REPO, last)}/ and the verified date of ${relative(REPO, skillFile)}`);
+  if (existsSync(file)) throw new Error(`${file} already exists`);
+  const outputs: { target: string; data: string | Buffer }[] = [];
+  if (accepted) {
+    const last = join(fixture, "last-pass");
+    for (const f of ["agent.patch", "package.json", "package-lock.json"]) outputs.push({ target: join(last, f), data: readFileSync(join(out, f)) });
+    outputs.push({ target: skillFile, data: stampSkill(skillText, record.date, record.nativele.version) });
   }
-  writeJson(file, record);
-  say(`stored ${relative(REPO, file)} (${record.result})`);
+  outputs.push({ target: file, data: `${JSON.stringify(record, null, 2)}\n` });
+  const staged = outputs.map((o) => ({ ...o, temp: `${o.target}.tmp-${process.pid}` }));
+  try {
+    for (const o of staged) {
+      mkdirSync(dirname(o.target), { recursive: true });
+      writeFileSync(o.temp, o.data);
+    }
+    for (const o of staged) renameSync(o.temp, o.target);
+  } finally {
+    for (const o of staged) rmSync(o.temp, { force: true });
+  }
+  if (accepted) say(`updated ${relative(roots.trials, join(fixture, "last-pass"))}/ and the verified date of ${relative(roots.skills, skillFile)}`);
+  say(`stored ${relative(roots.trials, file)} (${record.result})`);
   return file;
 }
 

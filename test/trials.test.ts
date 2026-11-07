@@ -190,21 +190,75 @@ describe("Trial records", () => {
     }
   });
 
-  it("writes nothing when the output an accept needs is missing", () => {
-    const work = mkdtempSync(join(tmpdir(), "trial-accept-"));
-    try {
+  describe("accept", () => {
+    const SKILL = (verified: string) => `---\nname: nativele-vue\nmetadata:\n  nativele: ">=0.7.0 <0.8.0"\n  verified: "${verified}"\n---\nbody\n`;
+    const setup = (over: Partial<TrialRecord>, outputs: string[]) => {
+      const dir = mkdtempSync(join(tmpdir(), "trial-accept-"));
+      const work = join(dir, "work");
+      const roots = { trials: join(dir, "trials"), skills: join(dir, "skills") };
       const out = join(work, "app", ".trial", "out");
       mkdirSync(out, { recursive: true });
+      mkdirSync(join(roots.skills, "nativele-vue"), { recursive: true });
+      const text = SKILL("2026-01-01");
+      writeFileSync(join(roots.skills, "nativele-vue", "SKILL.md"), text);
       writeFileSync(join(work, "trial.json"), JSON.stringify({ skill: "nativele-vue", kind: "agent", project: "app", nativele: {} }));
-      writeFileSync(join(out, "record.json"), JSON.stringify(record({})));
-      writeFileSync(join(out, "package.json"), "{}");
-      const results = join(TRIALS, "nativele-vue", "results");
-      const before = existsSync(results) ? readdirSync(results) : [];
-      expect(() => accept(work)).toThrow(/agent\.patch is missing/);
-      expect(existsSync(results) ? readdirSync(results) : []).toEqual(before);
-    } finally {
-      rmSync(work, { recursive: true, force: true });
-    }
+      writeFileSync(join(out, "record.json"), JSON.stringify(record({ skillHash: skillHash(text), ...over })));
+      for (const f of outputs) writeFileSync(join(out, f), "{}");
+      const tree = () => readdirSync(dir, { recursive: true, encoding: "utf8" }).sort();
+      return { dir, work, roots, tree };
+    };
+    const ALL = ["agent.patch", "package.json", "package-lock.json"];
+
+    it("writes nothing when the output an accepted trial needs is missing", () => {
+      for (const missing of ALL) {
+        const t = setup({}, ALL.filter((f) => f !== missing));
+        try {
+          const before = t.tree();
+          expect(() => accept(t.work, t.roots)).toThrow(new RegExp(`${missing.replace(".", "\\.")} is missing`));
+          expect(t.tree()).toEqual(before);
+        } finally {
+          rmSync(t.dir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("stores a round with gaps without the agent output", () => {
+      const t = setup({ guesses: [{ where: "step 3", what: "w", class: "gap" }] }, []);
+      try {
+        accept(t.work, t.roots);
+        expect(readdirSync(join(t.roots.trials, "nativele-vue"))).toEqual(["results"]);
+        expect(readFileSync(join(t.roots.skills, "nativele-vue", "SKILL.md"), "utf8")).toBe(SKILL("2026-01-01"));
+      } finally {
+        rmSync(t.dir, { recursive: true, force: true });
+      }
+    });
+
+    it("stores an accepted trial with its output and the stamped Skill, leaving no temporary files", () => {
+      const t = setup({}, ALL);
+      try {
+        accept(t.work, t.roots);
+        expect(readdirSync(join(t.roots.trials, "nativele-vue", "last-pass")).sort()).toEqual(ALL.sort());
+        expect(readdirSync(join(t.roots.trials, "nativele-vue", "results"))).toEqual(["2026-11-08-r1.json"]);
+        expect(readFileSync(join(t.roots.skills, "nativele-vue", "SKILL.md"), "utf8")).toBe(SKILL("2026-11-08"));
+        expect(t.tree().filter((f) => f.includes(".tmp-"))).toEqual([]);
+      } finally {
+        rmSync(t.dir, { recursive: true, force: true });
+      }
+    });
+
+    it("changes nothing when a write fails part way", () => {
+      const t = setup({}, ALL);
+      try {
+        mkdirSync(join(t.roots.trials, "nativele-vue"), { recursive: true });
+        writeFileSync(join(t.roots.trials, "nativele-vue", "last-pass"), "");
+        const skillBefore = readFileSync(join(t.roots.skills, "nativele-vue", "SKILL.md"), "utf8");
+        expect(() => accept(t.work, t.roots)).toThrow();
+        expect(readFileSync(join(t.roots.skills, "nativele-vue", "SKILL.md"), "utf8")).toBe(skillBefore);
+        expect(t.tree().filter((f) => f.includes(".tmp-") || f.includes("results"))).toEqual([]);
+      } finally {
+        rmSync(t.dir, { recursive: true, force: true });
+      }
+    });
   });
 
   it("accepts only when every check passed and nothing is a gap, after everything is classified", () => {

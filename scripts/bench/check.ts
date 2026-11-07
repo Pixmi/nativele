@@ -11,6 +11,7 @@ const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const CLI = join(REPO, "src/cli.ts");
 const TSC = join(REPO, "node_modules/typescript/bin/tsc");
 const N = 1000;
+const MAX_RATIO = 35;
 
 const { Memo } = await import("../../src/lib/components.ts");
 const { tsDom } = await import("../../src/lib/vite-plugin.ts");
@@ -37,6 +38,7 @@ const held = (memo: InstanceType<typeof Memo>) => {
   return n;
 };
 
+const scaling: [string, number[]][] = [];
 const measured = new Map<string, number>();
 const record = (name: string, value: number) => measured.set(name, value);
 const during = (name: string, fn: () => void) => {
@@ -90,6 +92,17 @@ function cli(dir: string, args: string[]): { counts: typeof counts } {
   execFileSync(process.execPath, ["--import", fileURLToPath(new URL("./count.ts", import.meta.url)), CLI, ...args], { cwd: dir, env: { ...process.env, BENCH_COUNTS: out }, stdio: "ignore" });
   return { counts: JSON.parse(readFileSync(out, "utf8")) };
 }
+
+const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] as number;
+const time = async (reps: number, fn: () => unknown) => {
+  const ms: number[] = [];
+  for (let i = 0; i < reps; i++) {
+    const t = performance.now();
+    await fn();
+    ms.push(performance.now() - t);
+  }
+  return median(ms);
+};
 
 const started = performance.now();
 try {
@@ -154,6 +167,25 @@ try {
   }
 
   {
+    // 10x the components: linear growth gives about 10x the time, quadratic about 100x.
+    const sizes = [200, 2000] as const;
+    const lint: number[] = [];
+    const saveHtml: number[] = [];
+    for (const n of sizes) {
+      const dir = join(work, `scale${n}`);
+      singleProject(dir, n);
+      const file = join(dir, "src", `${componentPath(Math.floor(n / 2))}.html`);
+      lint.push(await time(3, () => cli(dir, ["lint", "src", "--a11y"])));
+      const host = viteHost(dir);
+      host.buildStart();
+      host.hook(file);
+      saveHtml.push(await time(9, () => { save(file); host.hook(file); }));
+    }
+    process.chdir(big);
+    scaling.push(["cli lint --a11y", lint], [".html save in the Vite plugin", saveHtml]);
+  }
+
+  {
     const mono = join(work, "mono");
     monorepo(mono, 200);
     process.chdir(mono);
@@ -201,6 +233,12 @@ for (const { name, value, budget } of rows) {
   const over = budget === undefined || value > budget;
   if (over) failed++;
   console.log(`${name.padEnd(width)}  ${show(value).padStart(9)}  ${(budget === undefined ? "none" : show(budget)).padStart(9)}${over ? "  OVER" : ""}`);
+}
+for (const [name, [small, large]] of scaling) {
+  const ratio = (large as number) / (small as number);
+  const over = ratio > MAX_RATIO;
+  if (over) failed++;
+  console.log(`${name}: ${(small as number).toFixed(0)} ms at 200 components, ${(large as number).toFixed(0)} ms at 2000, ratio ${ratio.toFixed(1)} (limit ${MAX_RATIO})${over ? "  OVER" : ""}`);
 }
 for (const name of Object.keys(budgets)) {
   if (measured.has(name)) continue;
