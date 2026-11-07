@@ -1,10 +1,8 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { CodegenError, formatDiagnostics, generateDirs, generateFile, isFullPage, isSelected, listHtml } from "./codegen.ts";
-import { scanDefines } from "./components.ts";
-import type { DefineDef } from "./components.ts";
-import { checkA11y } from "./a11y.ts";
-import { contractsAt, contractsFor } from "./lint.ts";
+import { defineDefs, Workspace } from "./components.ts";
+import { lintProject, lintTemplate } from "./lint.ts";
 
 export interface TsDomPluginOptions {
   /** Directories to scan for .html files and generate .html.ts into, relative to Vite's root. Default: ["src"] */
@@ -48,56 +46,62 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
   let dirs = (opts.dirs ?? ["src"]).map((d) => resolve(d));
   // The content of each generated module that the pages were last reloaded for. One write can reach the watcher as several events, and other dev servers watching the same folder write the same content again: an event whose content was already reloaded for is dropped.
   const shown = new Map<string, string>();
-  // The define() calls of all directories, scanned once and again only when a .ts file with a define() changes, instead of on every template save.
-  let defs: DefineDef[] | undefined;
+  const ws = new Workspace();
   const existing = () => dirs.filter((d) => existsSync(d));
-  const allDefs = () => (defs ??= scanDefines(existing()));
-  const isDefineFile = (file: string) => allDefs().some((d) => resolve(d.file) === file || resolve(d.classFile) === file);
+  const defs = () => defineDefs(ws.index(existing()));
+  // The files with a define() call or the class it registers, as of the last generation: a change to one of them, also one that removes the define(), regenerates the tag maps.
+  let defineFiles = new Set<string>();
+  const noteDefines = () => (defineFiles = new Set(defs().flatMap((d) => [resolve(d.file), resolve(d.classFile)])));
+  const isDefineFile = (file: string) => defineFiles.has(file);
 
   const dirOf = (file: string) => dirs.find((d) => file.startsWith(d + sep));
+  const templates = () => existing().flatMap((d) => listHtml(d, ws).filter((f) => isSelected(d, f, generate)).map((f) => resolve(f)));
 
-  // Read again for every check, so that a click-semantics warning follows the child templates as they are saved.
-  const children = () => contractsFor(existing(), process.cwd());
-  const warnA11y = (warn: (m: string) => void) => {
+  const warnA11y = (warn: (m: string) => void, files: Iterable<string>, changed?: string) => {
     if (!a11y) return;
-    const contracts = children();
-    for (const d of existing()) {
-      for (const f of listHtml(d)) {
-        if (!isSelected(d, f, generate)) continue;
-        for (const diag of checkA11y(readFileSync(f, "utf8"), a11y.ignore, contractsAt(contracts, f))) warn(formatDiagnostics(f, [diag]));
-      }
+    const p = lintProject(ws, existing(), process.cwd());
+    for (const f of files) {
+      const r = lintTemplate(p, f, ["a11y"]);
+      if (changed !== undefined && !r.computed && f !== changed) continue;
+      for (const diag of r.value.a11y) if (!a11y.ignore?.includes(diag.rule)) warn(formatDiagnostics(f, [diag]));
     }
   };
-
+  /** Check a saved file's template again, and the templates whose findings were computed from it; after a TypeScript change, also those whose child definitions changed. */
+  const recheck = (file: string, logger: Logger) => {
+    if (!a11y) return;
+    const all = new Set(templates());
+    const files = new Set([...(file.endsWith(".html") ? [file] : []), ...ws.dependents(file), ...(isSourceTs(file) ? all : [])]);
+    warnA11y((m) => logger.warn(m), [...files].filter((f) => all.has(f)), file);
+  };
 
   /** Regenerate one template. Returns whether its generated module changed. */
   const regenerate = (file: string, logger: Logger): boolean => {
     const dir = dirOf(file);
-    const html = read(file);
+    const html = ws.text(file);
     if (!dir || html === null || file.includes(`${sep}node_modules${sep}`) || isFullPage(html) || !isSelected(dir, file, generate)) return false;
     const out = `${file}.ts`;
     const before = read(out);
     try {
-      generateFile(file, generate, allDefs(), dir);
+      generateFile(file, generate, defs(), dir, ws);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
       return false;
     }
-    if (a11y) for (const diag of checkA11y(html, a11y.ignore, contractsAt(children(), file))) logger.warn(formatDiagnostics(file, [diag]));
+    recheck(file, logger);
     return read(out) !== before;
   };
 
   /** Regenerate after a define() call may have changed: the tag maps and the child imports of every template. */
   const regenerateAll = (logger: Logger) => {
-    const before = new Map(existing().flatMap(listHtml).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
+    const before = new Map(existing().flatMap((d) => listHtml(d, ws)).map((f) => [`${f}.ts`, read(`${f}.ts`)] as const));
     try {
-      generateDirs(existing(), generate);
+      generateDirs(existing(), generate, ws);
     } catch (e) {
       if (e instanceof CodegenError) logger.error(e.message);
       else throw e;
     }
-    defs = scanDefines(existing());
+    noteDefines();
     for (const [out, content] of before) {
       const now = read(out);
       if (now !== null && now !== content) shown.set(out, now);
@@ -125,19 +129,19 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     configResolved(config: { root: string }) {
       root = config.root;
       dirs = (opts.dirs ?? ["src"]).map((d) => resolve(config.root, d));
-      defs = undefined;
     },
     buildStart(this: { error(m: string): never; warn(m: string): void }) {
       for (const d of dirs) {
         if (!existsSync(d)) this.warn(`${relative(process.cwd(), d) || "."}:1:1 warning [dir-not-found] The folder ${d} given in tsDom({ dirs }) does not exist, so no templates in it are generated. Fix: dirs are resolved against Vite's root (${root}), not the working directory; give the folder relative to that root, or an absolute path.`);
       }
       try {
-        generateDirs(existing(), generate);
+        generateDirs(existing(), generate, ws);
       } catch (e) {
         if (e instanceof CodegenError) this.error(e.message);
         throw e;
       }
-      warnA11y((m) => this.warn(m));
+      noteDefines();
+      warnA11y((m) => this.warn(m), templates());
     },
     configureServer(server: { watcher: { add(p: string | string[]): void; on(ev: string, fn: (f: string) => void): void }; config: { logger: Logger } }) {
       const logger = server.config.logger;
@@ -145,12 +149,16 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
       server.watcher.on("add", (f) => {
         const file = resolve(f);
         if (file.endsWith(".html")) regenerate(file, logger);
-        else if (dirOf(file) && isSourceTs(file) && read(file)?.includes("define(")) regenerateAll(logger);
+        else if (dirOf(file) && isSourceTs(file)) {
+          if (ws.text(file)?.includes("define(")) regenerateAll(logger);
+          recheck(file, logger);
+        }
       });
       server.watcher.on("unlink", (f) => {
         const file = resolve(f);
         if (file.endsWith(".html")) removeGenerated(file);
         else if (dirOf(file) && isDefineFile(file)) regenerateAll(logger);
+        if (dirOf(file)) recheck(file, logger);
       });
     },
     // A template is not a page, so Vite's own reload for a changed .html is ignored by the browser: regenerate it and reload once. A generated module that something else rewrote (ts-dom gen --watch, a checkout) goes through Vite's normal update.
@@ -169,7 +177,8 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
         return [];
       }
       if (!dirOf(file) || !isSourceTs(file)) return;
-      if (read(file)?.includes("define(") || isDefineFile(file)) regenerateAll(logger);
+      if (ws.text(file)?.includes("define(") || isDefineFile(file)) regenerateAll(logger);
+      recheck(file, logger);
       return;
     },
   };

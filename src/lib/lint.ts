@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
-import { componentIndex, diskSources, indexDirs, listTs, matchClose, TEMPLATE_SPEC } from "./components.ts";
+import { componentIndex, matchClose, TEMPLATE_SPEC, Workspace } from "./components.ts";
 import type { ComponentIndex, Sources } from "./components.ts";
 
 export type { Diagnostic };
@@ -52,24 +52,6 @@ export function componentClasses(code: string, htmlSpec: string): ComponentClass
 export function templateCode(code: string, htmlSpec: string): string {
   const { index, html } = oneModule(code, htmlSpec);
   return ownerCode(index.byTemplate.get(html) ?? [], index.importers.has(html) ? [code] : []);
-}
-
-/** A template as one lint run reads it: its text and analysis, shared by every check. */
-export interface LintTemplate {
-  dir: string;
-  file: string;
-  text: string;
-  analysis: Analysis;
-}
-
-/** Read and analyze every template under `dirs` once. */
-export function readTemplates(dirs: readonly string[]): LintTemplate[] {
-  return dirs.flatMap((dir) =>
-    listHtml(dir).map((file) => {
-      const text = readFileSync(file, "utf8");
-      return { dir, file, text, analysis: analyze(text) };
-    }),
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +126,8 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
 
 /** Check every HTML template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const sources = diskSources();
-  return usage(readTemplates(dirs), componentIndex(tsFiles, sources), sources, cwd);
+  const ws = new Workspace();
+  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
 }
 
 /** The unused-markup findings of one template, or null when no class or module uses it. */
@@ -156,26 +138,14 @@ export function templateUsage(html: string, text: string, analysis: Analysis, in
   return unusedMarkup(text, ownerCode(classes, importers.map((i) => sources.text(i.file) ?? "")), analysis);
 }
 
-function usage(templates: readonly LintTemplate[], index: ComponentIndex, sources: Sources, cwd: string): LintIssue[] {
-  const issues: LintIssue[] = [];
-  for (const { file: html, text, analysis } of templates) {
-    const file = relative(cwd, html);
-    const found = templateUsage(html, text, analysis, index, sources);
-    if (!found) {
-      issues.push({
-        file,
-        rule: "no-importer",
-        severity: "error",
-        line: 1,
-        col: 1,
-        message: `No component class passes this template to Component(), and no TypeScript file imports it (a module that only re-exports it does not use it). Fix: add \`import tpl from "./${basename(html)}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
-      });
-      continue;
-    }
-    for (const d of found) issues.push({ file, ...d });
-  }
-  return issues;
-}
+const noImporter = (file: string, html: string): LintIssue => ({
+  file,
+  rule: "no-importer",
+  severity: "error",
+  line: 1,
+  col: 1,
+  message: `No component class passes this template to Component(), and no TypeScript file imports it (a module that only re-exports it does not use it). Fix: add \`import tpl from "./${basename(html)}.js"\` and \`class X extends Component(tpl)\` next to it, or delete the file; if it is not a Nativele template, this folder is not meant to be scanned: scan only the folder with the Nativele templates.`,
+});
 
 // ---------------------------------------------------------------------------
 // data-flow: keep props flowing down and events flowing up, one level at a time
@@ -280,8 +250,8 @@ export interface Contract {
   emits: Set<string>;
   /** The emitted events declared with `bubbles: true`. */
   bubbles: Set<string>;
-  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and text. */
-  template?: { file: string; html: string };
+  /** The component's template, when its `import x from "./x.html.js"` can be found: path relative to the `cwd` given to contractsFor, and its current text. */
+  template?: { file: string; readonly html: string };
 }
 
 function kindOf(valueText: string): PropKind {
@@ -292,8 +262,11 @@ function kindOf(valueText: string): PropKind {
   return "other";
 }
 
-/** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
-export type Contracts = Map<string, { pkg: string; contract: Contract | null; at: string }[]>;
+/**
+ * Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to.
+ * `files` are the define() file, the class file and the template, and `template` the template (absolute), which the checks of a parent template read.
+ */
+export type Contracts = Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]>;
 
 /** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; `folders` keeps the answer for every folder on the way. */
 function packageOf(dir: string, folders: Map<string, string>): string {
@@ -317,19 +290,20 @@ function lookupOf(all: Contracts) {
  * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
-export function contractsFor(dirs: string[], cwd = process.cwd(), index: ComponentIndex = indexDirs(dirs), sources: Sources = diskSources()): Contracts {
+export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const out: Contracts = new Map();
   const { folders } = lookupOf(out);
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
+    const template = c?.template;
     if (c) {
       const emits = optionEntries(c.call, "emits");
       contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)) };
-      const html = c.template && sources.text(c.template);
-      if (c.template && typeof html === "string") contract.template = { file: relative(cwd, c.template), html };
+      if (template && ws.text(template) !== null) contract.template = { file: relative(cwd, template), get html() { return ws.text(template) ?? ""; } };
     }
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract, at: `${relative(cwd, def.file)}:${def.line}` }]);
+    const files = [resolve(def.file), ...(def.class ? [def.class.file] : []), ...(template ? [template] : [])];
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
   }
   return out;
 }
@@ -525,19 +499,114 @@ export function dataFlow(
 
 /** Run the data-flow checks on every template under `dirs` against the component classes in `tsFiles` that use it. */
 export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  return flow(readTemplates(dirs), componentIndex(tsFiles), contractsFor(dirs, cwd), cwd);
+  const ws = new Workspace();
+  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
 }
 
 type Unchecked = { first: LintIssue } & ({ cause: "missing" } | { cause: "unreadable"; at: string } | { cause: "ambiguous"; packages: string[] });
 
-function flow(templates: readonly LintTemplate[], index: ComponentIndex, contracts: Contracts, cwd: string): LintIssue[] {
+export type Group = "unused-markup" | "data-flow" | "a11y";
+
+/** What lint finds in one template; a group that was not run has no findings. */
+export interface TemplateFindings {
+  /** The template's own diagnostics, as ts-dom gen reports them. */
+  diagnostics: Diagnostic[];
+  /** unused-markup; null when no class or module uses the template. */
+  usage: Diagnostic[] | null;
+  flow: Diagnostic[];
+  a11y: Diagnostic[];
+  /** The first use of each custom element tag in the template. */
+  uses: { tag: string; line: number; col: number }[];
+}
+
+/** What the lint of the templates of one project reads: the files, the index and the child contracts. */
+export interface LintProject {
+  ws: Workspace;
+  index: ComponentIndex;
+  contracts: Contracts;
+  cwd: string;
+}
+
+const contractsOfIndex = new WeakMap<ComponentIndex, Map<string, Contracts>>();
+
+/** The project of the TypeScript files under `dirs`; its index is the workspace's (see Workspace.index for `maxAge`), and its contracts are built once per index. */
+export function lintProject(ws: Workspace, dirs: readonly string[], cwd = process.cwd(), maxAge = 0, index = ws.index(dirs, maxAge)): LintProject {
+  let byCwd = contractsOfIndex.get(index);
+  if (!byCwd) contractsOfIndex.set(index, (byCwd = new Map()));
+  let contracts = byCwd.get(cwd);
+  if (!contracts) byCwd.set(cwd, (contracts = contractsFor([...dirs], cwd, ws, index)));
+  return { ws, index, contracts, cwd };
+}
+
+/**
+ * What the index says about the things a template's findings were computed from: the classes and modules that use the template, and the definitions of the tags in `tags` that were looked up,
+ * with the revision of each TypeScript file as the index read it. The files that were read, the template and the templates of the components in it, are compared by Workspace.result.
+ */
+function indexSig(p: LintProject, file: string, tags: readonly string[]): string {
+  const at = (f: string) => `${f}@${p.index.revs?.get(f) ?? ""}`;
+  const owners = (p.index.byTemplate.get(file) ?? []).map((o) => `${at(o.file)}:${o.line}`);
+  const importers = (p.index.importers.get(file) ?? []).map((i) => `<${at(i.file)}`);
+  const defs = tags.map((tag) => `${tag}=${(p.contracts.get(tag) ?? []).map((d) => `${d.at}:${d.template ?? ""}:${d.files.map(at).join(",")}`).join(";")}`);
+  return [p.cwd, ...owners, ...importers, ...defs].join("\n");
+}
+
+const keyOf = (groups: readonly Group[], file: string) => `${groups.join(",")}\0${file}`;
+
+/** Whether a TypeScript file that the last findings of `html` were computed from through the index (a class that uses it, the definition of a tag in it) changed since the index read it. */
+export function indexBehind(p: LintProject, html: string, groups: readonly Group[]): boolean {
+  const file = resolve(html);
+  const uses = p.ws.uses(keyOf(groups, file));
+  if (!uses) return false;
+  const files = [...(p.index.byTemplate.get(file) ?? []).map((o) => o.file), ...(p.index.importers.get(file) ?? []).map((i) => i.file), ...uses.flatMap((tag) => (p.contracts.get(tag) ?? []).flatMap((d) => d.files))];
+  return files.some((f) => p.index.revs?.has(f) && p.ws.rev(f) !== p.index.revs.get(f));
+}
+
+/** A view of `map` that adds each key it is asked about to `uses`. */
+function recording<V>(map: ReadonlyMap<string, V>, uses: Set<string>): ReadonlyMap<string, V> {
+  const all = () => {
+    for (const k of map.keys()) uses.add(k);
+    return map;
+  };
+  return {
+    get: (k) => (uses.add(k), map.get(k)),
+    has: (k) => (uses.add(k), map.has(k)),
+    get size() {
+      return all().size;
+    },
+    forEach: (fn, thisArg) => all().forEach(fn, thisArg),
+    entries: () => all().entries(),
+    keys: () => all().keys(),
+    values: () => all().values(),
+    [Symbol.iterator]: () => all()[Symbol.iterator](),
+  };
+}
+
+/** The findings of one template for `groups`, computed again only when something it was computed from changed (`computed` says whether it was). */
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[]): { value: TemplateFindings; computed: boolean } {
+  const file = resolve(html);
+  return p.ws.result(keyOf(groups, file), file, (tags) => indexSig(p, file, tags), (tags) => {
+    const text = p.ws.text(file) ?? "";
+    const analysis = analyze(text);
+    const here = recording(contractsAt(p.contracts, file), tags);
+    const uses = new Map<string, { tag: string; line: number; col: number }>();
+    for (const u of analysis.customUses) if (!uses.has(u.tag)) uses.set(u.tag, { tag: u.tag, line: u.line, col: u.col });
+    return {
+      diagnostics: analysis.diagnostics,
+      usage: groups.includes("unused-markup") ? templateUsage(file, text, analysis, p.index, p.ws) : [],
+      flow: groups.includes("data-flow") ? dataFlow(text, p.index.byTemplate.get(file) ?? [], here, analysis) : [],
+      a11y: groups.includes("a11y") ? checkA11y(text, [], here, analysis.root) : [],
+      uses: [...uses.values()],
+    };
+  });
+}
+
+/** `unchecked-custom-elements`: the tags the templates use that `contracts` has no single definition of, reported once at the first use. */
+function uncheckedTags(found: readonly { file: string; html: string; uses: TemplateFindings["uses"] }[], contracts: Contracts, cwd: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const unchecked = new Map<string, Unchecked>();
-  for (const { file: html, text, analysis } of templates) {
-    const file = relative(cwd, html);
+  for (const { file, html, uses } of found) {
     const here = contractsAt(contracts, html);
-    for (const d of dataFlow(text, index.byTemplate.get(resolve(html)) ?? [], here, analysis)) issues.push({ file, ...d });
-    for (const use of analysis.customUses) {
+    for (const use of uses) {
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
       const defs = contracts.get(use.tag) ?? [];
       const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
@@ -571,21 +640,44 @@ export interface LintOptions {
   a11y?: boolean;
   /** The folder issue paths are relative to. Default: the working directory. */
   cwd?: string;
-  /** The templates under `dirs`, when the caller has already read them (see readTemplates). */
-  templates?: readonly LintTemplate[];
+  /** The files, kept between runs. Default: an empty workspace. */
+  ws?: Workspace;
+  /** The groups to run instead of those `a11y` selects. */
+  groups?: readonly Group[];
+  index?: ComponentIndex;
+  contracts?: Contracts;
 }
 
 /**
- * The whole lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks.
- * Each template is parsed once, and the TypeScript sources and child definitions are read once, for all of them.
+ * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
+ * Each template is parsed once for all of them; with a workspace that has run before, only the templates whose files changed are.
  */
-export function runLint(dirs: string[], { a11y = false, cwd = process.cwd(), templates = readTemplates(dirs) }: LintOptions = {}): LintIssue[] {
-  const sources = diskSources();
-  const index = componentIndex(dirs.flatMap(listTs), sources);
-  const contracts = contractsFor(dirs, cwd, index, sources);
-  const checks = a11y ? templates.flatMap((t) => checkA11y(t.text, [], contractsAt(contracts, t.file), t.analysis.root).map((d) => ({ file: relative(cwd, t.file), ...d }))) : [];
-  return [...usage(templates, index, sources, cwd), ...flow(templates, index, contracts, cwd), ...checks];
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
+  const index = given.index ?? ws.index(dirs);
+  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, 0, index);
+  const usage: LintIssue[] = [];
+  const flow: LintIssue[] = [];
+  const checks: LintIssue[] = [];
+  const found: { file: string; html: string; uses: TemplateFindings["uses"] }[] = [];
+  const templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] = [];
+  for (const dir of dirs) {
+    for (const html of listHtml(dir, ws)) {
+      const file = relative(cwd, html);
+      const r = lintTemplate(p, html, groups).value;
+      templates.push({ dir, file: html, diagnostics: r.diagnostics });
+      if (r.usage === null) usage.push(noImporter(file, html));
+      else for (const d of r.usage) usage.push({ file, ...d });
+      for (const d of r.flow) flow.push({ file, ...d });
+      for (const d of r.a11y) checks.push({ file, ...d });
+      found.push({ file, html, uses: r.uses });
+    }
+  }
+  if (groups.includes("data-flow")) flow.push(...uncheckedTags(found, p.contracts, cwd));
+  return { issues: [...usage, ...flow, ...checks], templates };
 }
+
+/** The issues of lintRun. */
+export const runLint = (dirs: string[], options?: LintOptions): LintIssue[] => lintRun(dirs, options).issues;
 
 /** `file:line:col severity [rule] message` for a lint issue. */
 export function formatIssue(i: LintIssue): string {

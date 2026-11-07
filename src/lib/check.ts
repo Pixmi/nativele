@@ -3,11 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
-import { classSpan, componentClassHeads, indexDirs, scanDefines } from "./components.ts";
+import { classSpan, componentClassHeads, indexDirs, scanDefines, Workspace } from "./components.ts";
 import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
 import type { GenerateOptions } from "./codegen.ts";
-import { readTemplates, runLint } from "./lint.ts";
+import { lintRun } from "./lint.ts";
 import type { LintIssue } from "./lint.ts";
 
 export const CHECK_RULES = {
@@ -272,29 +272,30 @@ export function runCheck(options: CheckOptions): LintIssue[] {
     else issues.push({ file: rel(d) || ".", line: 1, col: 1, rule: "dir-not-found", severity: "error", message: `The folder ${rel(d) || "."} does not exist, so nothing in it was checked. Fix: pass the folder that holds the templates and components (default: src).` });
   }
 
-  const templates = readTemplates(dirs);
-  for (const t of templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.analysis.diagnostics) issues.push({ file: rel(t.file), ...d });
+  const ws = new Workspace();
+  const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws });
+  for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
   for (const dir of dirs) {
     try {
-      renderTags(dir);
+      renderTags(dir, ws);
     } catch (e) {
       if (!(e instanceof CodegenError)) throw e;
       issues.push({ file: rel(dir), line: 1, col: 1, rule: "duplicate-define", severity: "error", message: e.message.replace(/^[^[]*\[duplicate-define\]\s*/, "") });
     }
   }
-  for (const d of crossDirDuplicates(dirs)) issues.push({ ...d, file: rel(d.file) });
+  for (const d of crossDirDuplicates(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
 
   if (options.write === false) {
-    const defs = scanDefines(dirs);
+    const defs = scanDefines(dirs, ws);
     for (const dir of dirs) {
-      for (const s of staleGenerated(dir, generate, defs, dirs)) {
+      for (const s of staleGenerated(dir, generate, defs, dirs, ws)) {
         issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
       }
     }
   } else {
     try {
-      generateDirs(dirs, generate);
+      generateDirs(dirs, generate, ws);
     } catch (e) {
       if (!(e instanceof CodegenError)) throw e;
     }
@@ -318,10 +319,10 @@ export function runCheck(options: CheckOptions): LintIssue[] {
         issues.push({ file: extra[1] ? rel(extra[1]) : ".", line: 1, col: 1, rule: "tsc-failed", severity: "error", message: `${tsc.name} did not check the types: ${detail} Fix: make \`npx ${tsc.name} --noEmit\` run in this folder (a tsconfig.json, or --project=<path>).` });
       }
     }
-    issues.push(...mapTscErrors(parsed, cwd, dirs));
+    issues.push(...mapTscErrors(parsed, cwd, dirs, ws.index(dirs)));
   }
 
-  issues.push(...runLint(dirs, { a11y: !!options.a11y, cwd, templates }));
+  issues.push(...lint.issues);
   const seen = new Set<string>();
   return issues
     .filter((i) => {

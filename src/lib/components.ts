@@ -1,14 +1,15 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export const TAGS_FILE = "ts-dom-tags.ts";
 
 export function listTs(dir: string): string[] {
   const out: string[] = [];
-  for (const name of readdirSync(dir)) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const name = entry.name;
     if (name === "node_modules" || name === "dist") continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...listTs(full));
+    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())) out.push(...listTs(full));
     else if (name.endsWith(".ts") && !name.endsWith(".d.ts") && !name.endsWith(".html.ts") && name !== TAGS_FILE) out.push(full);
   }
   return out;
@@ -216,18 +217,142 @@ export function moduleFacts(code: string): ModuleFacts {
 /** Where the index reads source files from. */
 export interface Sources {
   text(file: string): string | null;
+  facts?(file: string): ModuleFacts | undefined;
 }
 
-/** Sources read from disk, each file once. */
-export function diskSources(): Sources {
-  const texts = new Map<string, string | null>();
-  return {
-    text(file) {
-      let t = texts.get(file);
-      if (t === undefined) texts.set(file, (t = existsSync(file) ? readFileSync(file, "utf8") : null));
-      return t;
-    },
-  };
+interface FileEntry {
+  stamp: string;
+  text: string;
+  /** Changes with the content, so a result can tell whether a file it read is still the same. */
+  rev: number;
+  facts?: ModuleFacts;
+}
+
+/**
+ * The source files that runs read, and what is derived from them. A file is read again only when its size or mtime changes;
+ * a derived result (see `result`) records the files it was computed from and is computed again when one of them changes.
+ * It keeps texts, module facts and results such as diagnostics, never parse trees, and forgets a file that no longer exists.
+ * A command line run starts with an empty one; the Vite and oxlint plugins keep theirs while they run.
+ */
+export class Workspace implements Sources {
+  /** How many files were read from disk. */
+  reads = 0;
+  readonly #files = new Map<string, FileEntry>();
+  readonly #overlay = new Map<string, string>();
+  readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: [string, number][]; value: unknown }>();
+  #reading: Set<string> | null = null;
+  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; revs: [string, number][]; moduleChanges: number }>();
+  /** Counts the changes to files whose module facts were read, which an index may have been built from. */
+  #moduleChanges = 0;
+  #rev = 0;
+
+  #entry(file: string): FileEntry | undefined {
+    const overlay = this.#overlay.get(file);
+    let stamp = "overlay";
+    if (overlay === undefined) {
+      try {
+        const s = statSync(file);
+        stamp = s.isFile() ? `${s.size}:${s.mtimeMs}` : "";
+      } catch {
+        stamp = "";
+      }
+    }
+    const known = this.#files.get(file);
+    if (!stamp) {
+      this.#files.delete(file);
+      return undefined;
+    }
+    if (known && known.stamp === stamp && (overlay === undefined || known.text === overlay)) return known;
+    const text = overlay ?? readFileSync(file, "utf8");
+    if (overlay === undefined) this.reads++;
+    if (known && known.text === text) {
+      known.stamp = stamp;
+      return known;
+    }
+    const entry: FileEntry = { stamp, text, rev: ++this.#rev };
+    if (known?.facts) this.#moduleChanges++;
+    this.#files.set(file, entry);
+    return entry;
+  }
+
+  text(file: string): string | null {
+    this.#reading?.add(file);
+    return this.#entry(file)?.text ?? null;
+  }
+  facts(file: string): ModuleFacts | undefined {
+    this.#reading?.add(file);
+    const e = this.#entry(file);
+    return e && (e.facts ??= moduleFacts(e.text));
+  }
+  /** A number that changes when the file's content does; 0 when it does not exist. */
+  rev(file: string): number {
+    return this.#entry(file)?.rev ?? 0;
+  }
+  /** Read `file` as `text` instead of from disk (an editor's unsaved buffer), or from disk again with undefined. */
+  overlay(file: string, text: string | undefined): void {
+    if (text === undefined) this.#overlay.delete(file);
+    else this.#overlay.set(file, text);
+  }
+
+  /**
+   * The index of the TypeScript files under `dirs`. It is built again when the listing or the content of a file it read changed;
+   * within `maxAge` milliseconds of the last look, the folders are not listed again.
+   */
+  index(dirs: readonly string[], maxAge = 0): ComponentIndex {
+    const key = dirs.map((d) => resolve(d)).join("\0");
+    const last = this.#indexes.get(key);
+    if (last && Date.now() - last.at < maxAge && last.moduleChanges === this.#moduleChanges) return last.index;
+    const files = dirs.flatMap(listTs);
+    const listing = files.join("\0");
+    if (last && last.listing === listing && last.revs.every(([f, rev]) => this.rev(f) === rev)) {
+      last.at = Date.now();
+      last.moduleChanges = this.#moduleChanges;
+      return last.index;
+    }
+    for (const f of this.#files.keys()) this.#entry(f);
+    for (const [k, r] of this.#results) if (!this.#files.has(r.file)) this.#results.delete(k);
+    const index = componentIndex(files, this);
+    const revs = [...index.modules.keys()].map((f): [string, number] => [f, this.rev(f)]);
+    index.revs = new Map(revs);
+    this.#indexes.set(key, { listing, at: Date.now(), index, revs, moduleChanges: this.#moduleChanges });
+    return index;
+  }
+
+  /**
+   * `compute(uses)`, or what it returned last time for `key` while none of the files it read changed and `sigOf` gives the same for what it added to `uses`
+   * (the names it looked up in something other than a file, such as the definitions of tags in the index). `file` is the file the result is about: the result is forgotten with it.
+   */
+  result<T>(key: string, file: string, sigOf: (uses: readonly string[]) => string, compute: (uses: Set<string>) => T): { value: T; computed: boolean } {
+    const last = this.#results.get(key);
+    if (last && last.deps.every(([f, rev]) => this.rev(f) === rev) && sigOf(last.uses) === last.sig) return { value: last.value as T, computed: false };
+    const outer = this.#reading;
+    const reading = (this.#reading = new Set());
+    const uses = new Set<string>();
+    let value: T;
+    try {
+      value = compute(uses);
+    } finally {
+      this.#reading = outer;
+    }
+    for (const f of reading) outer?.add(f);
+    this.#results.set(key, { file, sig: sigOf([...uses]), uses: [...uses], deps: [...reading].map((f) => [f, this.rev(f)]), value });
+    return { value, computed: true };
+  }
+
+  /** What the last result for `key` added to `uses`. */
+  uses(key: string): readonly string[] | undefined {
+    return this.#results.get(key)?.uses;
+  }
+
+  /** The files of the results that read `file`. */
+  dependents(file: string): string[] {
+    return [...new Set([...this.#results.values()].filter((r) => r.deps.some(([f]) => f === file)).map((r) => r.file))];
+  }
+
+  /** What it keeps: the files and the results. */
+  get size(): { files: number; results: number; values: unknown[] } {
+    return { files: this.#files.size, results: this.#results.size, values: [...this.#results.values()].map((r) => r.value) };
+  }
 }
 
 /** A class `Component(<template>, { ... })` and what defines it. */
@@ -264,6 +389,8 @@ export interface DefineSite {
 
 export interface ComponentIndex {
   components: ComponentRef[];
+  /** The component classes each file declares. */
+  byFile: Map<string, ComponentRef[]>;
   /** The component classes that pass this template to Component(). */
   byTemplate: Map<string, ComponentRef[]>;
   /** The modules that import this template themselves (`import x from "./x.html.js"`), by template. */
@@ -274,6 +401,8 @@ export interface ComponentIndex {
   modules: Map<string, ModuleFacts>;
   /** What the name `id` in `file` refers to: a class declaration or a template. */
   resolve(file: string, id: string): Target | undefined;
+  /** For an index a Workspace built: the revision of each module as the index read it. */
+  revs?: ReadonlyMap<string, number>;
 }
 
 type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string };
@@ -281,15 +410,18 @@ type Target = { kind: "class"; file: string; name?: string } | { kind: "template
 const TS_EXTENSIONS = [".ts", ".tsx", ".mts"];
 
 /** Build the index from the TypeScript files `files`, following relative imports into other files as needed. */
-export function componentIndex(files: readonly string[], sources: Sources = diskSources()): ComponentIndex {
+export function componentIndex(files: readonly string[], sources: Sources = new Workspace()): ComponentIndex {
   const modules = new Map<string, ModuleFacts>();
   const listed = new Map<string, string>();
   for (const f of files) if (!listed.has(resolve(f))) listed.set(resolve(f), f);
   const facts = (file: string): ModuleFacts | undefined => {
     if (!modules.has(file)) {
-      const text = sources.text(file);
-      if (text === null) return undefined;
-      modules.set(file, moduleFacts(text));
+      const m = sources.facts ? sources.facts(file) : (() => {
+        const text = sources.text(file);
+        return text === null ? undefined : moduleFacts(text);
+      })();
+      if (!m) return undefined;
+      modules.set(file, m);
     }
     return modules.get(file);
   };
@@ -337,6 +469,7 @@ export function componentIndex(files: readonly string[], sources: Sources = disk
   };
 
   const components: ComponentRef[] = [];
+  const byFile = new Map<string, ComponentRef[]>();
   const byTemplate = new Map<string, ComponentRef[]>();
   const importers = new Map<string, { file: string; local: string }[]>();
   const defines: DefineSite[] = [];
@@ -348,6 +481,7 @@ export function componentIndex(files: readonly string[], sources: Sources = disk
       const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
       const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
       components.push(ref);
+      byFile.set(file, [...(byFile.get(file) ?? []), ref]);
       if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
     }
     for (const i of m.imports) {
@@ -372,11 +506,11 @@ export function componentIndex(files: readonly string[], sources: Sources = disk
     byTag.set(d.tag, [...(byTag.get(d.tag) ?? []), d]);
   }
   defines.sort((a, b) => a.tag.localeCompare(b.tag));
-  return { components, byTemplate, importers, defines, byTag, modules, resolve: (file, id) => resolveLocal(resolve(file), id) };
+  return { components, byFile, byTemplate, importers, defines, byTag, modules, resolve: (file, id) => resolveLocal(resolve(file), id) };
 }
 
 /** The index of the TypeScript files under `dirs`. */
-export const indexDirs = (dirs: string | readonly string[], sources?: Sources): ComponentIndex => componentIndex((typeof dirs === "string" ? [dirs] : dirs).flatMap(listTs), sources);
+export const indexDirs = (dirs: string | readonly string[], ws: Workspace = new Workspace()): ComponentIndex => ws.index(typeof dirs === "string" ? [dirs] : dirs);
 
 export interface DefineDef {
   tag: string;
@@ -406,6 +540,6 @@ export function defineDefs(index: ComponentIndex): DefineDef[] {
  * Scan one or more directories for every `define("my-tag", MyClass)` call; a file under two of them is read once.
  * Calls that only appear inside a string or a comment (for example sample code in a test or in documentation) are ignored.
  */
-export function scanDefines(dirs: string | readonly string[], sources?: Sources): DefineDef[] {
-  return defineDefs(indexDirs(dirs, sources));
+export function scanDefines(dirs: string | readonly string[], ws?: Workspace): DefineDef[] {
+  return defineDefs(indexDirs(dirs, ws));
 }

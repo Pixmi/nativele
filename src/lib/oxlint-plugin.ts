@@ -1,11 +1,9 @@
 import { dirname, relative, resolve, sep } from "node:path";
-import { A11Y_RULES, checkA11y } from "./a11y.ts";
-import { contractsAt, contractsFor, DATA_FLOW_RULES, dataFlow, templateUsage, UNUSED_MARKUP_RULES } from "./lint.ts";
-import type { Contracts } from "./lint.ts";
-import { analyze } from "./codegen.ts";
-import type { Analysis, Diagnostic } from "./codegen.ts";
-import { diskSources, indexDirs, TEMPLATE_SPEC } from "./components.ts";
-import type { ComponentIndex, Sources } from "./components.ts";
+import { A11Y_RULES } from "./a11y.ts";
+import { DATA_FLOW_RULES, indexBehind, lintProject, lintTemplate, UNUSED_MARKUP_RULES } from "./lint.ts";
+import type { Group, LintProject, TemplateFindings } from "./lint.ts";
+import type { Diagnostic } from "./codegen.ts";
+import { TEMPLATE_SPEC, Workspace } from "./components.ts";
 
 interface ImportNode {
   type: "ImportDeclaration";
@@ -18,8 +16,6 @@ interface Context {
   report(d: { message: string; node: unknown }): void;
 }
 
-type Group = "unused-markup" | "data-flow" | "a11y";
-
 const ignoreSchema = [
   {
     type: "object",
@@ -28,41 +24,44 @@ const ignoreSchema = [
   },
 ];
 
-let project: { sources: Sources; index: ComponentIndex; contracts: Contracts } | null = null;
-const getProject = () => {
-  if (!project) {
-    const sources = diskSources();
-    const index = indexDirs([process.cwd()], sources);
-    project = { sources, index, contracts: contractsFor([process.cwd()], process.cwd(), index, sources) };
-  }
-  return project;
-};
+const GROUPS: readonly Group[] = ["unused-markup", "data-flow", "a11y"];
+// The language server keeps the plugin loaded while the files change: a call reuses what it read while the files keep their content, and lists the folders again at most once a second.
+const ws = new Workspace();
+const LISTING_AGE = 1000;
+const project = (): LintProject => lintProject(ws, [process.cwd()], process.cwd(), LISTING_AGE);
 
-const cache = new Map<string, { analysis: Analysis; diags: Partial<Record<Group, Diagnostic[]>> }>();
-function groupDiagnostics(group: Group, html: string): Diagnostic[] {
-  const { sources, index, contracts } = getProject();
-  const text = sources.text(html) ?? "";
-  let hit = cache.get(html);
-  if (!hit) cache.set(html, (hit = { analysis: analyze(text), diags: {} }));
-  const a = hit.analysis;
-  return (hit.diags[group] ??=
-    group === "unused-markup"
-      ? (templateUsage(html, text, a, index, sources) ?? [])
-      : group === "a11y"
-        ? checkA11y(text, [], contractsAt(contracts, html), a.root)
-        : dataFlow(text, index.byTemplate.get(html) ?? [], contractsAt(contracts, html), a));
+type Found = { label: string; findings: TemplateFindings }[];
+
+/** The findings of the templates the import `node` brings into `file`, with `text` as the file's content. The rules of one lint of the file visit the same node, so they share the answer. */
+const answered = new WeakMap<object, Found>();
+function findingsThrough(node: ImportNode, file: string, text: string): Found {
+  const known = answered.get(node);
+  if (known) return known;
+  const spec = node.source.value;
+  ws.overlay(file, text);
+  ws.rev(file);
+  try {
+    let p = project();
+    if (templatesThrough(p, file, spec).some(({ html }) => indexBehind(p, html, GROUPS))) p = lintProject(ws, [process.cwd()], process.cwd());
+    const found = templatesThrough(p, file, spec).map(({ html, label }) => ({ label, findings: lintTemplate(p, html, GROUPS).value }));
+    answered.set(node, found);
+    return found;
+  } finally {
+    ws.overlay(file, undefined);
+  }
 }
+
+const ofGroup = (r: TemplateFindings, group: Group): Diagnostic[] => (group === "unused-markup" ? (r.usage ?? []) : group === "a11y" ? r.a11y : r.flow);
 
 /**
  * The templates whose findings belong on the import of `spec` in `file`: those of the classes declared in `file` that get their template through this import,
  * and the template the import names itself when no class anywhere uses it.
  */
-function templatesThrough(file: string, spec: string): { html: string; label: string }[] {
-  const { index } = getProject();
+function templatesThrough({ index }: LintProject, file: string, spec: string): { html: string; label: string }[] {
   const facts = index.modules.get(file);
   const locals = new Set(facts?.imports.filter((i) => i.spec === spec).map((i) => i.local));
   const out = new Map<string, string>();
-  for (const c of index.components) if (c.file === file && c.template && c.arg && locals.has(c.arg)) out.set(c.template, "");
+  for (const c of index.byFile.get(file) ?? []) if (c.template && c.arg && locals.has(c.arg)) out.set(c.template, "");
   const named = TEMPLATE_SPEC.exec(spec)?.[1];
   const direct = named && resolve(dirname(file), named);
   if (direct && !index.byTemplate.has(direct) && index.importers.get(direct)?.some((i) => i.file === file)) out.set(direct, "");
@@ -82,8 +81,8 @@ function templateRule(group: Group, description: string, only?: string) {
       return {
         ImportDeclaration(node: ImportNode) {
           const ignore = context.options?.[0]?.ignore ?? [];
-          for (const { html, label } of templatesThrough(resolve(context.filename), node.source.value)) {
-            for (const d of groupDiagnostics(group, html)) {
+          for (const { label, findings } of findingsThrough(node, resolve(context.filename), context.sourceCode.text)) {
+            for (const d of ofGroup(findings, group)) {
               if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
               context.report({ message: `${label}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
             }

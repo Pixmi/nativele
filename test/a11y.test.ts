@@ -396,7 +396,7 @@ describe("Vite plugin", () => {
     d.handlers.unlink?.(`${t.dir}/src/kid.ts`);
     expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
   });
-  it("dev: a template save uses the cached define() scan; only a .ts change rescans", async () => {
+  it("dev: a template save sees the define() calls as they are on disk", async () => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const t = await setup({ "x.html": `<x-kid></x-kid>` });
     t.plugin.buildStart.call(t.ctx);
@@ -405,8 +405,6 @@ describe("Vite plugin", () => {
     writeFileSync(`${t.dir}/src/kid.ts`, `export class Kid {}\ndefine("x-kid", Kid);`);
     writeFileSync(`${t.dir}/src/x.html`, `<x-kid></x-kid><b></b>`);
     t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
-    expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).not.toContain("kid.js");
-    t.plugin.handleHotUpdate({ file: `${t.dir}/src/kid.ts`, server: d.server });
     expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`import "./kid.js";`);
   });
   it("dev: errors go to the logger of the server that saw the change", async () => {
