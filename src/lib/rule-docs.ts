@@ -358,12 +358,12 @@ this.refs.list.items = ["a", "b"];`,
 <img src="divider.png" alt="">`,
   },
   "control-name": {
-    why: "A button or link with no text, hole, slot or aria-label has no accessible name, so assistive technology announces it as an unnamed control.",
+    why: "A button or link with no text, hole, slot or aria-label has no accessible name, so assistive technology announces it as an unnamed control. Its content includes what a component inside it renders, with that component's slots filled; a custom element whose template lint cannot read is not judged.",
     bad: `<button data-on-click="close"><svg></svg></button>`,
     good: `<button data-on-click="close" aria-label="Close"><svg></svg></button>`,
   },
   "form-label": {
-    why: "A form control without a label cannot be identified by screen readers, and clicking the label text will not focus it.",
+    why: "A form control without a label cannot be identified by screen readers, and clicking the label text will not focus it. A control put in a component's slot is wrapped by a <label> around that slot in the component's template.",
     bad: `<input data-ref="email">`,
     good: `<label>Email <input data-ref="email"></label>`,
   },
@@ -378,7 +378,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<dialog aria-label="Confirm delete"><p>Delete?</p></dialog>`,
   },
   "heading-empty": {
-    why: "An empty heading adds an empty stop to the heading navigation of assistive technology.",
+    why: "An empty heading adds an empty stop to the heading navigation of assistive technology. Its content includes what a component inside it renders, with that component's slots filled; a custom element whose template lint cannot read is not judged.",
     bad: `<h2></h2>`,
     good: `<h2>{{ title }}</h2>`,
   },
@@ -469,7 +469,7 @@ this.refs.list.items = ["a", "b"];`,
     good: `<button>save</button>`,
   },
   "click-semantics": {
-    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. A label that wraps a control, or a component with one, is fine: a click on the control, by keyboard too, reaches the label's handler. An element with an interactive role is role-tabindex's to report, so each element is judged by one of the two rules, whichever of them is on. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
+    why: "A div or span with data-on-click cannot be focused or activated by keyboard, and assistive technology does not know it is clickable. An element around a control (a label, a list around its links), or a component whose template has one, is fine: a click on the control, by keyboard too, reaches the handler around it. What a component renders includes the content its slots get. An element with an interactive role is role-tabindex's to report, so each element is judged by one of the two rules, whichever of them is on. On a component's tag, the click is operable when it can come from a <button>, <a href> or other operable element in the component's template, so lint reads that template; a custom element whose definition lint cannot read (from another library, outside the scanned folders, or defined in several packages) may handle the keyboard itself and is not checked.",
     bad: `<div data-on-click="open">open</div>
 <!-- x-card.html: <div class="card"><span>{{ title }}</span></div> -->
 <x-card data-on-click="open"></x-card>`,

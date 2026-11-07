@@ -229,11 +229,11 @@ All three read the components defined in the scanned folders, so `click-semantic
 | Id | Check |
 |---|---|
 | `img-alt` | `<img>` needs `alt` (use `alt=""` for decorative images) |
-| `control-name` | `<button>`, `<a href>`, and `<summary>` need a readable name (text, `{{ }}`, `<slot>`, `aria-label`, or `aria-labelledby`) |
-| `form-label` | `<input>`, `<select>`, and `<textarea>` need a `<label for>`, to be wrapped by a `<label>`, or `aria-label` |
+| `control-name` | `<button>`, `<a href>`, and `<summary>` need a readable name (text, `{{ }}`, `<slot>`, `aria-label`, or `aria-labelledby`), in their composed content (see below) |
+| `form-label` | `<input>`, `<select>`, and `<textarea>` need a `<label for>`, to be wrapped by a `<label>` (also one around the slot of a Nativele component's template that the control is put in), or `aria-label` |
 | `iframe-title` | `<iframe>` needs `title` |
 | `dialog-name` | `<dialog>` needs `aria-label` or `aria-labelledby` |
-| `heading-empty` | `h1`–`h6` must not be empty |
+| `heading-empty` | `h1`–`h6` must not be empty, in their composed content (see below) |
 | `aria-role` | `role` must be a valid ARIA role |
 | `aria-attr` | `aria-*` must be a valid ARIA attribute |
 | `role-tabindex` | A non-natively-focusable element with an interactive role (button, tab, checkbox…) needs `tabindex`, with or without a `data-on-click` |
@@ -248,7 +248,9 @@ All three read the components defined in the scanned folders, so `click-semantic
 | `list-structure` | The children of `<ul>`/`<ol>` (including the root element of a `data-each` item) must be `<li>`; `<li>` must be inside `<ul>`, `<ol>`, or `<menu>` |
 | `landmark-label` | When a template has multiple `<nav>` or `<aside>`, they need to be distinguished with `aria-label` |
 | `redundant-role` | `role` is the same as the element's native semantics, for example `<button role="button">` |
-| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `input` other than `hidden`, `select`, `textarea`, `summary`, `contenteditable`, or an element with an interactive role plus `tabindex`), or on a `label` that wraps one or a component with one (a click on that control, by keyboard too, reaches the label); otherwise keyboards and assistive technologies cannot use it. An element with an interactive role is left to `role-tabindex`, so every element is judged by one of the two rules whichever of them is turned off. On a Nativele component's tag it is reported only when the component's template has no operable element a click could come from, and the tag itself has no interactive role plus `tabindex`; the message names that template. A custom element lint has no single definition of (another library's, outside the scanned folders, or defined in several packages) is not checked, see `unchecked-custom-elements` |
+| `click-semantics` | `data-on-click` should be on an operable element (`button`, `a[href]`, `input` other than `hidden`, `select`, `textarea`, `summary`, `contenteditable`, or an element with an interactive role plus `tabindex`), or on an element whose composed content (see below) holds one, such as a `<label>` or a `<ul>` around it or a component whose template has one (a click on that control, by keyboard too, reaches the handler around it); otherwise keyboards and assistive technologies cannot use it. An element with an interactive role is left to `role-tabindex`, so every element is judged by one of the two rules whichever of them is turned off. On a Nativele component's tag the message names the component's template. |
+
+`click-semantics`, `control-name` and `heading-empty` judge an element's **composed content**: its own descendants, and for each Nativele component inside it the descendants of that component's template, with each `<slot>` replaced by what the element using the component puts in it (by slot name; a slot that gets nothing shows its fallback content, and content for a slot the component does not have is not shown). Content lint cannot read is not judged: a custom element it has no single definition of (another library's, outside the scanned folders, or defined in several packages, see `unchecked-custom-elements`), and a `<slot>` of the template being checked, which its user fills.
 
 To avoid many false positives, elements with `data-ref` are treated as "managed by TS", and the checks whose "name or reference may be set in TS" are skipped for them: `img-alt`, `control-name`, `form-label`, `iframe-title`, `dialog-name`, `heading-empty`, `role-tabindex`, `table-header`, `landmark-label`, `aria-idref`.
 
