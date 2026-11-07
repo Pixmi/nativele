@@ -105,7 +105,7 @@ export function installedCopies(cwd: string, name: string): string[] {
 
 export function addSkill(skill: Skill, target: string): string {
   const dest = join(target, skill.name);
-  cpSync(skill.dir, dest, { recursive: true, filter: (src) => !src.startsWith(join(skill.dir, "example")) });
+  cpSync(skill.dir, dest, { recursive: true });
   return dest;
 }
 

@@ -1,7 +1,7 @@
 name: Skills
 
 # A required check: it runs on every pull request and push, and skips its steps (not the job) when nothing it
-# checks changed, so it always reports. The Skill examples are references and are not run here.
+# checks changed, so it always reports.
 on:
   pull_request:
   push:
