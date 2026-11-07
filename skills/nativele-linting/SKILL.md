@@ -3,7 +3,7 @@ name: nativele-linting
 description: "Bring the Nativele (@nativele/ts-dom) template lint rules into a project's existing linter (oxlint, Vite+ vp lint, or ESLint flat config) without replacing it: which rules exist and where they run (ts-dom lint, ts-dom check, the ts-dom JS plugin), choosing groups, single rule ids, severities and ignore lists, and keeping generated files and test folders out. Use when a project with @nativele/ts-dom has oxlint or eslint, when ts-dom doctor reports oxlint-plugin-missing, or when a ts-dom lint finding needs a decision."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-07"
   tools: "oxlint@1.91.0 vite-plus@1.5.0 eslint@10.14.0 eslint@9.39.4 typescript-eslint@8.72.1 typescript@7.0.2 typescript@6.0.3"
   author: "Nativele maintainers"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | oxlint | 1.91.0 (`.oxlintrc.json`) |
 | vite-plus | 1.5.0 (`vp lint`, which runs oxlint 1.91.0, with the `lint` block in `vite.config.ts`) |
 | eslint | 10.14.0 and 9.39.4 (flat config `eslint.config.js`) |

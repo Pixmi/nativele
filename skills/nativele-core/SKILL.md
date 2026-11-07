@@ -3,7 +3,7 @@ name: nativele-core
 description: "Build and change web components with Nativele (@nativele/ts-dom): the write-check-fix loop, templates, state, lists and data flow. Use whenever a project depends on @nativele/ts-dom and you add or change an .html template or a component."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "typescript@7.0.2"
   author: "Nativele maintainers"
@@ -23,7 +23,7 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | typescript | 7.0.2 |
 
 Verified on 2026-11-06 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.

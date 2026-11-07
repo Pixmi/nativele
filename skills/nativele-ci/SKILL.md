@@ -3,7 +3,7 @@ name: nativele-ci
 description: "Make a project's existing CI check the Nativele parts reliably (@nativele/ts-dom): generate before any type check, which ts-dom commands and flags give a trustworthy pass or fail, machine-readable output, committed or git-ignored generated files, keeping a check-only job from writing, caching, and what real-browser tests need. Use when CI is added or changed in a project that depends on @nativele/ts-dom, or when CI fails with TS2307 on ./x.html.js or passes although the templates are wrong."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "typescript@7.0.2 npm@11.19.1 pnpm@12.16.1"
   author: "Nativele maintainers"
@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | typescript | 7.0.2 |
 | Node.js | 24.22.2 |
 | npm | 11.19.1 (`npm ci`) |

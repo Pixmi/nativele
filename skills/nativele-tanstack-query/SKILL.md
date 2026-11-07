@@ -3,7 +3,7 @@ name: nativele-tanstack-query
 description: "Fetch server data with TanStack Query (@tanstack/query-core) and show it in Nativele components: an adapter from QueryObserver and MutationObserver to bind, loading, error and refetching states with data-if, lists with data-each, query keys from props, unsubscribing on removal, and mutations with invalidation. Use when a project depends on @tanstack/query-core and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "@tanstack/query-core@5.106.1 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | @tanstack/query-core | 5.106.1 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |

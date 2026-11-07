@@ -3,7 +3,7 @@ name: nativele-zod
 description: "Validate a form inside a Nativele component with Zod 4 (or Valibot 1): read the values on submit and on blur, safeParse, map issue paths (also nested and array fields) to per-field messages in state shown with data-if, set aria-invalid and aria-describedby, focus the first invalid field, and emit the parsed data typed with z.infer. Use when a project depends on zod or valibot and @nativele/ts-dom."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "zod@4.6.7 valibot@1.5.0 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | zod | 4.6.7 (the procedure was also run with 3.25.76, with the schema changes in limitation 10) |
 | valibot | 1.5.0 (limitation 11) |
 | vite | 8.3.6 |

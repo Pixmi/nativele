@@ -3,7 +3,7 @@ name: nativele-monorepo
 description: "Use Nativele across the packages of a workspace (npm or pnpm workspaces, optionally with a task runner such as turbo): a package of shared components used by one or more apps, where each package generates and checks its own components, how an app gets their modules and their tag types, where @nativele/ts-dom and typescript must be installed, and which package must be generated or built before another type-checks. Use when a repository has several package.json files and Nativele components in one of them are used by another."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-06"
   tools: "npm@11.19.1 pnpm@12.16.1 turbo@2.11.10 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4 vue-tsc@3.3.14"
   author: "Nativele maintainers"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | npm (workspaces) | 11.19.1, on Node 24.22.2 |
 | pnpm (workspaces) | 12.16.1 |
 | turbo | 2.11.10 (with npm workspaces) |
@@ -45,10 +45,10 @@ Check first, then change only what fails. Use the workspace's own package manage
 
    | Package | `@nativele/ts-dom` | `typescript` |
    |---|---|---|
-   | component package | `peerDependencies` with the range the apps use (`"^0.6.0"`), and the same version in `devDependencies` for its own `ts-dom` and tests | `devDependencies` |
+   | component package | `peerDependencies` with the range the apps use (`"^0.7.0"`), and the same version in `devDependencies` for its own `ts-dom` and tests | `devDependencies` |
    | app | `dependencies` | `devDependencies` |
 
-   The peer lets an app outside the workspace install the package without a second copy (verified: a packed component package installed into a separate app gave one `@nativele/ts-dom`, `deduped`). Inside the workspace the package's own `devDependencies` entry satisfies its peer, so the peer does not stop a second version there; step 2 does. Install with the workspace's command (`npm i -D -w @acme/ui @nativele/ts-dom typescript`, `pnpm --filter @acme/ui add -D @nativele/ts-dom typescript`), then add the peer to that `package.json` (`npm pkg set "peerDependencies.@nativele/ts-dom=^0.6.0" -w @acme/ui`, or by editing the file). The app depends on the component package the way the workspace already links its packages (`"workspace:*"` in pnpm, a version in npm).
+   The peer lets an app outside the workspace install the package without a second copy (verified: a packed component package installed into a separate app gave one `@nativele/ts-dom`, `deduped`). Inside the workspace the package's own `devDependencies` entry satisfies its peer, so the peer does not stop a second version there; step 2 does. Install with the workspace's command (`npm i -D -w @acme/ui @nativele/ts-dom typescript`, `pnpm --filter @acme/ui add -D @nativele/ts-dom typescript`), then add the peer to that `package.json` (`npm pkg set "peerDependencies.@nativele/ts-dom=^0.7.0" -w @acme/ui`, or by editing the file). The app depends on the component package the way the workspace already links its packages (`"workspace:*"` in pnpm, a version in npm).
 4. **Each package scans only its own folder, and its `ts-dom` commands run in that package.** In `packages/ui`: `ts-dom check src`; in `apps/web`: `ts-dom check src`, and `tsDom()` keeps the app's own `dirs`. From the root, run them through the workspace (`npm exec -w web -- ts-dom check src`, `pnpm --filter web exec ts-dom check src`, `pnpm -r exec ts-dom check src`, or each package's script). Do not give one command the folders of several packages, and do not add another package's folder to `tsDom({ dirs })` (Known limitations 4).
 5. **The component package exposes its components through one entry module** (its `exports`):
    - it imports or re-exports every module that calls `define()`, so importing the package registers the tags;
@@ -98,8 +98,8 @@ ts-dom-tags.ts
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "ts-dom check src" },
-  "peerDependencies": { "@nativele/ts-dom": "^0.6.0" },
-  "devDependencies": { "@nativele/ts-dom": "^0.6.0", "typescript": "^7.0.2" }
+  "peerDependencies": { "@nativele/ts-dom": "^0.7.0" },
+  "devDependencies": { "@nativele/ts-dom": "^0.7.0", "typescript": "^7.0.2" }
 }
 ```
 
@@ -174,7 +174,7 @@ export { UiTag, type Tag } from "./ui-tag.js";
 // apps/web/package.json (the parts that change)
 {
   "scripts": { "build": "ts-dom check src && vite build" },
-  "dependencies": { "@acme/ui": "^0.0.0", "@nativele/ts-dom": "^0.6.0" },
+  "dependencies": { "@acme/ui": "^0.0.0", "@nativele/ts-dom": "^0.7.0" },
   "devDependencies": { "typescript": "~7.0.2", "vite": "^8.3.6" }
 }
 ```

@@ -3,7 +3,7 @@ name: nativele-testing
 description: "Test Nativele components in an app: component tests with Vitest and happy-dom (or jsdom), real-browser tests with Vitest browser mode in headless Chrome, and page tests with Playwright. Covers generating the templates before tests, creating elements, props, events, lists, data-if, stores, slots, test isolation, and what a DOM shim cannot show. Use when a project depends on @nativele/ts-dom and on vitest, @playwright/test or playwright."
 metadata:
   tier: official
-  nativele: ">=0.6.0 <0.7.0"
+  nativele: ">=0.7.0 <0.8.0"
   verified: "2026-11-07"
   tools: "vitest@5.1.0 happy-dom@21.0.4 jsdom@30.1.3 @vitest/browser-playwright@5.1.0 playwright@1.64.1 @playwright/test@1.64.1 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
@@ -25,7 +25,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.6.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.0 (the last agent trial) |
 | vitest | 5.1.0 |
 | happy-dom | 21.0.4 |
 | jsdom | 30.1.3 (the same component tests pass; not the recommended environment) |
