@@ -198,8 +198,10 @@ describe("Trial records", () => {
       writeFileSync(join(work, "trial.json"), JSON.stringify({ skill: "nativele-vue", kind: "agent", project: "app", nativele: {} }));
       writeFileSync(join(out, "record.json"), JSON.stringify(record({})));
       writeFileSync(join(out, "package.json"), "{}");
+      const results = join(TRIALS, "nativele-vue", "results");
+      const before = existsSync(results) ? readdirSync(results) : [];
       expect(() => accept(work)).toThrow(/agent\.patch is missing/);
-      expect(existsSync(join(TRIALS, "nativele-vue", "results", "2026-11-08-r1.json"))).toBe(false);
+      expect(existsSync(results) ? readdirSync(results) : []).toEqual(before);
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
