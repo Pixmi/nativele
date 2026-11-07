@@ -200,6 +200,24 @@ describe("what the workspace's cache depends on", () => {
     rmSync(join(src, "x-kid.html"));
     expect(clicks()).toEqual([]);
   });
+  it("finds the package of a tag defined in several again once a package.json is added or removed", () => {
+    const dir = project({
+      "src/a/kid.ts": component("Kid", "x-kid"),
+      "src/b/kid.ts": component("Kid", "x-kid"),
+      "src/a/page.html": `<x-kid foo="1"></x-kid>\n`,
+      "src/a/page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {}\n`,
+    });
+    const src = join(dir, "src");
+    const ws = new Workspace();
+    const rules = () => lintRun([src], { ws, cwd: dir }).issues.filter((i) => i.file.endsWith("page.html")).map((i) => i.rule);
+    expect(rules()).toEqual(["unchecked-custom-elements"]);
+    writeFileSync(join(src, "a/package.json"), "{}");
+    expect(rules()).toEqual(["unknown-prop"]);
+    rmSync(join(src, "a/package.json"));
+    expect(rules()).toEqual(["unchecked-custom-elements"]);
+    writeFileSync(join(src, "b/package.json"), "{}");
+    expect(rules()).toEqual(["unknown-prop"]);
+  });
   it("the oxlint plugin computes only the groups of the rules that are on", () => {
     const dir = project({
       "x-kid.html": `<button type="button">Kid</button>\n`,

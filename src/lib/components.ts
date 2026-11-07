@@ -251,7 +251,7 @@ export class Workspace implements Sources {
   readonly #overlay = new Map<string, string>();
   readonly #results = new Map<string, { file: string; sig: string; uses: string[]; deps: Deps; value: unknown }>();
   #reading: Deps | null = null;
-  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean }>();
+  readonly #indexes = new Map<string, { listing: string; at: number; index: ComponentIndex; deps: Deps; stale: boolean; derived: Map<string, unknown> }>();
   #rev = 0;
 
   #entry(file: string): FileEntry | undefined {
@@ -332,8 +332,27 @@ export class Workspace implements Sources {
     for (const [k, r] of this.#results) if (!this.#files.has(r.file)) this.#results.delete(k);
     const { value: index, deps } = this.#recording(() => componentIndex(files, this));
     index.revs = deps;
-    this.#indexes.set(key, { listing, at: Date.now(), index, deps, stale: false });
+    this.#indexes.set(key, { listing, at: Date.now(), index, deps, stale: false, derived: new Map() });
     return index;
+  }
+
+  /**
+   * `compute()`, kept with `index` for `key`: the files it reads, also one that does not exist, become files the index read, so the index and what is kept with it are built again when one changes.
+   * Not kept for an index this workspace did not build.
+   */
+  derived<T>(index: ComponentIndex, key: string, compute: () => T): T {
+    const entry = [...this.#indexes.values()].find((i) => i.index === index);
+    if (!entry) return compute();
+    if (entry.derived.has(key)) return entry.derived.get(key) as T;
+    const outer = this.#reading;
+    this.#reading = entry.deps;
+    try {
+      const value = compute();
+      entry.derived.set(key, value);
+      return value;
+    } finally {
+      this.#reading = outer;
+    }
   }
 
   /**

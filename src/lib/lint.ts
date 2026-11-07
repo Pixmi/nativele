@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
@@ -248,21 +247,20 @@ function kindOf(valueText: string): PropKind {
  */
 export type Contracts = Map<string, { pkg: string; contract: Contract | null; at: string; files: string[]; template?: string }[]>;
 
-/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; `folders` keeps the answer for every folder on the way. */
-function packageOf(dir: string, folders: Map<string, string>): string {
-  let pkg = folders.get(dir);
-  if (pkg === undefined) {
-    pkg = existsSync(join(dir, "package.json")) ? dir : dirname(dir) === dir ? "" : packageOf(dirname(dir), folders);
-    folders.set(dir, pkg);
-  }
-  return pkg;
+/** The nearest folder at or above `dir` that holds a package.json, or "" when there is none; kept with the index. */
+function packageOf(ws: Workspace, index: ComponentIndex, dir: string): string {
+  return ws.derived(index, `package\0${dir}`, () => (ws.text(join(dir, "package.json")) !== null ? dir : dirname(dir) === dir ? "" : packageOf(ws, index, dirname(dir))));
 }
 
-/** What contractsAt has worked out for one Contracts object: the package of each folder, and the contracts of each package. */
-const lookups = new WeakMap<Contracts, { folders: Map<string, string>; byPackage: Map<string, ReadonlyMap<string, Contract>> }>();
+/** For one Contracts object: the package of a folder, and the contracts of each package that contractsAt has worked out. */
+const lookups = new WeakMap<Contracts, { packageOf: (dir: string) => string; byPackage: Map<string, ReadonlyMap<string, Contract>> }>();
 function lookupOf(all: Contracts) {
   let l = lookups.get(all);
-  if (!l) lookups.set(all, (l = { folders: new Map(), byPackage: new Map() }));
+  if (!l) {
+    const ws = new Workspace();
+    const unkept = componentIndex([], ws);
+    lookups.set(all, (l = { packageOf: (dir) => packageOf(ws, unkept, dir), byPackage: new Map() }));
+  }
   return l;
 }
 
@@ -272,7 +270,8 @@ function lookupOf(all: Contracts) {
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const out: Contracts = new Map();
-  const { folders } = lookupOf(out);
+  const pkgOf = (dir: string) => packageOf(ws, index, dir);
+  lookups.set(out, { packageOf: pkgOf, byPackage: new Map() });
   for (const def of index.defines) {
     const c = def.component;
     let contract: Contract | null = null;
@@ -283,7 +282,7 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
       contract = { props: new Map(optionEntries(c.call, "props").map((e) => [e.key, kindOf(e.value)])), emits: new Set(emits.map((e) => e.key)), bubbles: new Set(emits.filter((e) => /\bbubbles\s*:\s*true\b/.test(e.value)).map((e) => e.key)), get template() { return template && ws.text(template) !== null ? own : undefined; } };
     }
     const files = [resolve(def.file), ...(def.class ? [def.class.file] : []), ...(template ? [template] : [])];
-    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: packageOf(dirname(resolve(def.file)), folders), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
+    out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(resolve(def.file))), contract, at: `${relative(cwd, def.file)}:${def.line}`, files, ...(template ? { template } : {}) }]);
   }
   return out;
 }
@@ -294,8 +293,8 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
  * exactly one, so a template is never checked against a component it does not use.
  */
 export function contractsAt(all: Contracts, file: string): ReadonlyMap<string, Contract> {
-  const { folders, byPackage } = lookupOf(all);
-  const pkg = packageOf(dirname(resolve(file)), folders);
+  const { packageOf: pkgOf, byPackage } = lookupOf(all);
+  const pkg = pkgOf(dirname(resolve(file)));
   let out = byPackage.get(pkg);
   if (!out) {
     const own = new Map<string, Contract>();
@@ -504,15 +503,9 @@ export interface LintProject {
   cwd: string;
 }
 
-const contractsOfIndex = new WeakMap<ComponentIndex, Map<string, Contracts>>();
-
-/** The project of the TypeScript files under `dirs`; its index is the workspace's (see Workspace.index for `maxAge`), and its contracts are built once per index. */
+/** The project of the TypeScript files under `dirs`; its index is the workspace's (see Workspace.index for `maxAge`), and its contracts are kept with the index. */
 export function lintProject(ws: Workspace, dirs: readonly string[], cwd = process.cwd(), maxAge = 0, index = ws.index(dirs, maxAge)): LintProject {
-  let byCwd = contractsOfIndex.get(index);
-  if (!byCwd) contractsOfIndex.set(index, (byCwd = new Map()));
-  let contracts = byCwd.get(cwd);
-  if (!contracts) byCwd.set(cwd, (contracts = contractsFor([...dirs], cwd, ws, index)));
-  return { ws, index, contracts, cwd };
+  return { ws, index, contracts: ws.derived(index, `contracts\0${cwd}`, () => contractsFor([...dirs], cwd, ws, index)), cwd };
 }
 
 /**
@@ -523,8 +516,8 @@ function indexSig(p: LintProject, file: string, tags: readonly string[]): string
   const at = (f: string) => `${f}@${p.index.revs?.get(f) ?? ""}`;
   const owners = (p.index.byTemplate.get(file) ?? []).map((o) => `${at(o.file)}:${o.line}`);
   const importers = (p.index.importers.get(file) ?? []).map((i) => `<${at(i.file)}`);
-  const defs = tags.map((tag) => `${tag}=${(p.contracts.get(tag) ?? []).map((d) => `${d.at}:${d.template ?? ""}:${d.files.map(at).join(",")}`).join(";")}`);
-  return [p.cwd, ...owners, ...importers, ...defs].join("\n");
+  const defs = tags.map((tag) => `${tag}=${(p.contracts.get(tag) ?? []).map((d) => `${d.at}:${d.pkg}:${d.template ?? ""}:${d.files.map(at).join(",")}`).join(";")}`);
+  return [p.cwd, lookupOf(p.contracts).packageOf(dirname(file)), ...owners, ...importers, ...defs].join("\n");
 }
 
 const keyOf = (groups: readonly Group[], file: string) => `${groups.join(",")}\0${file}`;
@@ -587,7 +580,7 @@ function uncheckedTags(found: readonly { file: string; html: string; uses: Templ
       if (here.has(use.tag) || unchecked.has(use.tag)) continue;
       const defs = contracts.get(use.tag) ?? [];
       const first: LintIssue = { file, line: use.line, col: use.col, rule: "unchecked-custom-elements", severity: "warning", message: "" };
-      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === packageOf(dirname(resolve(html)), lookupOf(contracts).folders));
+      const pkg = defs.length === 1 ? defs : defs.filter((d) => d.pkg === lookupOf(contracts).packageOf(dirname(resolve(html))));
       if (!defs.length) unchecked.set(use.tag, { first, cause: "missing" });
       else if (pkg.length === 1) unchecked.set(use.tag, { first, cause: "unreadable", at: pkg[0]?.at ?? "" });
       else unchecked.set(use.tag, { first, cause: "ambiguous", packages: defs.map((d) => relative(cwd, d.pkg) || ".") });
