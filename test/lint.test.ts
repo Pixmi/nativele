@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentIndex } from "../src/lib/components.ts";
 import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, TAG_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
@@ -113,11 +113,16 @@ describe("lintUsage", () => {
     expect(issues.map((i) => [i.file.endsWith("card.html"), i.rule])).toEqual([[true, "unused-ref"]]);
     expect(issues[0]?.message).toContain(`data-ref="dead"`);
   });
-  it("counts an import without .js as the importer, leaving that mistake to ts-dom doctor and tsc", () => {
+  it("does not count an import without .js, the form of another template system, as a Nativele template import", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
     writeFileSync(join(d, "a.html"), `<b data-ref="used"></b><i data-ref="dead"></i>`);
-    writeFileSync(join(d, "a.ts"), `import t from "./a.html";\nclass A extends Component(t) { x() { this.refs.used; } }`);
-    expect(lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule)).toEqual(["unused-ref"]);
+    writeFileSync(join(d, "a.ts"), `import view from "./a.html";\nexport const a = () => view;`);
+    writeFileSync(join(d, "b.html"), `<i data-ref="dead"></i>`);
+    writeFileSync(join(d, "b.html.ts"), `export default template({});`);
+    writeFileSync(join(d, "b.ts"), `import t from "./b.html";\nclass B extends Component(t) { x() {} }`);
+    const issues = lintUsage([d], [join(d, "a.ts"), join(d, "b.ts")]);
+    expect(issues.map((i) => [basename(i.file), i.rule])).toEqual([["a.html", "no-importer"], ["b.html", "no-importer"]]);
+    expect(issues[0]?.message).toContain("scan only the folder with the Nativele templates");
   });
 });
 

@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## 0.7.3 (not published)
 
+### Changed
+
+- Lint, `ts-dom check` and the oxlint plugin treat only `./x.html.js` imports as Nativele template imports. `import view from "./x.html"`, the form of another template system kept during a migration, is no longer linted as a Nativele template (it gave false `unused-ref` and accessibility findings); an `.html` imported only that way in a scanned folder is reported as `no-importer`, whose Fix says to scan only the Nativele folders. `ts-dom doctor` still reports the import as `template-import-without-js`, and its message now says that lint does not treat it as a template and that another system's files belong outside the scanned folders.
+
 ### Fixes
 
 - In a Light DOM component, a `<template data-each>` at the top level of the template keeps the items added or reordered after the first render (`replace()`, `upsert()`, `items =`, also while the element is disconnected): they were taken for children the user added, so with no slot they disappeared and with a slot they were moved into it, returned by `assignedNodes()` and reported by `slotchange`.

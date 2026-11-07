@@ -35,6 +35,7 @@ describe("ts-dom doctor", () => {
     });
     const issue = runDoctor({ dirs: ["src"], cwd }).find((i) => i.rule === "template-import-without-js");
     expect(issue).toMatchObject({ file: "src/a.ts", line: 2 });
+    expect(issue?.message).toContain("lint does not treat it as a Nativele template");
   });
 
   it("Vite, oxlint and formatter configuration", () => {

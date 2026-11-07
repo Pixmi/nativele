@@ -163,6 +163,8 @@ Elements that are not Nativele components, such as those of a library without a 
 
 Exit codes: 0 = no problems, 1 = there are errors (or warnings when `--strict` is used). Messages from the oxlint plugin start with `./x.html.js:line:column [rule id] message` and are reported on the `import` line.
 
+**Coexisting with another template system.** A project that keeps an older template system while it moves to Nativele scans only the Nativele folders with the CLI (`ts-dom gen src/nv`, and the same folders for `check`, `lint`, `doctor` and `tsDom({ dirs })`); an `.html` of the other system in a scanned folder is reported as `no-importer`. In oxlint, which lints every file it is given, leave the other system's paths to its own tooling with `ignorePatterns`, or turn the `ts-dom/*` rules off for them in `overrides`. Lint, `ts-dom check` and the oxlint plugin treat only `./x.html.js` imports as Nativele templates, so the other system's `import view from "./x.html"` is never linted as one; `ts-dom doctor` still reports such an import in a scanned folder as `template-import-without-js`, for a Nativele template whose `.js` was forgotten.
+
 Recommended check workflow: `ts-dom check` (it runs `gen`, `tsc` and `lint` in one pass; see [Checks](#checks)).
 
 ## Checks

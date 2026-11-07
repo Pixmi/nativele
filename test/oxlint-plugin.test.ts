@@ -44,6 +44,14 @@ describe("the lint plugin in oxlint", () => {
     expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["./panel.html.js:2:1 [unused-ref]"]);
   }, 30_000);
 
+  it("does not treat ./x.html, the import of another template system, as a Nativele template", () => {
+    const dir = project({ "ts-dom/unused-markup": "error", "ts-dom/a11y": "error" });
+    writeFileSync(join(dir, "old.html"), `<p data-ref="note"></p><img src="a.png">\n`);
+    writeFileSync(join(dir, "old.ts"), `import view from "./old.html";\nexport const old = () => view;\n`);
+    const out = JSON.parse(run(dir, "old.ts")) as { diagnostics: unknown[] };
+    expect(out.diagnostics).toEqual([]);
+  }, 30_000);
+
   it("checks a child tag against the definition in the linted file's package when another package defines the same tag", () => {
     const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
     const row = (emits: string) => `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./row.html.js";\nexport class Row extends Component(tpl, { emits: { ${emits} } }) {}\ndefine("x-row", Row);\n`;

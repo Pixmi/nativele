@@ -143,9 +143,10 @@ export function literalKeys(code: string, open: number): { name: string; at: num
   return out;
 }
 
-/** How a module names a template: a relative path to the `.html` file, with `.js` (the form that works with and without a bundler) or, wrongly, without it. */
+/** A relative path to an `.html` file, with or without `.js`: doctor reports the form without it, which only another template system's bundler plugin resolves. */
 const TEMPLATE_PATH = String.raw`(\.{1,2}\/[^"']+\.html)(\.js)?`;
-export const TEMPLATE_SPEC = new RegExp(`^${TEMPLATE_PATH}$`);
+/** How a module imports a Nativele template: the `./x.html.js` form that codegen types; `./x.html` belongs to another template system. */
+export const TEMPLATE_SPEC = /^(\.{1,2}\/[^"']+\.html)\.js$/;
 const TEMPLATE_IMPORT = new RegExp(String.raw`(?:\bimport\s+([A-Za-z_$][\w$]*)\s+)?\bfrom\s+["']${TEMPLATE_PATH}["']`, "g");
 
 export interface TemplateImport {
@@ -523,7 +524,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const target = (from: string, spec: string): string | undefined => {
     if (!spec.startsWith(".")) return undefined;
     const base = resolve(dirname(from), spec);
-    const html = /^(.*\.html)(?:\.js)?$/.exec(base)?.[1];
+    const html = /^(.*\.html)\.js$/.exec(base)?.[1];
     if (html) return html;
     const stem = base.replace(/\.(?:m?js|jsx)$/, "");
     const candidates = [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`))];
