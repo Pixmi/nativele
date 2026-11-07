@@ -3,7 +3,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { checkA11y } from "./a11y.ts";
 import { analyze, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
-import { componentIndex, matchClose, TEMPLATE_SPEC, Workspace } from "./components.ts";
+import { componentIndex, matchClose, Workspace } from "./components.ts";
 import type { ComponentIndex, Sources } from "./components.ts";
 
 export type { Diagnostic };
@@ -34,24 +34,6 @@ export interface ComponentClass {
 function ownerCode(classes: readonly ComponentClass[], importers: readonly string[]): string {
   if (classes.length) return classes.map((c) => `${DATA_OPTION.test(c.call) ? `${STATEFUL_MARK}\n` : ""}${c.body}`).join("\n");
   return importers.map((code) => (/Component\s*\([^;]*?\b(?:state|props|derive)\b\s*[:,}]/s.test(code) ? `${STATEFUL_MARK}\n${code}` : code)).join("\n");
-}
-
-/** The index of one module's text, and the template that `htmlSpec` names from it. */
-function oneModule(code: string, htmlSpec: string): { index: ComponentIndex; html: string } {
-  const file = resolve("ts-dom-module.ts");
-  return { index: componentIndex([file], { text: (f) => (f === file ? code : null) }), html: resolve(TEMPLATE_SPEC.exec(htmlSpec)?.[1] ?? htmlSpec) };
-}
-
-/** Every class in `code` that passes the template imported as `htmlSpec` to Component(), with its call and class body. */
-export function componentClasses(code: string, htmlSpec: string): ComponentClass[] {
-  const { index, html } = oneModule(code, htmlSpec);
-  return index.byTemplate.get(html) ?? [];
-}
-
-/** The text of `code` that uses the template imported as `htmlSpec` (see ownerCode). */
-export function templateCode(code: string, htmlSpec: string): string {
-  const { index, html } = oneModule(code, htmlSpec);
-  return ownerCode(index.byTemplate.get(html) ?? [], index.importers.has(html) ? [code] : []);
 }
 
 // ---------------------------------------------------------------------------

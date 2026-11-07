@@ -3,8 +3,26 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { componentClasses, contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, NATIVE_EVENT_NAMES, templateCode, unusedMarkup } from "../src/lib/lint.ts";
+import { componentIndex } from "../src/lib/components.ts";
+import { contractsAt, contractsFor, dataFlow, formatIssue, lintDataFlow, lintUsage, NATIVE_EVENT_NAMES, unusedMarkup } from "../src/lib/lint.ts";
 import type { Contract } from "../src/lib/lint.ts";
+
+/** A folder with `files` written into it. */
+const project = (files: Record<string, string>): string => {
+  const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(d, name), text);
+  return d;
+};
+/** The classes of `code`, as the index reads them from a module, that pass the template `html` (a file name next to it) to Component(). */
+const classesOf = (code: string, html: string) => {
+  const d = project({ "m.ts": code });
+  return componentIndex([join(d, "m.ts")]).byTemplate.get(join(d, html)) ?? [];
+};
+/** The unused-markup rules lint reports for the template `html` used by the module `code`. */
+const usage = (html: string, code: string) => {
+  const d = project({ "a.html": html, "a.ts": code });
+  return lintUsage([d], [join(d, "a.ts")]).map((i) => i.rule);
+};
 
 describe("one file importing several templates", () => {
   const code = `
@@ -16,42 +34,30 @@ class List extends Component(listTpl) {
 class Card extends Component(cardTpl, { shadow: true }) {
   connected() { const s = "}{ ("; /* } */ }
 }`;
-  it("templateCode returns only the body of the matching class", () => {
-    expect(templateCode(code, "./list.html.js")).toContain("this.refs.title");
-    expect(templateCode(code, "./list.html.js")).not.toContain("class Card");
-    expect(templateCode(code, "./card.html.js")).not.toContain("this.refs.title.textContent");
+  it("each template has only the body of the class that uses it", () => {
+    expect(classesOf(code, "list.html").map((c) => c.body)).toEqual([`{\n  connected() { this.refs.title.textContent = "List"; }\n}`]);
+    expect(classesOf(code, "card.html").map((c) => c.body)).toEqual([`{\n  connected() { const s = "}{ ("; /* } */ }\n}`]);
   });
   it("reports an unused title in Card (List must not mask it)", () => {
-    const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    writeFileSync(join(d, "list.html"), `<h1 data-ref="title"></h1>`);
-    writeFileSync(join(d, "card.html"), `<h1 data-ref="title"></h1>`);
-    writeFileSync(join(d, "w.ts"), code);
+    const d = project({ "list.html": `<h1 data-ref="title"></h1>`, "card.html": `<h1 data-ref="title"></h1>`, "w.ts": code });
     const issues = lintUsage([d], [join(d, "w.ts")]);
     expect(issues.map((i) => i.file.endsWith("card.html"))).toEqual([true]);
   });
   it("falls back to the whole file when no class is found", () => {
-    expect(templateCode(`import t from "./a.html.js"; make(t); refs.x`, "./a.html")).toContain("refs.x");
+    expect(usage(`<b data-ref="x"></b><i data-ref="dead"></i>`, `import t from "./a.html.js"; make(t); refs.x`)).toEqual(["unused-ref"]);
   });
 });
 
 describe("state and data-on-*", () => {
   const html = `<h1>{{ title }}</h1><p data-if="open"></p><button data-on-click="inc"></button>`;
-  it("templateCode detects the state option and adds the marker", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: { title: "" } }) { inc() {} }`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
-    const shorthand = `import t from "./a.html.js";\nclass A extends Component(t, { state }) { inc() {} }`;
-    expect(templateCode(shorthand, "./a.html.js")).toContain("ts-dom:stateful");
-    const plain = `import t from "./a.html.js";\nclass A extends Component(t, { shadow: true }) { inc() {} }`;
-    expect(templateCode(plain, "./a.html.js")).not.toContain("ts-dom:stateful");
-  });
-  it("with state, {{ }} and data-if are auto-bound and need not appear in code", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { state: {} }) { inc() {} }`;
-    expect(unusedMarkup(html, templateCode(code, "./a.html.js"))).toEqual([]);
+  it("with state, props or derive, {{ }} and data-if are auto-bound and need not appear in code", () => {
+    for (const option of [`{ state: { title: "" } }`, `{ state }`, `{ state: {} }`, `{ props: { label: "" } }`, `{ derive: { x: () => 1 } }`]) {
+      expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t, ${option}) { inc() {} }`)).toEqual([]);
+    }
   });
   it("without state, usage is still required", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t) { inc() {} }`;
-    const rules = unusedMarkup(html, templateCode(code, "./a.html.js")).map((d) => d.rule);
-    expect(rules).toEqual(expect.arrayContaining(["unused-text", "unused-if"]));
+    expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t, { shadow: true }) { inc() {} }`).sort()).toEqual(["unused-if", "unused-text"]);
+    expect(usage(html, `import t from "./a.html.js";\nclass A extends Component(t) { inc() {} }`).sort()).toEqual(["unused-if", "unused-text"]);
   });
   it("leaves a data-on-* method that does not exist to tsc", () => {
     expect(unusedMarkup(html, `class A { render() {} /*ts-dom:stateful*/ }`)).toEqual([]);
@@ -117,11 +123,11 @@ describe("lintUsage", () => {
 describe("reading component classes", () => {
   it("finds a class without a name and a generic class", () => {
     const code = `import t from "./a.html.js";\nexport default class extends Component(t) { a() {} }\nclass B<T extends Map<string, number>> extends Component(t) { b() {} }`;
-    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+    expect(classesOf(code, "a.html").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
   });
   it("reads type parameters with a default object type or a function type", () => {
     const code = `import t from "./a.html.js";\nclass A<T = {}> extends Component(t, {}) { a() {} }\nclass B<T extends (x: number) => void> extends Component(t) { b() {} }`;
-    expect(componentClasses(code, "./a.html.js").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
+    expect(classesOf(code, "a.html").map((c) => c.body)).toEqual(["{ a() {} }", "{ b() {} }"]);
   });
   it("does not count an import inside a string or a comment as the template's importer", () => {
     const d = mkdtempSync(join(tmpdir(), "ts-dom-"));
@@ -139,7 +145,7 @@ describe("reading component classes", () => {
 
 describe("data-flow checks", () => {
   const parentHtml = `<x-kid data-ref="kid" data-on-saved="onSaved"></x-kid><x-kid2 data-on-done="relay"></x-kid2>`;
-  const flow = (code: string, html = parentHtml) => dataFlow(html, componentClasses(`import t from "./p.html.js";\n${code}`, "./p.html.js"));
+  const flow = (code: string, html = parentHtml) => dataFlow(html, classesOf(`import t from "./p.html.js";\n${code}`, "p.html"));
 
   it("prop-forwarding: passes its own prop unchanged to a child component", () => {
     const code = `class P extends Component(t, { props: { name: "", count: 0 }, state: { s: 1 } }) {
@@ -193,10 +199,6 @@ describe("data-flow checks", () => {
     const r = flow(code).filter((d) => d.rule === "prop-forwarding");
     expect(r.length).toBe(1);
     expect(r[0]?.message).toMatch(/"a"/);
-  });
-  it("templateCode: the props option also enables stateful mode", () => {
-    const code = `import t from "./a.html.js";\nclass A extends Component(t, { props: { label: "" } }) {}`;
-    expect(templateCode(code, "./a.html.js")).toContain("ts-dom:stateful");
   });
 });
 
@@ -470,9 +472,8 @@ describe("formatIssue", () => {
 describe("data-flow: unguarded-input-value", () => {
   const html = `<input data-ref="name"><output data-ref="out"></output>`;
   const rules = async (classBody: string) => {
-    const { componentClasses, dataFlow } = await import("../src/lib/lint.ts");
     const code = `import tpl from "./f.html.js";\nclass F extends Component(tpl, { state: { name: "" } }) {\n${classBody}\n}`;
-    return dataFlow(html, componentClasses(code, "./f.html.js")).map((d) => d.rule);
+    return dataFlow(html, classesOf(code, "f.html")).map((d) => d.rule);
   };
   it("flags a render() that writes the value without comparing", async () => {
     expect(await rules(`  override render(v) {\n    this.refs.name.value = v.name;\n  }`)).toEqual(["unguarded-input-value"]);
