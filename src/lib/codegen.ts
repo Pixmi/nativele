@@ -506,7 +506,7 @@ export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
 export class CodegenError extends Error {}
 
 /** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. */
-export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[], dir = dirname(htmlPath), ws = new Workspace()): { out: string; next: string } {
+export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace()): { out: string; next: string } {
   const html = ws.text(resolve(htmlPath)) ?? readFileSync(htmlPath, "utf8");
   if (options.whitespace === undefined) options = { ...options, whitespace: recordedWhitespace(modulePathFor(htmlPath)) };
   const analysis = analyze(html);
@@ -523,7 +523,7 @@ export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs
  * `defs` is either a directory to scan or a precomputed scan result: custom elements used by the template
  * are imported automatically from the modules that define them.
  */
-export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs?: string | readonly DefineDef[], dir?: string, ws?: Workspace): string {
+export function generateFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws?: Workspace): string {
   const { out, next } = renderFile(htmlPath, options, defs, dir, ws);
   let prev = "";
   try {

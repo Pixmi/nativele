@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Browser, Page } from "playwright-core";
 import { generateFile } from "../src/lib/codegen.ts";
@@ -25,7 +26,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   writeFileSync(template, original);
-  generateFile(template, { runtime: "@nativele/ts-dom" }, new URL("./fixtures", import.meta.url).pathname);
+  generateFile(template, { runtime: "@nativele/ts-dom" }, new URL("./fixtures", import.meta.url).pathname, dirname(template));
   await browser?.close();
   stop?.();
 });
