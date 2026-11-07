@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
-- `engines.node` is `>=24`, the version CI tests; Node 20 and 22 are no longer supported.
+- `engines.node` is `>=22`, the versions CI tests (22 and 24): Node 20 reached its end of life in April 2026 and is no longer supported; Node 22 is supported until its end of life in April 2027.
 
 ## 0.7.1
 
