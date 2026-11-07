@@ -301,10 +301,11 @@ export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Works
     let contract: Contract | null = null;
     const template = c?.template;
     if (c) {
+      const declaredKind = `declared:${c.name ?? `${c.line}:${c.col}`}`;
       const own = template ? { get file() { return relative(cwd, template); }, get html() { return ws.text(template) ?? ""; } } : undefined;
       const unfollowed: Unread = { cause: "template-unfollowed", get at() { return `${relative(cwd, c.file)}:${c.line}`; } };
       contract = {
-        ...((ws.memo.get(c.file, `declared:${c.line}:${c.col}`, [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, `declared:${c.line}:${c.col}`, [c.call], declared(c.call))),
+        ...((ws.memo.get(c.file, declaredKind, [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, declaredKind, [c.call], declared(c.call))),
         get template() {
           return template && ws.text(template) !== null ? own : undefined;
         },

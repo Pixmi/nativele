@@ -460,6 +460,31 @@ describe("the memo a host keeps between runs", () => {
     expect(parsed()).toBe(3);
     expect(parsed()).toBe(0);
   });
+  it("reuses the declarations of a component after an edit above it moves it, one kind per component", () => {
+    const body = ["A", "B", "C"].map((n) => `export class ${n} extends Component(tpl, { props: { ${n.toLowerCase()}: Number } }) {}\ndefine("x-${n.toLowerCase()}", ${n});\n`).join("");
+    const dir = project({ "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`, "src/m.html": `<p></p>\n` });
+    const src = join(dir, "src");
+    const memo = new Memo();
+    const file = join(src, "m.ts");
+    const kinds = new Set<string>();
+    const spy = vi.spyOn(memo, "set");
+    const run = () => lintRun([src], { ws: new Workspace(memo), cwd: dir });
+    run();
+    run();
+    writeFileSync(file, `// moved\n\n${readFileSync(file, "utf8")}`);
+    spy.mockClear();
+    run();
+    for (const c of spy.mock.calls) if (String(c[1]).startsWith("declared")) kinds.add(String(c[1]));
+    expect(kinds.size).toBe(0);
+    spy.mockRestore();
+    const all = new Set<string>();
+    const spy2 = vi.spyOn(Memo.prototype, "set");
+    const m2 = new Memo();
+    lintRun([src], { ws: new Workspace(m2), cwd: dir });
+    for (const c of spy2.mock.calls) if (String(c[1]).startsWith("declared")) all.add(String(c[1]));
+    spy2.mockRestore();
+    expect(all).toEqual(new Set(["declared:A", "declared:B", "declared:C"]));
+  });
   it("keeps two values of each kind for a file, the content on disk and an unsaved buffer, used while the file has the content they were computed from", () => {
     const memo = new Memo();
     memo.set("/p/a.ts", "k", ["a"], 1);
