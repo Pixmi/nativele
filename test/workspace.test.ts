@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, w
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { watchAll } from "../src/lib/codegen.ts";
+import { generateDirs, watchAll } from "../src/lib/codegen.ts";
 import { Memo, Workspace } from "../src/lib/components.ts";
 import { lintProject, lintRun, lintTemplate } from "../src/lib/lint.ts";
 import type { Group } from "../src/lib/lint.ts";
@@ -140,6 +140,16 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     await turn();
     expect(parsed(() => expect(oxlint(dir, "x-a.ts", ["unused-markup", "a11y"])).toEqual(["unused-ref"]))).toBe(0);
   });
+  it("keeps the findings of an unsaved buffer while the editor also lints the file as it is on disk", async () => {
+    const dir = project({ "x-a.html": `<p data-ref="note">A</p>\n`, "x-a.ts": component("A", "x-a") });
+    const buffer = component("A", "x-a").replace(" {}", " {\n  override connectedCallback(): void {\n    this.refs.note.hidden = true;\n  }\n}");
+    await turn();
+    oxlint(dir, "x-a.ts", ["unused-markup", "a11y"], buffer);
+    await turn();
+    oxlint(dir, "x-a.ts", ["unused-markup", "a11y"]);
+    await turn();
+    expect(parsed(() => expect(oxlint(dir, "x-a.ts", ["unused-markup", "a11y"], buffer)).toEqual([]))).toBe(0);
+  });
   it("lists the folders once in a run that also lints an unsaved buffer", async () => {
     const dir = project({ "x-a.html": `<p data-ref="note">A</p>\n`, "x-a.ts": component("A", "x-a"), "sub/x-b.ts": component("B", "x-b") });
     await turn();
@@ -194,6 +204,26 @@ describe("a long-lived Vite plugin (the dev server)", () => {
     hook(join(dir, "src/c1.html.ts"));
     hook(join(dir, "style.css"));
     expect(save("c1.html", `<button type="button">C1 again</button>\n`).parses).toBe(alone);
+  });
+  it("on a save of a file with a define() that changes no tag, lists each folder once and parses only the template the file imports", () => {
+    const { hook, dir } = dev(4);
+    const file = join(dir, "src/c1.ts");
+    writeFileSync(file, `${readFileSync(file, "utf8")}// saved\n`);
+    const before = listings.n;
+    expect(parsed(() => hook(file))).toBe(1);
+    expect(listings.n - before).toBe(2);
+  });
+  it("on a save that changes a define(), regenerates only the templates that use the tag", () => {
+    const { hook, dir } = dev(4);
+    const out = (name: string) => readFileSync(join(dir, "src", `${name}.html.ts`), "utf8");
+    const others = ["c0", "c2", "c3"].map(out);
+    expect(out("page")).toContain(`import "./c1.js";`);
+    const file = join(dir, "src/c1.ts");
+    writeFileSync(file, readFileSync(file, "utf8").replace(`"x-c1"`, `"x-z"`));
+    expect(readsDuring(() => hook(file)).get(join(dir, "src/c0.html.ts"))).toBeUndefined();
+    expect(out("page")).not.toContain(`import "./c1.js";`);
+    expect(["c0", "c2", "c3"].map(out)).toEqual(others);
+    expect(readFileSync(join(dir, "src/ts-dom-tags.ts"), "utf8")).toContain(`"x-z"`);
   });
   it("parses the same number of templates for a save whatever the size of the project", () => {
     const small = dev(4, 2).save("c1.html", `<div>C1, no button</div>\n`).parses;
@@ -332,6 +362,18 @@ describe("the runs of a host", () => {
     const src = join(dir, "src");
     expect(readsDuring(() => lintRun([src], { a11y: true, cwd: dir })).get(join(src, "x-kid.html"))).toBe(1);
   });
+  it("ts-dom gen --watch regenerates on a define() save only the tag map and the templates that use a changed tag", async () => {
+    const dir = project({ "src/page.html": `<x-b></x-b>\n`, "src/other.html": `<p></p>\n`, "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./other.html.js") });
+    const src = join(dir, "src");
+    generateDirs([src]);
+    const generated: string[] = [];
+    await new Promise<void>((resolve) => {
+      const stop = watchAll([src], { onGenerate: (f) => (generated.push(f), generated.length === 1 && setTimeout(() => (stop(), resolve()), 50)) });
+      setTimeout(() => writeFileSync(join(src, "b.ts"), component("B", "x-c").replace("./x-c.html.js", "./other.html.js")), 100);
+    });
+    expect(generated.sort()).toEqual([join(src, "page.html.ts"), join(src, "ts-dom-tags.ts")]);
+    expect(readFileSync(join(src, "page.html.ts"), "utf8")).not.toContain("b.js");
+  }, 10_000);
   it("ts-dom gen --watch parses only the saved template", async () => {
     const dir = project({ "src/a.html": `<p>{{ a }}</p>\n`, "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js"), "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./b.html.js"), "src/b.html": `<p></p>\n` });
     const src = join(dir, "src");
@@ -346,20 +388,43 @@ describe("the runs of a host", () => {
 });
 
 describe("the memo a host keeps between runs", () => {
-  it("keeps one value of each kind for a file, used while the file has the content it was computed from", () => {
+  it("keeps two values of each kind for a file, the content on disk and an unsaved buffer, used while the file has the content they were computed from", () => {
     const memo = new Memo();
     memo.set("/p/a.ts", "k", ["a"], 1);
-    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"])]).toEqual([1, undefined]);
     memo.set("/p/a.ts", "k", ["b"], 2);
-    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"])]).toEqual([undefined, 2]);
+    memo.set("/p/a.ts", "k", ["b"], 3);
+    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"])]).toEqual([1, 3]);
+    memo.set("/p/a.ts", "k", ["c"], 4);
+    expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"]), memo.get("/p/a.ts", "k", ["c"])]).toEqual([undefined, 3, 4]);
   });
-  it("drops the values of the files a listing no longer has", () => {
+  it("drops, when a run starts, the values of the files that no run has seen since the last run that built an index", () => {
     const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
     const src = join(dir, "src");
     const memo = new Memo();
     new Workspace(memo).index([src]);
+    const b = readFileSync(join(src, "b.ts"), "utf8");
     rmSync(join(src, "b.ts"));
     new Workspace(memo).index([src]);
-    expect([memo.get(join(src, "a.ts"), "facts", [component("A", "x-a")]), memo.get(join(src, "b.ts"), "facts", [component("B", "x-b")])].map((v) => v !== undefined)).toEqual([true, false]);
+    expect(memo.get(join(src, "b.ts"), "facts", [b])).not.toBeUndefined();
+    new Workspace(memo).text(join(src, "a.ts"));
+    expect(memo.get(join(src, "b.ts"), "facts", [b])).toBeUndefined();
+    expect(memo.get(join(src, "a.ts"), "facts", [component("A", "x-a")])).not.toBeUndefined();
+  });
+  it("drops the values of a file followed through an import outside the folders, and of a folder no longer scanned, once no run reads them", () => {
+    const dir = project({
+      "src/a.ts": `${H}import { U } from "../lib/u.js";\ndefine("x-u", U);\n`,
+      "lib/u.tsx": `export class U extends HTMLElement {}\n`,
+      "other/o.ts": component("O", "x-o"),
+    });
+    const src = join(dir, "src");
+    const other = join(dir, "other");
+    const memo = new Memo();
+    const has = (file: string) => memo.get(file, "facts", [readFileSync(file, "utf8")]) !== undefined;
+    expect(new Workspace(memo).index([src, other]).byTag.get("x-u")?.[0]?.class?.file).toBe(join(dir, "lib/u.tsx"));
+    expect([has(join(dir, "lib/u.tsx")), has(join(other, "o.ts"))]).toEqual([true, true]);
+    writeFileSync(join(src, "a.ts"), `${H}define("x-u", class extends HTMLElement {});\n`);
+    new Workspace(memo).index([src]);
+    new Workspace(memo);
+    expect([has(join(dir, "lib/u.tsx")), has(join(other, "o.ts"))]).toEqual([false, false]);
   });
 });

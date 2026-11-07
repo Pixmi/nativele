@@ -11,6 +11,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own heading (`0.6.1`, `0.6.2`, ...) marked "not published"; `package.json` keeps the published version, and the next published version is chosen from the whole set by this policy (0.7.0 when any iteration has a breaking change or a new feature). Its PR adds that version's heading above the iterations it includes.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.6.9 (not published)
+
+### Fixes
+
+- The Vite plugin, on a save of a TypeScript file with a `define()`, and `ts-dom gen --watch`, on a save of any TypeScript file, regenerate only the tag maps and the templates that use a tag whose `define()` changed, instead of every template: on a project of 1000 components such a save no longer parses all 1000 templates, and takes about a third of the time. `ts-dom gen --watch` prints only the files it rewrote.
+- The oxlint plugin in the editor keeps the findings of a file's unsaved buffer while the same file is also linted as it is on disk, instead of parsing its template again on each switch.
+- The oxlint and Vite plugins drop what they keep for files that are no longer read: a deleted or renamed template, a file followed through an import outside the scanned folders, a `.tsx` or `.mts` file, or a folder no longer scanned. A long-running language server or dev server no longer grows with every rename.
+- `ts-dom-tags.ts` is generated in time linear in the number of components.
+
 ## 0.6.8 (not published)
 
 ### Changed
