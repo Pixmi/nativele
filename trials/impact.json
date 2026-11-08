@@ -66,7 +66,6 @@
     "vite-plugin-missing": ["src/lib/doctor.ts"],
     "oxlint-plugin-missing": ["src/lib/doctor.ts"],
     "formatter-whitespace": ["src/lib/doctor.ts"],
-    "skill-available": ["src/lib/doctor.ts"],
     "skill-outdated": ["src/lib/doctor.ts"],
     "custom-elements-manifest": ["src/lib/doctor.ts", "src/lib/manifest.ts"],
     "unused-ref": ["src/lib/lint.ts"],

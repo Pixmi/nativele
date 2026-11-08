@@ -182,25 +182,14 @@ describe("ts-dom doctor and Skills", () => {
   };
   const skillIssues = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule.startsWith("skill-"));
 
-  it("recommends the Skills whose dependencies the project has, as info", () => {
-    const cwd = project({ dependencies: { "@nativele/ts-dom": "0.5.0", react: "19.3.1" } });
-    const issues = skillIssues(cwd);
-    expect(issues.map((i) => [i.rule, i.severity, i.file])).toEqual([
-      ["skill-available", "info", "package.json"],
-      ["skill-available", "info", "package.json"],
-    ]);
-    expect(issues[1]?.message).toContain("ts-dom skills add nativele-react");
-    expect(skillIssues(project({ dependencies: { lodash: "4" } }))).toEqual([]);
-    expect(skillIssues(project({ dependencies: { vue: "3" } }))[0]?.message).toContain("ts-dom skills add nativele-vue");
-  });
-
-  it("stops recommending a copied Skill, and reports a copy that differs from the shipped one", () => {
+  it("reports a copy that differs from the shipped one as a warning, and nothing for a project without copies", () => {
     const cwd = project({ dependencies: { "@nativele/ts-dom": "0.5.0" } });
     mkdirSync(join(cwd, ".claude"));
     const core = listSkills(skillsRoot()).find((s) => s.name === "nativele-core")!;
     const dest = addSkill(core, skillsTarget(cwd));
     expect(skillIssues(cwd)).toEqual([]);
     writeFileSync(join(dest, "SKILL.md"), "old copy");
-    expect(skillIssues(cwd).map((i) => [i.rule, i.file])).toEqual([["skill-outdated", ".claude/skills/nativele-core/SKILL.md"]]);
+    expect(skillIssues(cwd).map((i) => [i.rule, i.severity, i.file])).toEqual([["skill-outdated", "warning", ".claude/skills/nativele-core/SKILL.md"]]);
+    expect(skillIssues(project({ dependencies: { react: "19.3.1" } }))).toEqual([]);
   });
 });

@@ -70,7 +70,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     if (!a11y) return;
     const p = lintProject(ws, existing(), process.cwd());
     for (const f of templates()) {
-      const lines = lintTemplate(p, f, ["a11y"], (t) => parsed.get(f) ?? analyze(t)).a11y.filter((d) => !a11y.ignore?.includes(d.rule)).map((d) => formatDiagnostics(f, [d]));
+      const lines = lintTemplate(p, f, ["a11y"], (t) => parsed.get(f) ?? analyze(t), a11y.ignore).a11y.map((d) => formatDiagnostics(f, [d]));
       if (saved === undefined || f === saved || printed.get(f) !== lines.join("\n")) for (const line of lines) warn(line);
       printed.set(f, lines.join("\n"));
     }

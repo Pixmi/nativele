@@ -99,6 +99,11 @@ describe("unchecked-content: an element a rule cannot judge because its composed
     expect(ds[0]?.[1]).toContain("<wa-icon>");
     expect(ds[0]?.[1]).toContain("<slot>");
   });
+  it("names only the rules that are not ignored, and is not reported when all of them are", () => {
+    const html = `<button><slot></slot></button>\n<div data-on-click="go"><slot></slot></div>`;
+    expect(checkA11y(html).map((d) => d.rule)).toEqual(["unchecked-content", "unchecked-content"]);
+    expect(checkA11y(html, ["control-name"]).map((d) => d.message.slice(0, d.message.indexOf(":")))).toEqual(["<div> was not checked for click-semantics"]);
+  });
   it("content lint can read decides, whatever else is there", () => {
     expect(found(`<button type="button"><wa-icon></wa-icon> Save</button><h2><slot></slot>Title</h2><div data-on-click="go"><wa-icon></wa-icon>${button}</div>`)).toEqual([]);
     expect(found(`<button type="button"><slot>Save</slot></button>`)).toEqual([]);

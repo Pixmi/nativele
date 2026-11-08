@@ -2,7 +2,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 import type { DefaultTreeAdapterMap } from "parse5";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
-import { analyze, listHtml } from "./codegen.ts";
+import { analyze, HTML_NS, isEl, kids, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
 import { componentIndex, literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
@@ -312,7 +312,7 @@ function kindOf(valueText: string): PropKind {
 }
 
 /** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
-export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
+class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
   /** What contractsAt and childrenAt have worked out for each package. */
   readonly byPackage = new Map<string, PackageView>();
   /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
@@ -549,9 +549,6 @@ const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the
 
 type Node = DefaultTreeAdapterMap["node"];
 type Element = DefaultTreeAdapterMap["element"];
-const HTML_NS = "http://www.w3.org/1999/xhtml";
-const isEl = (n: Node): n is Element => "tagName" in n;
-const kids = (n: Node): Node[] => ("content" in n && n.nodeName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : "childNodes" in n ? n.childNodes : []);
 
 /** The element of `root` whose attribute `name` starts at `line`:`col`. */
 function elementAt(root: Node, name: string, line: number, col: number): Element | undefined {
@@ -898,9 +895,9 @@ const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknow
 /**
  * The findings of one template for `groups`. They depend only on the template's text, the code of the classes and modules that use it, and the definitions of the tags they look up,
  * so the workspace's memo keeps them for the template with all of these, and they are used again while each is the same in the run that asks.
- * `parse` is how the template is analyzed when the memo does not have its findings.
+ * `parse` is how the template is analyzed when the memo does not have its findings. `ignore` holds the rule ids the caller leaves out, which unchecked-content then does not name.
  */
-export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze, ignore: readonly string[] = []): TemplateFindings {
   const file = resolve(html);
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
@@ -919,7 +916,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     }
     return d;
   };
-  const kind = `findings:${[...groups].sort().join(",")}`;
+  const kind = `findings:${[...groups].sort().join(",")}:${[...ignore].sort().join(",")}`;
   const from = [text, classes.length, ...classes.flatMap((c) => [c.call, c.body]), ...importers];
   const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
   if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
@@ -932,7 +929,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     diagnostics: analysis.diagnostics,
     usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
     flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis, recording(known, knownTags), { has: (name) => (tags.add(BUBBLING), bubbling.has(name)) }) : [],
-    a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
+    a11y: groups.includes("a11y") ? checkA11y(text, ignore, recording(children, tags), analysis.root) : [],
     uses: [...uses.values()],
   };
   const keys = [...tags, ...[...knownTags].map((tag) => `\0${tag}`)];
@@ -997,7 +994,7 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
   for (const dir of dirs) {
     for (const html of listHtml(dir, ws)) {
       const file = relative(cwd, html);
-      const r = lintTemplate(p, html, groups);
+      const r = lintTemplate(p, html, groups, analyze, ignore);
       templates.push({ dir, file: html, diagnostics: r.diagnostics });
       if (r.usage === null) usage.push(noImporter(file, html));
       else for (const d of r.usage) usage.push({ file, ...d });
@@ -1013,6 +1010,4 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
 
 export const runLint = (dirs: string[], options?: LintOptions): LintIssue[] => lintRun(dirs, options).issues;
 
-export function formatIssue(i: LintIssue): string {
-  return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
-}
+export { formatIssue } from "./codegen.ts";

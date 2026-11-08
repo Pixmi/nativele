@@ -521,7 +521,7 @@ this.refs.list.items = ["a", "b"];
 
   // CHECK_RULES
   "stale-generated": {
-    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
+    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom gen --check reports it too.",
     bad: `# card.html was edited, card.html.ts was not regenerated
 npx ts-dom check --no-write`,
     good: `npx ts-dom gen
@@ -728,7 +728,7 @@ import viteConfig from "./vite.config";
 export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happy-dom" } }));`,
   },
   "oxlint-plugin-missing": {
-    why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI. In a package of a workspace, the nearest lint config up to the workspace root is read.",
+    why: "The oxlint plugin runs the lint rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI. In a package of a workspace, the nearest lint config up to the workspace root is read.",
     bad: `// .oxlintrc.json
 { "rules": {} }`,
     good: `// .oxlintrc.json
@@ -752,12 +752,6 @@ npx ts-dom check src`,
     bad: `// node_modules/some-lib/package.json: "customElements": "dist/custom-elements.json", and the file is not in the package`,
     good: `npm i some-lib@latest   # a version that ships its manifest
 # or report the missing manifest to the package's maintainers`,
-  },
-  "skill-available": {
-    why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",
-    bad: `// package.json lists "react", and the project has no copy of the nativele-react Skill`,
-    good: `npx ts-dom skills add nativele-react   # copies it into .claude/skills/ or .agents/skills/
-npx ts-dom skills nativele-react       # or just read it`,
   },
   "skill-outdated": {
     why: "A copied Skill does not update with the package. After an upgrade the copy may describe an older version of Nativele or of the tool it covers.",

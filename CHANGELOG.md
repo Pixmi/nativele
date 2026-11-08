@@ -17,8 +17,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - Lint, `ts-dom check` and the oxlint plugin check the components of the Nativele component packages a template's package depends on (a workspace package or a published one that lists `@nativele/ts-dom`), read from the modules the package's `exports` name (or its `module` or `main`) and those they import: `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-custom-element` and `click-semantics`, and `unknown-slot` when the package ships its templates (a source package). A package built to JavaScript has its props and events checked; `unchecked-content` says that it ships its modules without their templates. `ts-dom gen` is unchanged: generated files import only from the scanned folders.
 
+### Fixes
+
+- A rule left out with `--ignore` (or the Vite plugin's `a11y.ignore`, or the oxlint rule's `ignore`) is no longer named by `unchecked-content`, which is not reported when every rule it could not judge is left out.
+
 ### Changed
 
+- `ts-dom doctor` reports only errors and warnings: `skill-outdated` (a project copy of a Skill that differs from the shipped one) is a warning, and the `skill-available` suggestion is gone; `ts-dom skills` instead says which Skills cover a dependency of the project in the current folder. Doctor no longer reports `stale-generated`, which `ts-dom gen --check` and `ts-dom check --no-write` report, and no longer takes `--include`, `--exclude` and `--whitespace`. It takes `--ignore=<id>` like `lint` and `check`. **Breaking** for scripts that pass the removed flags to doctor or read `info` issues from `doctor --json`.
+- `duplicate-define` is reported the same way for a tag defined twice in one scanned folder as across folders: at the second `define()` with `file:line:col`, by `ts-dom gen`, `gen --check` and `check`. Defining the same class again is not reported. A run that reports it still writes `ts-dom-tags.ts`, with the first class.
+- `stale-generated` has one message and Fix in `gen --check` and `check --no-write`.
+- The runtime error for a list whose `data-prop` is not a property of its item component has the id `item-prop-missing`, the same as the type error.
+- `ts-dom rules` lists each rule id once (`dir-not-found` and `stale-generated` were listed twice).
 - `unchecked-custom-elements` and `unchecked-content` list a tag that the program only declares (a `customElements.define()` call or an `HTMLElementTagNameMap` entry) as declared only in TypeScript, which gives lint its name but none of its attributes, events or slots, with a Fix for a Nativele component and for another library's element. The Fix for a tag nothing defines now says to list the package that defines it in the package's dependencies, instead of adding another package's folder to the scanned folders.
 
 ## 0.7.3

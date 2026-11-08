@@ -15,7 +15,7 @@ const rules = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).map((i) => i.ru
 
 describe("ts-dom doctor", () => {
   it("a project without tsconfig and runtime package", () => {
-    expect(rules(project({ "src/x.html": "<p></p>" }))).toEqual(["no-tsconfig", "runtime-not-installed", "stale-generated"]);
+    expect(rules(project({ "src/x.html": "<p></p>" }))).toEqual(["no-tsconfig", "runtime-not-installed"]);
   });
 
   it("tsconfig problems, read through extends and comments", () => {
@@ -41,13 +41,13 @@ describe("ts-dom doctor", () => {
   it("Vite, oxlint and formatter configuration", () => {
     const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/x.html": "<p></p>" };
     const missing = project({ ...base, "vite.config.ts": `export default { plugins: [], lint: {} }`, "package.json": `{ "scripts": { "fmt": "oxfmt ." } }` });
-    expect(rules(missing).filter((r) => r !== "stale-generated")).toEqual(["formatter-whitespace", "oxlint-plugin-missing", "vite-plugin-missing"]);
+    expect(rules(missing)).toEqual(["formatter-whitespace", "oxlint-plugin-missing", "vite-plugin-missing"]);
     const fine = project({
       ...base,
       "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom({ whitespace: "collapse" })], lint: { jsPlugins: [{ name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" }] } }`,
       "package.json": `{ "scripts": { "fmt": "oxfmt ." } }`,
     });
-    expect(rules(fine).filter((r) => r !== "stale-generated")).toEqual([]);
+    expect(rules(fine)).toEqual([]);
   });
 });
 
@@ -93,10 +93,11 @@ describe("ts-dom doctor: tsconfig extends and include", () => {
 });
 
 describe("ts-dom doctor output", () => {
-  it("every line has file:line:col, also without a file", async () => {
-    const { formatDoctorIssue } = await import("../src/lib/doctor.ts");
-    expect(formatDoctorIssue({ rule: "runtime-not-installed", severity: "error", message: "m" })).toBe(".:1:1 error [runtime-not-installed] m");
-    expect(formatDoctorIssue({ rule: "template-import-without-js", severity: "error", message: "m", file: "src/a.ts", line: 2 })).toBe("src/a.ts:2:1 error [template-import-without-js] m");
+  it("every issue has a file, line and column, also when it is about the project as a whole", () => {
+    expect(runDoctor({ dirs: ["src"], cwd: project({ "src/x.html": "<p></p>" }) }).map((i) => [i.file, i.line, i.col])).toEqual([
+      [".", 1, 1],
+      [".", 1, 1],
+    ]);
   });
 });
 
@@ -380,7 +381,6 @@ describe("ts-dom doctor in a package of a workspace", () => {
       const issues = runDoctor({ dirs: ["src"], cwd: join(root, pkg) });
       const name = Object.keys(marker)[0];
       expect(issues.filter((i) => i.rule === "typecheck-before-gen"), name).toHaveLength(1);
-      expect(issues.filter((i) => i.rule === "skill-available"), name).toEqual([]);
       expect(issues.filter((i) => i.rule === "skill-outdated").map((i) => i.file), name).toEqual(["../../.claude/skills/nativele-core/SKILL.md"]);
     }
   });

@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
+import { analyze, CodegenError, duplicateDefines, generateDirs, isSelected, staleGenerated, staleIssue } from "./codegen.ts";
 import { callArguments, classSpan, componentClassHeads, indexDirs, literalKeys, scanDefines, Workspace } from "./components.ts";
 import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
@@ -349,21 +349,13 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws, ignore: options.ignore });
   for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
-  for (const dir of dirs) {
-    try {
-      renderTags(dir, ws);
-    } catch (e) {
-      if (!(e instanceof CodegenError)) throw e;
-      issues.push({ file: rel(dir), line: 1, col: 1, rule: "duplicate-define", severity: "error", message: e.message.replace(/^[^[]*\[duplicate-define\]\s*/, "") });
-    }
-  }
-  for (const d of crossDirDuplicates(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
+  for (const d of duplicateDefines(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
 
   if (options.write === false) {
     const defs = scanDefines(dirs, ws);
     for (const dir of dirs) {
       for (const s of staleGenerated(dir, generate, defs, dirs, ws)) {
-        issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
+        issues.push(staleIssue(rel(s.file), s.reason));
       }
     }
   } else {

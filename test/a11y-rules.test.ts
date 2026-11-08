@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { A11Y_RULES } from "../src/lib/a11y.ts";
+import { A11Y_RULES, COMPOSED_RULES } from "../src/lib/a11y.ts";
 import { tsDom } from "../src/lib/vite-plugin.ts";
 import plugin from "../src/lib/oxlint-plugin.ts";
 
@@ -42,7 +42,8 @@ const FIXTURES: [string, string[]][] = [
   [`<button type="button"><slot></slot></button>`, ["unchecked-content"]],
 ];
 const RULES = Object.keys(A11Y_RULES);
-const allBut = (rule: string) => RULES.filter((r) => r !== rule);
+/** The rules left on to see what `rule` gives: unchecked-content names the rules it could not judge, so those stay on with it. */
+const allBut = (rule: string) => RULES.filter((r) => r !== rule && !(rule === "unchecked-content" && r in COMPOSED_RULES));
 const H = `import { Component, define } from "@nativele/ts-dom";\n`;
 
 type Found = [file: string, line: number, col: number, rule: string][];
@@ -102,12 +103,12 @@ describe("every a11y rule decides on its own", () => {
   }, 30_000);
   it("ts-dom lint: one rule on gives what all rules on give for that rule", () => {
     const all = cli();
-    for (const rule of RULES) expect([rule, cli(...allBut(rule).map((r) => `--ignore=${r}`))]).toEqual([rule, only(all, rule)]);
+    for (const rule of RULES) expect([rule, only(cli(...allBut(rule).map((r) => `--ignore=${r}`)), rule)]).toEqual([rule, only(all, rule)]);
   }, 60_000);
   it("the Vite plugin's a11y.ignore: one rule on gives what all rules on give for that rule", () => {
     const all = vite([]);
     expect(all).toEqual(cli());
-    for (const rule of RULES) expect([rule, vite(allBut(rule))]).toEqual([rule, only(all, rule)]);
+    for (const rule of RULES) expect([rule, only(vite(allBut(rule)), rule)]).toEqual([rule, only(all, rule)]);
   }, 30_000);
   it("the oxlint plugin: the rule ts-dom/<id> alone gives what ts-dom/a11y gives for that id", () => {
     const all = oxlintRule("a11y");

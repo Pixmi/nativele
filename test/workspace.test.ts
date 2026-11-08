@@ -440,7 +440,7 @@ describe("the runs of a host", () => {
       }, 100);
     });
     expect(errors[0]).toContain("[duplicate-define]");
-    expect([...new Set(generated)]).toEqual([join(src, "page.html.ts")]);
+    expect([...new Set(generated)].sort()).toEqual([join(src, "page.html.ts"), join(src, "ts-dom-tags.ts")]);
   }, 10_000);
 });
 

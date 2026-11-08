@@ -177,11 +177,6 @@ describe("generateTags (define → HTMLElementTagNameMap)", () => {
     expect(text).toContain(`"x-a": Tag0;`);
     expect(text).toContain("interface HTMLElementTagNameMap");
   });
-  it("throws when the same tag is defined in different files", async () => {
-    const { generateTags } = await import("../src/lib/codegen.ts");
-    const dir = await setup({ "a.ts": `export class A {}\ndefine("x-dup", A);`, "b.ts": `export class B {}\ndefine("x-dup", B);` });
-    expect(() => generateTags(dir)).toThrow(/x-dup.*more than once.*Fix:/);
-  });
   it("removes the previously generated file when no define remains, but never deletes a same-named file we did not generate", async () => {
     const { generateTags } = await import("../src/lib/codegen.ts");
     const { existsSync, writeFileSync, unlinkSync } = await import("node:fs");
@@ -287,20 +282,14 @@ describe("rule ids and diagnostic shape", () => {
     // the table has no stale entries either
     for (const rule of Object.keys(RULE_INPUTS)) expect(CODEGEN_RULES, rule).toHaveProperty(rule);
   });
-  it("duplicate-define is produced by generateTags, not analyze", async () => {
-    const { generateTags, CodegenError } = await import("../src/lib/codegen.ts");
-    const dir = await makeDir({ "a.ts": `export class A {}\ndefine("x-dup", A);`, "b.ts": `export class B {}\ndefine("x-dup", B);` });
+  it("duplicate-define is reported at the second define() of a tag with another class, by generateDirs, not analyze; the same class defined again is not", async () => {
+    const { duplicateDefines, generateDirs, CodegenError } = await import("../src/lib/codegen.ts");
+    const dir = await makeDir({ "a.ts": `export class A {}\ndefine("x-dup", A);`, "b.ts": `export class B {}\ndefine("x-dup", B);\ndefine("x-b", B);\ndefine("x-b", B);` });
     expect(Object.keys(RULE_INPUTS)).not.toContain("duplicate-define");
-    let err: unknown;
-    try {
-      generateTags(dir);
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(CodegenError);
-    expect((err as Error).message).toContain("[duplicate-define]");
-    expect((err as Error).message).toContain("Fix:");
-    expect((err as Error).message).toContain("only the class whose define() runs first is registered, and the other define() is skipped without an error");
+    const found = duplicateDefines([dir]);
+    expect(found.map((d) => [d.file, d.line, d.col, d.rule, d.severity])).toEqual([[join(dir, "b.ts"), 2, 1, "duplicate-define", "error"]]);
+    expect(found[0]?.message).toMatch(/<x-dup> is defined more than once .*only the class whose define\(\) runs first is registered, and the other define\(\) is skipped without an error\. Fix:/);
+    expect(() => generateDirs([dir])).toThrow(CodegenError);
   });
   it("every analyze diagnostic has line >= 1, col >= 1, a rule, a severity and a Fix: hint", () => {
     for (const [rule, html] of Object.entries(RULE_INPUTS)) {
@@ -402,9 +391,10 @@ describe("CLI", () => {
     // without --a11y the same template is clean, even with --strict
     expect(run(["lint", ".", "--strict"], dir).status).toBe(0);
   });
-  it("--help lists --include, --exclude and --whitespace under check and doctor, which accept them", () => {
+  it("--help lists --include, --exclude and --whitespace under check, which accepts them, and not under doctor", () => {
     const sections = run(["--help"]).stdout.split(/\n(?= {2}[a-z])/);
-    for (const cmd of ["check", "doctor"]) {
+    expect(sections.find((s) => s.startsWith("  doctor "))).not.toMatch(/--include=|--exclude=|--whitespace=/);
+    for (const cmd of ["check"]) {
       const section = sections.find((s) => s.startsWith(`  ${cmd} `));
       expect(section, cmd).toMatch(/--include=<glob>/);
       expect(section, cmd).toMatch(/--exclude=<glob>/);
