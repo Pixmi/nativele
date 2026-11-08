@@ -175,7 +175,7 @@ export const DATA_FLOW_RULES = {
   "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
   "static-markup-in-code": "the class creates an element with document.createElement and gives it fixed text or a fixed attribute, structure the template can hold",
-  "dom-node-in-state": "state or a prop holds DOM nodes, a second copy of what the DOM holds",
+  "dom-node-in-state": "state or a prop holds a collection of DOM nodes, a second copy of what the DOM holds",
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
@@ -644,14 +644,42 @@ export function constructorHostChange(body: string): string | undefined {
   return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
 }
 
-const DOM_TYPE = /\bas\s+(?:readonly\s+)?((?:HTML\w*|SVG\w*|MathML\w*)?Element|Node|DocumentFragment|Text|NodeList|HTMLCollection)\b/;
+const DOM_NODE = /(?<![\w$.])((?:HTML|SVG|MathML)\w*Element|Element|Node|Text|DocumentFragment|NodeList|HTMLCollection)\b/;
 
-/** The first element the class body creates with document.createElement and gives a string literal: a property such as textContent or type, or setAttribute with a literal value. */
+/** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy. */
+export function domCollection(value: string): string | undefined {
+  const typed = /\bas\s([\s\S]*)/.exec(value)?.[1] ?? "";
+  const generic = /\bnew\s+(?:Map|Set|WeakMap|WeakSet)\s*<([\s\S]*)/.exec(value)?.[1];
+  const node = DOM_NODE.exec(generic ?? typed)?.[1];
+  if (!node) return undefined;
+  return generic !== undefined || /^(?:DocumentFragment|NodeList|HTMLCollection)$/.test(node) || /\[\]|\b(?:Readonly)?Array\s*<|\b(?:Map|Set|WeakMap|WeakSet)\s*</.test(typed) ? node : undefined;
+}
+
+const LITERAL = String.raw`(?:"[^"\n]*"|'[^'\n]*'|` + "`[^`$]*`" + String.raw`)(?=\s*(?:[;,)}\n]|$))`;
+
+function blockEnd(code: string, from: number): number {
+  for (let i = from, depth = 0; i < code.length; i++) {
+    const skip = skipNonCode(code, i);
+    if (skip > i) i = skip - 1;
+    else if (code[i] === "{") depth++;
+    else if (code[i] === "}" && depth-- === 0) return i;
+  }
+  return code.length;
+}
+
 export function staticMarkup(body: string): { tag: string; write: string } | undefined {
-  for (const m of body.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.createElement(?:NS\s*\([^,]*,|\s*\()\s*["']([\w-]+)["']/g)) {
-    const [, name, tag] = m as unknown as [string, string, string];
-    const v = esc(name);
-    const write = new RegExp(`\\b${v}\\.(?:[A-Za-z]\\w*(?:\\.\\w+)?\\s*=(?!=)\\s*(?:"[^"]*"|'[^']*'|\`[^\`$]*\`)|setAttribute\\(\\s*["'][^"']+["']\\s*,\\s*(?:"[^"]*"|'[^']*'|\`[^\`$]*\`)\\s*\\))`).exec(body.slice(m.index));
+  let code = "";
+  for (let i = 0; i < body.length; i++) {
+    const end = skipNonCode(body, i);
+    if (end > i) {
+      code += body[i] === "/" ? " ".repeat(end - i) : body.slice(i, end);
+      i = end - 1;
+    } else code += body[i];
+  }
+  for (const m of code.matchAll(/(?<![\w$.])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:[\w$.]+\.)?(?:document|ownerDocument)\.createElement(?:NS\s*\([^,]*,|\s*\()\s*["']([\w-]+)["']/g)) {
+    const [decl, name, tag] = m as unknown as [string, string, string];
+    const scope = code.slice(m.index + decl.length, blockEnd(code, m.index));
+    const write = new RegExp(String.raw`(?<![\w$.])${esc(name)}\.(?:[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?\s*=(?!=)\s*${LITERAL}|setAttribute\(\s*["'][^"']+["']\s*,\s*${LITERAL}\s*\))`).exec(scope);
     if (write) return { tag, write: write[0].replace(/\s+/g, " ") };
   }
   return undefined;
@@ -667,6 +695,8 @@ export function staticMarkup(body: string): { tag: string; write: string } | und
  * - unknown-prop / invalid-prop-value / unknown-event / unknown-slot: the attributes, events and slot names written on a child tag do not match
  *   what the child component or the library element's manifest declares (needs `contracts`, see contractsFor)
  * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
+ * - static-markup-in-code: an element the class creates gets a fixed text or attribute
+ * - dom-node-in-state: a state or prop value holds several DOM nodes
  */
 export function dataFlow(
   html: string,
@@ -866,7 +896,7 @@ export function dataFlow(
   for (const { call } of classes) {
     for (const option of ["state", "props"] as const) {
       for (const { key, value } of optionEntries(call, option)) {
-        const type = value && DOM_TYPE.exec(value)?.[1];
+        const type = value && domCollection(value);
         if (!type) continue;
         report(
           "dom-node-in-state",

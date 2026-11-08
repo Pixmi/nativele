@@ -325,7 +325,7 @@ override render(view: { name: string }) {
 }`,
   },
   "static-markup-in-code": {
-    why: "Structure lives in the template: the elements a component shows, written in its .html, are typed by codegen, checked by tsc and lint, and kept by a list between updates. An element built with document.createElement in the class is hidden from all of them, and a fixed text or attribute it receives (textContent = \"Remove\", type = \"button\", setAttribute(\"role\", \"row\")) is markup written in TypeScript. Only a variable the class assigns from document.createElement or createElementNS is read, and only a string literal without ${} counts as fixed; an element whose content comes from data (a cell a column definition returns) is not reported.",
+    why: "Structure lives in the template: the elements a component shows, written in its .html, are typed by codegen, checked by tsc and lint, and kept by a list between updates. An element built with document.createElement in the class is hidden from all of them, and a fixed text or attribute it receives (textContent = \"Remove\", type = \"button\", setAttribute(\"role\", \"row\")) is markup written in TypeScript. Read is a const, let or var the class assigns from document.createElement or createElementNS (also this.ownerDocument's), and a write to it in the same block whose whole value is a string literal without ${}; a value that adds data (\"Remove \" + name), a write to another element, comments and strings are not reported, and neither is an element whose content comes from data (a cell a column definition returns).",
     bad: `// order-table.ts
 override render(view) {
   this.refs.body.replaceChildren(...view.orders.map((o) => {
@@ -340,7 +340,7 @@ override render(view) {
 </template>`,
   },
   "dom-node-in-state": {
-    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a node, an element or a list of them keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Only the type written with as in the state or props option is read (HTMLElement, any HTML, SVG or MathML element interface, Element, Node, DocumentFragment, Text, NodeList, HTMLCollection).",
+    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a set of nodes keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Read is the type written with as, or the type argument of new Set<...> or new Map<...> when it has one parameter: an array, ReadonlyArray, Map or Set of an element interface (HTML, SVG or MathML), Element, Node or Text, an object array that holds one, a DocumentFragment, NodeList or HTMLCollection. A single element, such as an anchor a parent passes to a popover, is a reference to a node, not a copy, and is not reported.",
     bad: `// order-stats.ts
 class OrderStats extends Component(tpl, {
   state: { children: [] as HTMLElement[] },

@@ -466,7 +466,7 @@ The same `data-flow` group checks the parent's HTML against each child's `props`
 - form control writes in `render()` (`unguarded-input-value`)
 - a constructor that changes the element itself (`constructor-host-change`), which makes a browser create an unknown element instead
 - an element the class builds with `document.createElement` and gives fixed text or a fixed attribute (`static-markup-in-code`), structure the template can hold
-- state or a prop that holds DOM nodes (`dom-node-in-state`), a copy of what the DOM holds
+- state or a prop that holds a collection of DOM nodes (`dom-node-in-state`), a copy of what the DOM holds
 
 `npx ts-dom rules` lists every rule, and `npx ts-dom rules --explain=<id>` explains one with an example. The tables in [Lint](tooling.md#lint-optional) cover what each rule reads.
 

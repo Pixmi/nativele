@@ -15,8 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- Lint rule `static-markup-in-code` (data-flow, warning): a component class that creates an element with `document.createElement` and gives it a fixed text or attribute (`b.textContent = "Remove"`, `b.type = "button"`, `setAttribute` with a literal), structure the template can hold.
-- Lint rule `dom-node-in-state` (data-flow, warning): a `state` or `props` value typed as DOM nodes (`[] as HTMLElement[]`, `null as Element | null`), a copy of what the DOM holds.
+- Lint rule `static-markup-in-code` (data-flow, warning): a component class that creates an element with `document.createElement` and gives it a fixed text or attribute in the same block (`b.textContent = "Remove"`, `b.type = "button"`, `setAttribute` with a literal), structure the template can hold.
+- Lint rule `dom-node-in-state` (data-flow, warning): a `state` or `props` value that holds several DOM nodes (`[] as HTMLElement[]`, `new Set<HTMLElement>()`, a `DocumentFragment`), a copy of what the DOM holds; a single element such as an anchor is not reported.
 
 ### Docs
 
