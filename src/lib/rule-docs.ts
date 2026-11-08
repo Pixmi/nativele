@@ -302,7 +302,7 @@ inc() { this.count = this.count + 1; }`,
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
   "constructor-host-change": {
-    why: "A browser creates a custom element with document.createElement or the HTML parser and then requires the new element to have no attributes and no children: a constructor that adds one makes the browser report NotSupportedError and create an HTMLUnknownElement instead, so the component never renders. happy-dom and jsdom accept it, so unit tests pass and the error shows only in a browser. Code in a function or arrow the constructor defines runs later and is not reported.",
+    why: "A browser creates a custom element with document.createElement or the HTML parser and then requires the new element to have no attributes and no children: a constructor that adds one makes the browser report NotSupportedError and create an HTMLUnknownElement instead, so the component never renders. happy-dom and jsdom accept it, so unit tests pass and the error shows only in a browser. The initializers of instance fields run in the constructor too (x = this.classList.add(\"card\")) and are read with it. Code in a function or arrow the constructor or a field defines runs later and is not reported.",
     bad: `// card.ts
 constructor() {
   super();

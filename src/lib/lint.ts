@@ -591,9 +591,32 @@ function gates(line: string, ref: string, test: "differs" | "same", at?: number)
   return false;
 }
 
-const HOST_CALL = /\bthis\s*\.\s*(setAttribute|setAttributeNS|toggleAttribute|append|appendChild|prepend|replaceChildren|insertAdjacentElement|insertAdjacentHTML|insertAdjacentText)\s*\(/;
+const HOST_CALL = /\bthis\s*\.\s*(setAttribute|setAttributeNS|toggleAttribute|append|appendChild|prepend|insertBefore|replaceChildren|insertAdjacentElement|insertAdjacentHTML|insertAdjacentText)\s*\(/;
 const HOST_MEMBER = /\bthis\s*\.\s*(classList|dataset|style)\s*\.\s*\w+/;
 const HOST_PROPERTY = /\bthis\s*\.\s*(className|id|title|hidden|tabIndex|role|lang|dir|slot|inert|draggable|textContent|innerHTML|innerText|aria[A-Z]\w*)\s*=(?!=)/;
+
+/** The initializers of the instance fields of a class `body`, which run in the constructor. */
+function fieldInitializers(body: string): string {
+  let depth = 0;
+  let top = "";
+  for (let i = body.indexOf("{") + 1; i < body.length; i++) {
+    const end = skipNonCode(body, i);
+    if (end > i) {
+      if (depth === 0) top += body.slice(i, end);
+      i = end - 1;
+    } else if (body[i] === "{") {
+      if (depth++ === 0) top += "{}";
+    } else if (body[i] === "}") {
+      if (depth-- === 0) break;
+    } else if (depth === 0) top += body[i];
+  }
+  return top
+    .split(/;|\n/)
+    .map((m) => m.trim())
+    .filter((m) => !/^static\b/.test(m) && /^(?:(?:private|protected|public|readonly|declare|override)\s+)*#?[\w$]+\s*[?!]?\s*(?::[^=]*)?=(?![=>])/.test(m))
+    .map((m) => m.slice(m.indexOf("=") + 1))
+    .join(";\n");
+}
 
 /**
  * The first change to the element itself that the constructor of the class `body` makes when it runs (`this.setAttribute(`, `this.classList.add`, `this.id =`, ...), or undefined.
@@ -609,12 +632,10 @@ export function constructorHostChange(body: string): string | undefined {
       break;
     }
   }
-  if (!head) return undefined;
-  const params = matchClose(body, head.index + head[0].length - 1, "(", ")");
+  const params = head ? matchClose(body, head.index + head[0].length - 1, "(", ")") : -1;
   const open = params < 0 ? -1 : body.indexOf("{", params);
   const close = open < 0 ? -1 : matchClose(body, open, "{", "}");
-  if (close < 0) return undefined;
-  const ctor = body.slice(open + 1, close);
+  const ctor = `${close < 0 ? "" : body.slice(open + 1, close)};\n${fieldInitializers(body)}`;
   let code = "";
   for (let i = 0; i < ctor.length; i++) {
     const end = skipNonCode(ctor, i);
@@ -896,7 +917,7 @@ export function dataFlow(
     if (change)
       report(
         "constructor-host-change",
-        `The constructor runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
+        `The constructor, with the field initializers, runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
       );
   }
 

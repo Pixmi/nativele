@@ -223,9 +223,13 @@ describe("data-flow checks", () => {
   it("constructor-host-change: the constructor gives the element an attribute, class, style or child; code it defines for later does not count", () => {
     const at = (ctor: string) => flow(`class P extends Component(t) { constructor() { super(); ${ctor} } }`).filter((d) => d.rule === "constructor-host-change");
     for (const ctor of [`this.setAttribute("role", "list");`, `this.classList.add("card");`, `this.style.color = "red";`, `this.id = "x";`, `this.ariaLabel = "x";`, `this.append(document.createElement("b"));`]) expect(at(ctor), ctor).toHaveLength(1);
-    expect(at(`this.classList.add("card");`)[0]?.message).toMatch(/^The constructor runs this\.classList\.add, .*NotSupportedError.*Fix: do it in connected\(\)/);
+    expect(at(`this.classList.add("card");`)[0]?.message).toMatch(/^The constructor, with the field initializers, runs this\.classList\.add, .*NotSupportedError.*Fix: do it in connected\(\)/);
     for (const ctor of [`queueMicrotask(() => this.setAttribute("a", ""));`, `this.on(this, "x", () => { this.classList.add("y"); });`, `this.shadowRoot!.append(x);`, `if (this.id === "a") return;`, `const s = "this.append(x)";`]) expect(at(ctor), ctor).toEqual([]);
     expect(flow(`class P extends Component(t) { override connected(): void { this.classList.add("card"); } }`).filter((d) => d.rule === "constructor-host-change")).toEqual([]);
+    const fields = (members: string) => flow(`class P extends Component(t) { ${members} }`).filter((d) => d.rule === "constructor-host-change");
+    for (const members of [`readonly #mark = this.classList.add("card");`, `x: void = this.setAttribute("role", "list");`, `#slot = this.insertBefore(document.createElement("b"), null);`]) expect(fields(members), members).toHaveLength(1);
+    expect(at(`this.insertBefore(x, null);`)).toHaveLength(1);
+    for (const members of [`onClick = () => this.classList.add("x");`, `handler = () => { this.setAttribute("a", ""); };`, `static mark = this.name;`, `count = 0; label = "x";`, `go() { this.classList.add("x"); }`, `ok = this.id === "a";`]) expect(fields(members), members).toEqual([]);
     expect(flow(`class P extends Component(t) { /** Runs after the constructor() has returned. */ override connected(): void { this.classList.add("card"); } }`).filter((d) => d.rule === "constructor-host-change")).toEqual([]);
   });
   it("static-markup-in-code: an element created in the class and given fixed text or a fixed attribute", () => {
