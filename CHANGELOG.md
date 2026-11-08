@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.8
+
+### Added
+
+- Lint rule `static-markup-in-code` (data-flow, warning): a component class that creates an element with `document.createElement` and gives it a fixed text or attribute in the same block (`b.textContent = "Remove"`, `b.type = "button"`, `setAttribute` with a literal), structure the template can hold.
+- Lint rule `dom-node-in-state` (data-flow, warning): a `state` or `props` value that holds several DOM nodes (`[] as HTMLElement[]`, `new Set<HTMLElement>()`, a `DocumentFragment`), a copy of what the DOM holds; a single element such as an anchor is not reported.
+
+### Docs
+
+- `docs/design.md` states the design principles in five parts (HTML describes, TypeScript decides; the browser is the runtime; data flows one way; small surface, checked by tools; integrations stay at the edge).
+
 ## 0.7.7
 
 ### Fixes

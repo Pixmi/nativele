@@ -66,6 +66,7 @@ The compiler rejects these, and each error names the template (`template: "card.
 - Export the class passed to `define()`, or its tag is left out of `ts-dom-tags.ts` (`define-class-not-exported`): [checks](docs/tooling.md#errors-at-the-template).
 - Cancel a component's own request on removal: an `AbortController` made in `connected()`, aborted from `onCleanup`, `AbortError` ignored: [recipes](docs/recipes.md#cancelling-a-request-when-the-component-is-removed).
 - Write a form control's value in `render` only when it differs (`unguarded-input-value`): [form inputs](docs/components.md#a-small-reminder-about-form-inputs).
+- Write fixed structure in the template, not with `document.createElement` (`static-markup-in-code`), and keep data in state, not DOM nodes (`dom-node-in-state`): [design](docs/design.md#design-principles).
 - Loading and error states, modal dialogs, form validation, filtered lists: [recipes](docs/recipes.md) and `examples/recipes/` in the repository.
 - A table whose columns come from a config array: [recipes](docs/recipes.md#a-table-with-configurable-columns).
 - A component that is a control of a native `<form>`: [recipes](docs/recipes.md#a-form-control-of-your-own).

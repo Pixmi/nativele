@@ -174,6 +174,8 @@ export const DATA_FLOW_RULES = {
   "unknown-slot": "the child component or library element has no slot of this name, so the element is not shown",
   "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
+  "static-markup-in-code": "the class creates an element with document.createElement and gives it fixed text or a fixed attribute, structure the template can hold",
+  "dom-node-in-state": "state or a prop holds a collection of DOM nodes, a second copy of what the DOM holds",
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
@@ -642,6 +644,47 @@ export function constructorHostChange(body: string): string | undefined {
   return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
 }
 
+const DOM_NODE = /(?<![\w$.])((?:HTML|SVG|MathML)\w*Element|Element|Node|Text|DocumentFragment|NodeList|HTMLCollection)\b/;
+
+/** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy. */
+export function domCollection(value: string): string | undefined {
+  const typed = /\bas\s([\s\S]*)/.exec(value)?.[1] ?? "";
+  const generic = /\bnew\s+(?:Map|Set|WeakMap|WeakSet)\s*<([\s\S]*)/.exec(value)?.[1];
+  const node = DOM_NODE.exec(generic ?? typed)?.[1];
+  if (!node) return undefined;
+  return generic !== undefined || /^(?:DocumentFragment|NodeList|HTMLCollection)$/.test(node) || /\[\]|\b(?:Readonly)?Array\s*<|\b(?:Map|Set|WeakMap|WeakSet)\s*</.test(typed) ? node : undefined;
+}
+
+const LITERAL = String.raw`(?:"[^"\n]*"|'[^'\n]*'|` + "`[^`$]*`" + String.raw`)(?=\s*(?:[;,)}\n]|$))`;
+
+function blockEnd(code: string, from: number): number {
+  for (let i = from, depth = 0; i < code.length; i++) {
+    const skip = skipNonCode(code, i);
+    if (skip > i) i = skip - 1;
+    else if (code[i] === "{") depth++;
+    else if (code[i] === "}" && depth-- === 0) return i;
+  }
+  return code.length;
+}
+
+export function staticMarkup(body: string): { tag: string; write: string } | undefined {
+  let code = "";
+  for (let i = 0; i < body.length; i++) {
+    const end = skipNonCode(body, i);
+    if (end > i) {
+      code += body[i] === "/" ? " ".repeat(end - i) : body.slice(i, end);
+      i = end - 1;
+    } else code += body[i];
+  }
+  for (const m of code.matchAll(/(?<![\w$.])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:[\w$.]+\.)?(?:document|ownerDocument)\.createElement(?:NS\s*\([^,]*,|\s*\()\s*["']([\w-]+)["']/g)) {
+    const [decl, name, tag] = m as unknown as [string, string, string];
+    const scope = code.slice(m.index + decl.length, blockEnd(code, m.index));
+    const write = new RegExp(String.raw`(?<![\w$.])${esc(name)}\.(?:[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?\s*=(?!=)\s*${LITERAL}|setAttribute\(\s*["'][^"']+["']\s*,\s*${LITERAL}\s*\))`).exec(scope);
+    if (write) return { tag, write: write[0].replace(/\s+/g, " ") };
+  }
+  return undefined;
+}
+
 /**
  * Data-flow checks (suggestions, not errors).
  * - prop-forwarding: a child's prop is assigned straight from one of this component's own props
@@ -652,6 +695,8 @@ export function constructorHostChange(body: string): string | undefined {
  * - unknown-prop / invalid-prop-value / unknown-event / unknown-slot: the attributes, events and slot names written on a child tag do not match
  *   what the child component or the library element's manifest declares (needs `contracts`, see contractsFor)
  * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
+ * - static-markup-in-code: an element the class creates gets a fixed text or attribute
+ * - dom-node-in-state: a state or prop value holds several DOM nodes
  */
 export function dataFlow(
   html: string,
@@ -837,6 +882,28 @@ export function dataFlow(
         "constructor-host-change",
         `The constructor runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
       );
+  }
+
+  for (const { body } of classes) {
+    const fixed = staticMarkup(body);
+    if (fixed)
+      report(
+        "static-markup-in-code",
+        `The class creates <${fixed.tag}> with document.createElement and gives it a fixed value (${fixed.write}). Structure built in TypeScript is hidden from codegen, tsc and lint, and fixed text and attributes are markup. Fix: write the element in the template; for one per item, put it in a <template data-each> and fill it with this.lists.<name>.replace(...), with holes for what changes. Structure lives in the template: https://github.com/Pixmi/nativele/blob/main/docs/design.md#html-describes-typescript-decides`,
+      );
+  }
+
+  for (const { call } of classes) {
+    for (const option of ["state", "props"] as const) {
+      for (const { key, value } of optionEntries(call, option)) {
+        const type = value && domCollection(value);
+        if (!type) continue;
+        report(
+          "dom-node-in-state",
+          `The ${option === "state" ? "state" : "prop"} "${key}" holds ${type} values. The DOM already holds the nodes, so a copy in ${option} has to be kept in step with it by hand. Fix: keep the data the nodes show in ${option}, and let the template (holes, data-if, a data-each list) or render() through this.refs change the DOM from it. The DOM is the view: https://github.com/Pixmi/nativele/blob/main/docs/design.md#the-browser-is-the-runtime`,
+        );
+      }
+    }
   }
 
   for (const { call, body } of classes) {
