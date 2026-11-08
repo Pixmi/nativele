@@ -281,7 +281,7 @@ import tpl from "./card.html.js";`,
 
   // DATA_FLOW_RULES
   "prop-forwarding": {
-    why: "Props go down one level. Handing your own prop straight to a child is prop drilling and hides where the data really comes from; use a shared store or have the parent that owns the data set the child.",
+    why: "Props go down one level. Handing your own prop straight to a child is prop drilling and hides where the data really comes from; use a shared store or have the parent that owns the data set the child. The rule does not fit a prop that an interface the component implements requires it to take and hand on, such as a flag a plugin system passes to every message renderer, which a renderer gives to its own slots: the value belongs to that one element, so a store does not fit either. Keep it a prop, forward it in render(), and leave this id out for that file (ignore: [\"prop-forwarding\"] in an oxlint override), rather than hiding the forwarding in a hand-written setter the rule does not see.",
     bad: `// panel.ts (props: { name: string })
 render(view) { this.refs.kid.name = view.name; }`,
     good: `// panel.ts: fill the child from data this component owns

@@ -28,6 +28,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - A list or `data-if` of a parent template written directly inside a Light DOM component with slots puts its elements straight into their slot. Before, each `items =`, `replace()` or `data-if` inserted them at the top level of the element first, and the slot moved them in afterwards: in a browser without `moveBefore` they were disconnected and connected again (losing focus, running `connected()` twice), and a list moved its items out of the slot on every update.
 - `dom-node-in-state` no longer reports a prop or state typed as a function that returns nodes (`null as (() => Node | readonly Node[]) | null`).
 
+### Docs
+
+- A parent gives a child data through its props, also in its first render, where the child has no `refs` or `lists` yet; a setter of the child's own that reaches its `refs` throws there.
+- `npx ts-dom rules --explain=prop-forwarding` says where the rule does not fit: a prop an implemented interface requires the component to take and hand on.
+
 ## 0.7.8
 
 ### Added
