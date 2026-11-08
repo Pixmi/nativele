@@ -1,5 +1,5 @@
 import { mountConds } from "./cond.ts";
-import { fromTemplate } from "./slots.ts";
+import { anchorSlot, fromTemplate } from "./slots.ts";
 import { mountHoles } from "./text.ts";
 import type { IsAny } from "./template.ts";
 import type { TextValue } from "./text.ts";
@@ -81,7 +81,9 @@ export class List<L extends ListSchema = ListSchema> {
     /** Called when a new item is created (the component uses it to register data-on-* inside the item) */
     private readonly onCreate?: (el: Element) => void,
     private readonly binding?: { readonly key: string; readonly prop: string },
-  ) {}
+  ) {
+    anchorSlot.set(anchor, proto.getAttribute("slot") ?? "");
+  }
 
   /**
    * The items shown, in order. Assigning shows them: an element is kept for each key that stays, created for a new key and removed for a key that is gone, and the `data-prop` property receives each item that is not the same object as last time.

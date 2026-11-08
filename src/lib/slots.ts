@@ -27,6 +27,9 @@ function move(n: Node, end: Node): void {
 /** The nodes a Nativele list or data-if put in after a component was built: content written in HTML, which the slots of a Light DOM element around it take, as they take the element's children when it is built. */
 export const fromTemplate = new WeakSet<Node>();
 
+/** The slot each anchor of a Nativele list or data-if serves: the slot its elements go to. A Light DOM element puts the anchor in that slot's range, so the list and data-if insert their elements straight into the slot. */
+export const anchorSlot = new WeakMap<Comment, string>();
+
 /** The tags `unplaced-child` was logged for. */
 const warnedForeign = new Set<string>();
 
@@ -58,7 +61,8 @@ export class LightSlots {
     for (const n of given) this.#given.add(n);
     for (const el of frag.querySelectorAll("slot")) {
       const name = el.getAttribute("name") ?? "";
-      const nodes = given.filter((n) => slotOf(n) === name);
+      const placed = given.filter((n) => slotOf(n) === name || (n instanceof Comment && anchorSlot.get(n) === name));
+      const nodes = placed.filter((n) => slotOf(n) === name);
       const start = document.createComment(`slot:${name}`);
       const end = document.createComment(`/slot:${name}`);
       const fallback = [...el.childNodes];
@@ -68,13 +72,13 @@ export class LightSlots {
         parked = document.createDocumentFragment();
         parked.append(...fallback);
       }
-      el.replaceWith(start, ...(nodes.length ? nodes : fallback), end);
+      el.replaceWith(start, ...(nodes.length ? placed : [...placed, ...fallback]), end);
       this.#slots.push({ name, start, end, parked, assigned: nodes });
     }
     for (const n of frag.childNodes) if (!user.has(n)) this.own(n);
     for (const n of given) if (slotOf(n) !== null && !this.#slots.some((s) => s.name === slotOf(n))) this.#drop(n);
     // A comment is no slot's content but stays a child of the host, as natively: a framework may keep an anchor there.
-    frag.append(...given.filter((n) => n instanceof Comment));
+    frag.append(...given.filter((n) => n instanceof Comment && !this.#slots.some((s) => s.name === anchorSlot.get(n))));
   }
 
   /** A child that other code (a framework, appendChild) added after the element was built stays where it was put; Light DOM slots take only content written in HTML. Said once per tag. */

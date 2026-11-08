@@ -72,6 +72,59 @@ describe("Real browser: Light DOM", () => {
   });
 });
 
+describe("a parent template's list and data-if inside a Light DOM slot component", () => {
+  it("put their elements straight into the slot, never at the top level of the element first", async () => {
+    const out = await page.evaluate(async () => {
+      const tick = () => new Promise((r) => setTimeout(r));
+      const p = document.createElement("light-card-list-parent") as HTMLElement & { fill(n: string[]): void; set(s: { on: boolean }): void; refs: { kid: HTMLElement } };
+      document.body.append(p);
+      p.fill(["a", "b"]);
+      await tick();
+      const kid = p.refs.kid;
+      let topLevel = 0;
+      const watch = new MutationObserver((records) => {
+        for (const r of records) topLevel += [...r.addedNodes].filter((n) => n instanceof Element).length;
+      });
+      watch.observe(kid, { childList: true });
+      p.fill(["c", "a", "b"]);
+      p.fill(["b", "a", "c"]);
+      p.set({ on: true });
+      await tick();
+      watch.disconnect();
+      const main = [...kid.querySelectorAll("main i")].map((n) => n.textContent);
+      const head = kid.querySelector("header")?.textContent;
+      p.remove();
+      return { topLevel, main, head };
+    });
+    expect(out).toEqual({ topLevel: 0, main: ["b", "a", "c"], head: "N" });
+  });
+});
+
+describe("a parent template's list and data-if inside a slot that the component keeps out of the document", () => {
+  it("land in the slot while it is out, and connect once when it is put back", async () => {
+    const out = await page.evaluate(async () => {
+      const tick = () => new Promise((r) => setTimeout(r));
+      const counter = (window as unknown as { CountConnects: { connects: number } }).CountConnects;
+      const p = document.createElement("b-modal-parent") as HTMLElement & { fill(n: string[]): void; set(s: { on: boolean }): void; refs: { dlg: HTMLElement & { open(): void; refs: { content: HTMLElement } } } };
+      document.body.append(p);
+      p.fill(["a", "b"]);
+      p.set({ on: true });
+      await tick();
+      const whileOut = counter.connects;
+      const dlg = p.refs.dlg;
+      dlg.open();
+      await tick();
+      const content = dlg.refs.content;
+      const items = [...content.querySelectorAll("i")].map((n) => n.textContent);
+      const counted = !!content.querySelector("b-count-connects");
+      const connects = counter.connects;
+      p.remove();
+      return { whileOut, connects, items, counted };
+    });
+    expect(out).toEqual({ whileOut: 0, connects: 1, items: ["a", "b"], counted: true });
+  });
+});
+
 describe("Real browser: assignedNodes", () => {
   it("assignedNodes is consistent between light and shadow", async () => {
     const r = await page.evaluate(() => {
@@ -265,6 +318,24 @@ describe("components the parser creates inside each other", () => {
   it("a Light DOM component inside another starts once", async () => {
     const seen = await page.evaluate(() => (document.getElementById("parsed-kid") as HTMLElement & { seen: string[] }).seen);
     expect(seen).toEqual(["render:", "connected:"]);
+  });
+});
+
+describe("a component moved out and back in", () => {
+  it.each(["b-order-light", "b-order-shadow"])("%s runs connected() after the components inside it, on every connection", async (tag) => {
+    const log = await page.evaluate((tag) => {
+      const w = window as Window & { orderLog?: string[] };
+      w.orderLog = [];
+      const el = document.createElement(tag);
+      document.body.append(el);
+      el.remove();
+      document.body.append(el);
+      el.remove();
+      const out = w.orderLog;
+      delete w.orderLog;
+      return out;
+    }, tag);
+    expect(log).toEqual(["child", "parent", "child", "parent"]);
   });
 });
 

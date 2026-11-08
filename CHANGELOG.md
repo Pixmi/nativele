@@ -11,6 +11,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.9
+
+### Added
+
+- A component class's type declares `attributeChangedCallback` and the static `observedAttributes`, so a subclass can write `static override get observedAttributes() { return [...super.observedAttributes, "class"]; }` and `super.attributeChangedCallback(name, oldValue, newValue)`, which did not compile before.
+- Lint rule `callback-without-super` (data-flow, warning): a component class that overrides `connectedCallback`, `disconnectedCallback` or `attributeChangedCallback` without calling `super`, or replaces `static observedAttributes` without `super.observedAttributes`; a prop written as an attribute then keeps its default, or the component does not start, with no error.
+
+### Changed
+
+- **Breaking**: on every connection, the components inside a component run `connected()` before it, in Light DOM and Shadow DOM. Before, a component moved out and back in ran `connected()` before the ones inside it, the reverse of its first start, and a Shadow DOM component ran it before the components of its shadow tree even the first time; a parent that changed a child's elements in `connected()` was then undone by the child's own `connected()`. happy-dom ran them in yet another order.
+
+### Fixes
+
+- `ts-dom doctor` no longer reports `vite-plugin-missing` for a Vite or Vitest config that gets `tsDom()` from a helper module: it follows the config's relative imports, up to three deep, to the import of `@nativele/ts-dom/vite`.
+- `constructor-host-change` also reports `this.insertBefore(...)`, and an instance field initializer that changes the element (`#mark = this.classList.add("card")`), since field initializers run in the constructor.
+- A list or `data-if` of a parent template written directly inside a Light DOM component with slots puts its elements straight into their slot. Before, each `items =`, `replace()` or `data-if` inserted them at the top level of the element first, and the slot moved them in afterwards: in a browser without `moveBefore` they were disconnected and connected again (losing focus, running `connected()` twice), and a list moved its items out of the slot on every update.
+- `dom-node-in-state` no longer reports a prop or state typed as a function that returns nodes (`null as (() => Node | readonly Node[]) | null`).
+
+### Docs
+
+- A parent gives a child data through its props, also in its first render, where the child has no `refs` or `lists` yet; a setter of the child's own that reaches its `refs` throws there.
+- `npx ts-dom rules --explain=prop-forwarding` says where the rule does not fit: a prop an implemented interface requires the component to take and hand on.
+
 ## 0.7.8
 
 ### Added

@@ -110,6 +110,19 @@ function importsTagMap(file: string, tagMap: string): boolean {
 const templateFolders =(dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
 const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
 
+/** Whether a config imports the ts-dom Vite plugin, itself or through the modules it imports by a relative path (a helper that returns tsDom()), up to three imports deep. */
+function usesVitePlugin(file: string, text: string, depth = 0, seen = new Set<string>()): boolean {
+  if (/@nativele\/ts-dom\/vite|vite-plugin(\.ts)?["']/.test(text)) return true;
+  if (depth >= 3) return false;
+  seen.add(file);
+  for (const m of text.matchAll(/\bfrom\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+    const base = resolve(dirname(file), m[1] as string);
+    const found = [base, ...[".ts", ".mts", ".js", ".mjs"].map((e) => base.replace(/\.[cm]?js$/, "") + e), ...["ts", "js"].map((e) => join(base, `index.${e}`))].find((f) => !seen.has(f) && existsSync(f) && statSync(f).isFile());
+    if (found && usesVitePlugin(found, readText(found) ?? "", depth + 1, seen)) return true;
+  }
+  return false;
+}
+
 /** Check the project set-up an agent or a developer could get wrong; every issue names its rule and ends with a Fix hint. */
 export function runDoctor(options: DoctorOptions): LintIssue[] {
   const cwd = options.cwd ?? process.cwd();
@@ -226,12 +239,12 @@ export function runDoctor(options: DoctorOptions): LintIssue[] {
 
   const viteConfig = ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs"].map((n) => join(cwd, n)).find((f) => existsSync(f));
   const vite = viteConfig ? (readText(viteConfig) as string) : null;
-  if (viteConfig && vite !== null && !/@nativele\/ts-dom\/vite|vite-plugin(\.ts)?["']/.test(vite)) {
+  if (viteConfig && vite !== null && !usesVitePlugin(viteConfig, vite)) {
     add("vite-plugin-missing", "warning", 'The Vite config does not use the ts-dom plugin, so templates are not regenerated while the dev server runs. Fix: import { tsDom } from "@nativele/ts-dom/vite" and add tsDom() to plugins.', { file: rel(viteConfig) });
   }
   const vitestConfig = ["ts", "mts", "cts", "js", "mjs", "cjs"].map((ext) => join(cwd, `vitest.config.${ext}`)).find((f) => existsSync(f));
   const vitest = vitestConfig ? (readText(vitestConfig) as string) : null;
-  if (vitestConfig && vitest !== null && !/@nativele\/ts-dom\/vite|vite-plugin(\.ts)?["']/.test(vitest) && !/["']\.\/vite\.config(\.[cm]?[jt]s)?["']/.test(vitest)) {
+  if (vitestConfig && vitest !== null && !usesVitePlugin(vitestConfig, vitest) && !/["']\.\/vite\.config(\.[cm]?[jt]s)?["']/.test(vitest)) {
     add("vite-plugin-missing", "warning", `${rel(vitestConfig)} replaces the Vite config for Vitest and does not use the ts-dom plugin, so the templates are not generated when the tests start and a clean checkout fails to resolve ./x.html.js. Fix: add tsDom() to its plugins, or merge the Vite config into it: mergeConfig(viteConfig, defineConfig({ test: { ... } })) with viteConfig imported from "./vite.config".`, { file: rel(vitestConfig) });
   }
 

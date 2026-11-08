@@ -1,4 +1,4 @@
-import { fromTemplate } from "./slots.ts";
+import { anchorSlot, fromTemplate } from "./slots.ts";
 interface Cond {
   el: Element;
   anchor: Comment;
@@ -18,6 +18,7 @@ export function mountConds(root: ParentNode): Conds {
   for (const el of root.querySelectorAll("[data-if]")) {
     const name = el.getAttribute("data-if") as string;
     const anchor = document.createComment(`if:${name}`);
+    anchorSlot.set(anchor, el.getAttribute("slot") ?? "");
     el.before(anchor);
     map.set(name, [...(map.get(name) ?? []), { el, anchor }]);
   }

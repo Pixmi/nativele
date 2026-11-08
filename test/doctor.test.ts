@@ -168,6 +168,14 @@ describe("ts-dom doctor: a Vitest config without the plugin", () => {
     expect(missing(project({ ...base, "vitest.config.ts": `import { defineConfig, mergeConfig } from "vitest/config";\nimport viteConfig from "./vite.config";\nexport default mergeConfig(viteConfig, defineConfig({ test: {} }));` }))).toEqual([]);
     expect(missing(project(base))).toEqual([]);
   });
+
+  it("follows the relative imports of a config to a helper that returns tsDom(), up to three deep", () => {
+    const helper = { "scripts/templates.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport const templatePlugins = (dirs: string[]) => dirs.map((d) => tsDom({ dirs: [d] }));` };
+    const vite = `import { templatePlugins } from "./scripts/templates";\nexport default { plugins: [...templatePlugins(["src"])] };`;
+    expect(missing(project({ ...base, ...helper, "vite.config.ts": vite }))).toEqual([]);
+    expect(missing(project({ ...base, ...helper, "vitest.config.ts": `import { pluginConfig } from "./vitest.projects.js";\nexport default pluginConfig();`, "vitest.projects.ts": `import { templatePlugins } from "./scripts/templates";\nexport const pluginConfig = () => ({ plugins: templatePlugins(["src"]) });` }))).toEqual([]);
+    expect(missing(project({ ...base, "scripts/templates.ts": "export const templatePlugins = () => [];", "vite.config.ts": vite }))).toMatchObject([{ file: "vite.config.ts" }]);
+  });
 });
 
 describe("ts-dom doctor: whitespace asked for and whitespace on disk", () => {

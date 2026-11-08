@@ -35,7 +35,7 @@ export const expected = {
     sameOrder: { layout: ["h2:head", "<!--each:rows-->", ...slotted("u:B", "u:A")], assigned: ["B", "A"], changes: [] },
   },
   "a child appended while the element is disconnected is slotted when it is connected again": {
-    template: { layout: ["h2:head", "<!--each:rows-->", ...slotted("u:P"), "<!--if:on-->"], assigned: ["P"], changes: [""] },
+    template: { layout: ["h2:head", "<!--each:rows-->", ...slotted("<!--if:on-->", "u:P")], assigned: ["P"], changes: [""] },
     given: { layout: ["h2:head", "<!--each:rows-->", ...slotted("u:G")], assigned: ["G"], changes: [""] },
   },
   "a hidden data-if in a slot fallback stays hidden when the fallback comes back": {
@@ -61,18 +61,18 @@ export const expected = {
     warnings: ["<tl-foreign>: [unplaced-child]"],
   },
   "a parent template's data-if inside the tag, shown after the element was built, lands in its slot and fires slotchange": {
-    before: { layout: ["h2:head", "<!--each:rows-->", ...slotted(), "<!--if:on-->"], assigned: [], changes: [] },
-    shown: { layout: ["h2:head", "<!--each:rows-->", ...slotted("u:P"), "<!--if:on-->"], assigned: ["P"], changes: [""] },
-    hidden: { layout: ["h2:head", "<!--each:rows-->", ...slotted(), "<!--if:on-->"], assigned: [], changes: [""] },
+    before: { layout: ["h2:head", "<!--each:rows-->", ...slotted("<!--if:on-->")], assigned: [], changes: [] },
+    shown: { layout: ["h2:head", "<!--each:rows-->", ...slotted("<!--if:on-->", "u:P")], assigned: ["P"], changes: [""] },
+    hidden: { layout: ["h2:head", "<!--each:rows-->", ...slotted("<!--if:on-->")], assigned: [], changes: [""] },
   },
   "a parent template's data-each inside the tag puts its items into the slot their slot attribute names": {
     first: {
-      e: { layout: ["h2:head", "<!--each:rows-->", ...slotted("i:r1", "i:r2"), "<!--each:rows-->"], assigned: ["r1", "r2"], changes: [] },
-      n: { layout: ["h2:head", "<!--each:rows-->", "<!--slot:x-->", "b:r3", "<!--/slot:x-->", "<!--each:named-->"], x: ["r3"], changes: [] },
+      e: { layout: ["h2:head", "<!--each:rows-->", ...slotted("i:r1", "i:r2", "<!--each:rows-->")], assigned: ["r1", "r2"], changes: [] },
+      n: { layout: ["h2:head", "<!--each:rows-->", "<!--slot:x-->", "b:r3", "<!--each:named-->", "<!--/slot:x-->"], x: ["r3"], changes: [] },
     },
     after: {
-      e: { layout: ["h2:head", "<!--each:rows-->", ...slotted("i:r2", "i:r4", "i:r1"), "<!--each:rows-->"], assigned: ["r2", "r4", "r1"], changes: [""] },
-      n: { layout: ["h2:head", "<!--each:rows-->", "<!--slot:x-->", "<!--/slot:x-->", "<!--each:named-->"], x: [], changes: ["x"] },
+      e: { layout: ["h2:head", "<!--each:rows-->", ...slotted("i:r2", "i:r4", "i:r1", "<!--each:rows-->")], assigned: ["r2", "r4", "r1"], changes: [""] },
+      n: { layout: ["h2:head", "<!--each:rows-->", "<!--slot:x-->", "<!--each:named-->", "<!--/slot:x-->"], x: [], changes: ["x"] },
     },
   },
 };

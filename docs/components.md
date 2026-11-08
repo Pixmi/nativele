@@ -89,7 +89,7 @@ Provided members:
 
 `this.on()` types the listener's parameter like a `data-on-*` handler's. On an element, an unannotated parameter gets the type `HTMLElementEventMap` lists for the name. A parameter typed narrower than `Event` must accept the event the target declares: its `emits`, its `on<name>` property, then `HTMLElementEventMap`. A name the target does not declare is not checked: type the parameter as the event it is, such as `(e: CustomEvent<{ id: number }>)` or `EmitEvent<Child, "x">`.
 
-The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`, which the component type declares. Override `connected()` and `disconnected()`; an override of the callbacks themselves must call `super`.
+The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`, which the component type declares. Override `connected()` and `disconnected()`; an override of the callbacks themselves, or of `attributeChangedCallback`, must call `super`, and a `static observedAttributes` of your own must extend `super.observedAttributes`, or the component stops starting or stops reading props from attributes (lint: `callback-without-super`).
 
 Children a framework or your code adds after the element is connected are placed in their slot in a microtask (a `MutationObserver` in Light mode, native `slotchange` in Shadow mode). Read `assignedNodes`, or assert in a test, after `await Promise.resolve()`.
 
@@ -104,7 +104,7 @@ Set the element's own class, role and other attributes in `connected()`. A templ
 
 A Light DOM component builds its content when it is connected. While the document is still being parsed, it waits for `DOMContentLoaded`, so that its children have arrived. A `shadow: true` component builds its content into its shadow root in the constructor.
 
-In both modes the child components of the template start after the parent's first render, so each child first renders with the props that render gives it. A child builds its own content when it starts, so in the parent's first render it has no `refs` of its own yet: set its props there, and call its methods from a later render or an event handler. In Light mode the children have started by the time the parent's `connected()` runs; in Shadow mode they start after it.
+In both modes the child components of the template start after the parent's first render, so each child first renders with the props that render gives it. A child builds its own content when it starts, so in the parent's first render it has no `refs` or `lists` of its own yet: give it data through its props there, never through a setter or method of its own that reaches its `refs`, and call its methods from a later render or an event handler. On every connection, the first and each time the element is moved back in, the components inside run `connected()` before the parent's `connected()`, in both modes. A parent changes a child through its props, not by writing to the child's elements in `connected()`, where the child's own `connected()` has already run.
 
 So an element made with `document.createElement` in Light mode has no children, and empty `refs` and `text`, until it is appended to the document. Set props before that, and read the DOM after it.
 
@@ -467,6 +467,7 @@ The same `data-flow` group checks the parent's HTML against each child's `props`
 - a constructor that changes the element itself (`constructor-host-change`), which makes a browser create an unknown element instead
 - an element the class builds with `document.createElement` and gives fixed text or a fixed attribute (`static-markup-in-code`), structure the template can hold
 - state or a prop that holds a collection of DOM nodes (`dom-node-in-state`), a copy of what the DOM holds
+- a Custom Elements callback or `observedAttributes` overridden without `super` (`callback-without-super`)
 
 `npx ts-dom rules` lists every rule, and `npx ts-dom rules --explain=<id>` explains one with an example. The tables in [Lint](tooling.md#lint-optional) cover what each rule reads.
 

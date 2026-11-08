@@ -281,7 +281,7 @@ import tpl from "./card.html.js";`,
 
   // DATA_FLOW_RULES
   "prop-forwarding": {
-    why: "Props go down one level. Handing your own prop straight to a child is prop drilling and hides where the data really comes from; use a shared store or have the parent that owns the data set the child.",
+    why: "Props go down one level. Handing your own prop straight to a child is prop drilling and hides where the data really comes from; use a shared store or have the parent that owns the data set the child. The rule does not fit a prop that an interface the component implements requires it to take and hand on, such as a flag a plugin system passes to every message renderer, which a renderer gives to its own slots: the value belongs to that one element, so a store does not fit either. Keep it a prop, forward it in render(), and leave this id out for that file (ignore: [\"prop-forwarding\"] in an oxlint override), rather than hiding the forwarding in a hand-written setter the rule does not see.",
     bad: `// panel.ts (props: { name: string })
 render(view) { this.refs.kid.name = view.name; }`,
     good: `// panel.ts: fill the child from data this component owns
@@ -302,7 +302,7 @@ inc() { this.count = this.count + 1; }`,
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
   "constructor-host-change": {
-    why: "A browser creates a custom element with document.createElement or the HTML parser and then requires the new element to have no attributes and no children: a constructor that adds one makes the browser report NotSupportedError and create an HTMLUnknownElement instead, so the component never renders. happy-dom and jsdom accept it, so unit tests pass and the error shows only in a browser. Code in a function or arrow the constructor defines runs later and is not reported.",
+    why: "A browser creates a custom element with document.createElement or the HTML parser and then requires the new element to have no attributes and no children: a constructor that adds one makes the browser report NotSupportedError and create an HTMLUnknownElement instead, so the component never renders. happy-dom and jsdom accept it, so unit tests pass and the error shows only in a browser. The initializers of instance fields run in the constructor too (x = this.classList.add(\"card\")) and are read with it. Code in a function or arrow the constructor or a field defines runs later and is not reported.",
     bad: `// card.ts
 constructor() {
   super();
@@ -340,7 +340,7 @@ override render(view) {
 </template>`,
   },
   "dom-node-in-state": {
-    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a set of nodes keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Read is the type written with as, or the type argument of new Set<...> or new Map<...> when it has one parameter: an array, ReadonlyArray, Map or Set of an element interface (HTML, SVG or MathML), Element, Node or Text, an object array that holds one, a DocumentFragment, NodeList or HTMLCollection. A single element, such as an anchor a parent passes to a popover, is a reference to a node, not a copy, and is not reported.",
+    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a set of nodes keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Read is the type written with as, or the type argument of new Set<...> or new Map<...> when it has one parameter: an array, ReadonlyArray, Map or Set of an element interface (HTML, SVG or MathML), Element, Node or Text, an object array that holds one, a DocumentFragment, NodeList or HTMLCollection. A single element, such as an anchor a parent passes to a popover, is a reference to a node, not a copy, and a function type that returns nodes (() => Node[]) holds none: neither is reported.",
     bad: `// order-stats.ts
 class OrderStats extends Component(tpl, {
   state: { children: [] as HTMLElement[] },
@@ -350,6 +350,22 @@ class OrderStats extends Component(tpl, {
   props: { orders: [] as readonly Order[] },
   derive: { count: (v) => v.orders.length },
 }) {}`,
+  },
+  "callback-without-super": {
+    why: "A component does its own work in the Custom Elements callbacks: connectedCallback and disconnectedCallback start and stop it (its first render, bind, on, onCleanup, connected() and disconnected()), and attributeChangedCallback reads a prop from its attribute, for the attributes the static observedAttributes lists. A subclass that overrides one of them without calling super, or replaces observedAttributes without super.observedAttributes, turns that off without an error: a prop written as an attribute in HTML keeps its default. Read is a method of that name in the class body without super.<name>( in it, and a static observedAttributes getter or field without super.observedAttributes.",
+    bad: `// dialog.ts
+static observedAttributes = ["class"];
+attributeChangedCallback(name: string) {
+  if (name === "class") this.sync();
+}`,
+    good: `// dialog.ts
+static override get observedAttributes() {
+  return [...super.observedAttributes, "class"];
+}
+override attributeChangedCallback(name: string, old: string | null, value: string | null) {
+  super.attributeChangedCallback(name, old, value);
+  if (name === "class") this.sync();
+}`,
   },
   "unchecked-custom-elements": {
     why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). The child's define() is read from the scanned folders and from the Nativele component packages the template's package depends on (those that list @nativele/ts-dom, read from the modules their exports name). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders or such a package and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, a component outside the scanned folders, or one of a package the template's package does not list), a tag declared only in TypeScript (a customElements.define() call or an HTMLElementTagNameMap entry, which names the tag but none of its attributes, events or slots), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) (a plain custom element), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests or two component packages of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
@@ -763,7 +779,7 @@ npx ts-dom check`,
 "typecheck": "ts-dom check src"`,
   },
   "vite-plugin-missing": {
-    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout.",
+    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout. The plugin counts as used when the config imports @nativele/ts-dom/vite, or imports by a relative path a module that does (a helper that returns tsDom()), up to three imports deep.",
     bad: `// vite.config.ts
 export default defineConfig({ plugins: [] });
 // vitest.config.ts next to a vite.config.ts that has tsDom()

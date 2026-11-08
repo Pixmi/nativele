@@ -37,6 +37,22 @@ function waitingFor(el: Element): Element | undefined {
   return undefined;
 }
 
+function componentsInside(root: Element): Element[] {
+  const out: Element[] = [];
+  const walk = (parent: ParentNode): void => {
+    for (const el of parent.children) {
+      if (starters.has(el)) out.push(el);
+      else {
+        walk(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    }
+  };
+  walk(root);
+  if (root.shadowRoot) walk(root.shadowRoot);
+  return out;
+}
+
 /** Throw `errors` as one error: the error itself when there is one. */
 function rethrow(errors: unknown[], message: string): void {
   if (errors.length === 1) throw errors[0];
@@ -199,6 +215,8 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
   /** The Custom Elements callbacks the component implements. Override connected() and disconnected() instead; an override of these must call super. */
   connectedCallback(): void;
   disconnectedCallback(): void;
+  /** Reads a prop from its attribute, for the attributes `observedAttributes` lists; an override must call super. */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void;
   /** Keeps a component moved with moveBefore connected, with its state, focus and subscriptions. */
   connectedMoveCallback(): void;
   /** Light mode: called when slot content changes after creation (the initial assignment does not trigger it). */
@@ -268,12 +286,17 @@ type Listener<V, E> = [V] extends [never] ? E : true extends AnyPayload<V> ? (E 
  */
 export type EventOf<T, N extends string> = [EmitEvent<T, N>] extends [never] ? ([OnProperty<T, N>] extends [never] ? FromEventMap<T, N> : OnProperty<T, N>) : EmitEvent<T, N>;
 
+/** The attributes of the props, which the component observes; a static observedAttributes of a subclass extends super.observedAttributes. */
+export interface ObservedAttributes {
+  readonly observedAttributes: string[];
+}
+
 export function Component<S extends Schema>(
   tpl: Template<S>,
   // The data options are explicitly excluded so that an options object that has them never matches this overload;
   // otherwise TypeScript tries this overload first and cannot infer the type of the parameter of `derive`.
   opts?: ComponentOptions & { state?: never; props?: never; derive?: never; emits?: never },
-): Untyped<S> extends true ? { anyInContract: "template" } : new () => ComponentInstance<S>;
+): Untyped<S> extends true ? { anyInContract: "template" } : (new () => ComponentInstance<S>) & ObservedAttributes;
 /**
  * With the `state` / `props` / `derive` / `emits` options, {{ holes }} and data-if in the HTML bind to same-named data.
  * When something is wrong the return type becomes an object type describing the problem, so
@@ -292,7 +315,7 @@ export function Component<
 >(
   tpl: Template<S>,
   opts: DataOptions<St, P, R, E>,
-): IsClean<Problems<S, St, P, R, E>> extends true ? new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P> : Problems<S, St, P, R, E> & { template: S["file"] };
+): IsClean<Problems<S, St, P, R, E>> extends true ? (new () => StatefulInstance<S, St, P, R, E> & PropAccessors<P>) & ObservedAttributes : Problems<S, St, P, R, E> & { template: S["file"] };
 export function Component(
   tpl: Template<Schema>,
   opts: ComponentOptions & {
@@ -356,6 +379,7 @@ export function Component(
     #waitingForParse = false;
 
     #started = false;
+    #live = false;
 
     #state: Record<string, unknown> = { ...(opts.state as Record<string, unknown> | undefined) };
     #props: Record<string, unknown> = { ...propDefaults };
@@ -390,7 +414,7 @@ export function Component(
       unstarted.set(this, []);
       starters.set(this, () => {
         this.#queued = false;
-        if (this.isConnected) this.#start();
+        if (this.isConnected && !this.#waitingForParse) this.#start();
       });
       // A prop assigned before the element was upgraded became an own property that shadows the accessor: take the value back and delete it
       for (const k of propKeys) {
@@ -623,8 +647,8 @@ export function Component(
     }
 
     #start(): void {
+      if (this.#live) return;
       const errors: unknown[] = [];
-      const first = !this.#started;
       let begun = false;
       try {
         this.#begin();
@@ -632,19 +656,19 @@ export function Component(
       } catch (e) {
         errors.push(e);
       }
-      if (first) {
-        const waiting = unstarted.get(this) ?? [];
-        unstarted.delete(this);
-        for (const el of waiting) {
-          try {
-            starters.get(el)?.();
-          } catch (e) {
-            errors.push(e);
-          }
+      // The components inside start before connected(), on every connection: a browser runs the connectedCallback of a tree moved in, and of a shadow tree #begin built, from the outside in.
+      const waiting = unstarted.get(this) ?? [];
+      unstarted.delete(this);
+      for (const el of new Set([...componentsInside(this), ...waiting])) {
+        try {
+          starters.get(el)?.();
+        } catch (e) {
+          errors.push(e);
         }
       }
       if (begun) {
         this.#slots?.observe();
+        this.#live = true;
         try {
           this.connected();
         } catch (e) {
@@ -683,6 +707,7 @@ export function Component(
     disconnectedCallback(): void {
       // A component removed while it waited for the component around it never started: there is nothing to undo.
       if (!this.#started) return;
+      this.#live = false;
       this.#slots?.disconnect();
       const errors: unknown[] = [];
       for (const fn of [...this.#cleanups.splice(0), () => this.disconnected()]) {
