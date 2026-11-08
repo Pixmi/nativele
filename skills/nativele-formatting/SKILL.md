@@ -4,7 +4,7 @@ description: "Keep a formatter (oxfmt, Prettier, vp fmt) and Nativele (@nativele
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "oxfmt@0.76.0 prettier@3.9.10 vite-plus@1.5.0 typescript@6.0.3"
   author: "Nativele maintainers"
   detects: "prettier oxfmt"
@@ -27,7 +27,7 @@ Why it matters: `ts-dom gen` turns every text node of a template into data, incl
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | oxfmt | 0.76.0 |
 | prettier | 3.9.10 |
 | vite-plus | 1.5.0 (`vp fmt` runs oxfmt 0.76.0) |

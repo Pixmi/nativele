@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | zustand (`zustand/vanilla`) | 5.0.16 |
 | @reduxjs/toolkit | 2.14.0 |
 | redux | 5.0.1 (installed by `@reduxjs/toolkit`; a `legacy_createStore` store with the adapter was checked by hand with `tsc` and Node) |

@@ -25,7 +25,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
@@ -180,11 +180,11 @@ define("hello-card", HelloCard);
 
 ## Verify
 
-Run in the project (with `root: "web"`, the folder is `web/src/nv`):
+Run in the project, with the folder the build script checks (`src/nv`, or `web/src/nv` with `root: "web"`):
 
 ```sh
 npm run build                 # expect: ts-dom check: no issues, then ✓ built, and one HTML file per page in the output
-npx ts-dom doctor src/nv      # expect: ts-dom doctor: the set-up looks right
+npx ts-dom doctor <folder>    # expect: ts-dom doctor: the set-up looks right
 ```
 
 Then run `npm run dev`, open every page and check that its components render and respond. Edit a template and check that the page reloads once and shows the change.

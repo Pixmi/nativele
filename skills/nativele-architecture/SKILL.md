@@ -4,7 +4,7 @@ description: "Lay out an app built with Nativele that has several pages: feature
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "vite@8.3.6 typescript@7.0.2 vitest@5.1.0 happy-dom@21.0.4 @vitest/browser-playwright@5.1.0 playwright@1.64.1 @playwright/test@1.64.1 create-vite@9.3.4 universal-router@10.0.3"
   author: "Nativele maintainers"
   detects: "universal-router"
@@ -26,7 +26,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |

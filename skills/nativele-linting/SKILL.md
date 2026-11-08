@@ -24,7 +24,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | oxlint | 1.91.0 (`.oxlintrc.json`) |
 | vite-plus | 1.5.0 (`vp lint`, which runs oxlint 1.91.0, with the `lint` block in `vite.config.ts`) |
 | eslint | 10.14.0 and 9.39.4 (flat config `eslint.config.js`) |

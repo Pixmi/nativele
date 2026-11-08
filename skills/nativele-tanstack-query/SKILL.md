@@ -4,7 +4,7 @@ description: "Fetch server data with TanStack Query (@tanstack/query-core) and s
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "@tanstack/query-core@5.106.1 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "@tanstack/query-core"
@@ -25,7 +25,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | @tanstack/query-core | 5.106.1 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |

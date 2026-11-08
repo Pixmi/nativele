@@ -4,7 +4,7 @@ description: "Use Nativele web components inside an app built with a UI framewor
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "preact@11.1.1 vite@8.3.6 @preact/preset-vite@2.10.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "preact solid-js"
@@ -27,7 +27,7 @@ Nativele components are native custom elements. The framework renders their tags
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | preact | 11.1.1 |
 | vite | 8.3.6 |
 | @preact/preset-vite | 2.10.6 |
@@ -123,7 +123,7 @@ declare module "preact" {
 }
 ```
 
-Used from a Preact component, with two Nativele components, `nv-info-card` and `nv-text-field` (props `label`, `count`, `item`, event `item-select`; prop `value`, event `value-change`):
+Used from a Preact component, with two Nativele components, `nv-info-card` and `nv-text-field` (props `label`, `count`, `item`, event `item-select` with the detail `{ id: number }`; prop `value`, event `value-change` with the detail `{ value: string }`):
 
 ```tsx
 import { useState } from "preact/hooks";

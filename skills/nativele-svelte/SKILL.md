@@ -4,7 +4,7 @@ description: "Use Nativele web components inside an existing Svelte 5 app: passi
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "svelte@5.57.3 vite@8.3.6 @sveltejs/vite-plugin-svelte@7.3.1 svelte-check@4.7.8 @tsconfig/svelte@5.0.8 typescript@6.0.3"
   author: "Nativele maintainers"
   detects: "svelte"
@@ -25,7 +25,7 @@ Nativele components are native custom elements. Svelte renders them like any oth
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | svelte | 5.57.3 |
 | @sveltejs/vite-plugin-svelte | 7.3.1 |
 | svelte-check | 4.7.8 |

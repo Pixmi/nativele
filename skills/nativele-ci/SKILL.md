@@ -4,7 +4,7 @@ description: "Make a project's existing CI check the Nativele parts reliably (@n
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "typescript@7.0.2 npm@11.19.1 pnpm@12.16.1"
   author: "Nativele maintainers"
   detects: "typescript"
@@ -25,7 +25,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | typescript | 7.0.2 |
 | Node.js | 24.22.2 |
 | npm | 11.19.1 (`npm ci`) |

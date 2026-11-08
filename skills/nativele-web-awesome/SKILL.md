@@ -4,7 +4,7 @@ description: "Use Web Awesome (@awesome.me/webawesome, the successor of Shoelace
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "@awesome.me/webawesome@3.14.0 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "@awesome.me/webawesome"
@@ -25,7 +25,7 @@ Web Awesome components are custom elements built with Lit, each with its own sha
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | @awesome.me/webawesome | 3.14.0 |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
@@ -295,7 +295,7 @@ npm run build                # expect: built
 
 Prove that lint reads Web Awesome's manifest: change one `variant="brand"` in a template to `variant="brandd"`; `npx ts-dom lint src/nv` must report `warning [invalid-prop-value] <wa-button variant="brandd">: "brandd" is not a value the custom elements manifest of @awesome.me/webawesome declares for variant` with `Did you mean "brand"?`. Then change it back.
 
-Prove that the event types are loaded: keep one handler typed with a Web Awesome event class (`onDialogHide(e: WaHideEvent)` above). If step 4's import is missing, `ts-dom check` reports `handler-event-type ... which delivers Event`.
+Prove that the event types are loaded: keep one handler typed with a Web Awesome event class (`onDialogHide(e: WaHideEvent)` above). It compiles only with step 4's import, which also loads the event map; without that import, `ts-dom check` reports `TS2304: Cannot find name 'WaHideEvent'`.
 
 In the browser, against the dev server and the build (`vite preview`):
 

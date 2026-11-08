@@ -4,7 +4,7 @@ description: "Check and adjust the TypeScript set-up of a project that uses Nati
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "typescript@7.0.2 typescript@6.0.3 typescript@5.9.3 vue-tsc@3.3.14 @tsconfig/strictest@2.0.8"
   author: "Nativele maintainers"
   detects: "typescript"
@@ -25,7 +25,7 @@ Nativele's value is that `tsc` checks the HTML against the TypeScript: `ts-dom g
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | typescript | 7.0.2, 6.0.3, 5.9.3 (every row below); 5.6.3, 5.4.5, 5.0.4 (the baseline set-up only) |
 | vue-tsc | 3.3.14 (with typescript 6.0.3 and 7.0.2) |
 | @tsconfig/strictest | 2.0.8 |
@@ -220,9 +220,9 @@ Verified with that layout: `npx ts-dom check src/nv` prints `ts-dom check: no is
 ## Verify
 
 ```sh
+npx ts-dom check src/nv                 # expect: ts-dom check: no issues (it also writes the generated files the next line looks for)
 npx tsc --showConfig -p <config>        # expect: lib absent or with dom; moduleResolution bundler, nodenext or node16; strict true; the files include src/nv/ts-dom-tags.ts
 npx ts-dom doctor src/nv                # expect: no tsconfig-* issue (or only those Known limitations 4 explains; pass `--project=` for another config)
-npx ts-dom check src/nv                 # expect: ts-dom check: no issues
 npx tsc -b                              # with a solution-style root (or tsc --noEmit -p <config>); expect: exit code 0
 ```
 

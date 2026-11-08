@@ -4,7 +4,7 @@ description: "Style Nativele components with Tailwind CSS v4 in a Vite app that 
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "tailwindcss@4.3.4 @tailwindcss/vite@4.3.4 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "tailwindcss"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | tailwindcss | 4.3.4 |
 | @tailwindcss/vite | 4.3.4 |
 | vite | 8.3.6 |

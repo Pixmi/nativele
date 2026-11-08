@@ -4,7 +4,7 @@ description: "Validate a form inside a Nativele component with Zod 4 (or Valibot
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "zod@4.6.7 valibot@1.5.0 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "zod valibot"
@@ -23,7 +23,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | zod | 4.6.7 (the procedure was also run with 3.25.76, with the schema changes in limitation 10) |
 | valibot | 1.5.0 (limitation 11) |
 | vite | 8.3.6 |

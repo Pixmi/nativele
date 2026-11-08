@@ -4,7 +4,7 @@ description: "Test Nativele components in an app: component tests with Vitest an
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "vitest@5.1.0 happy-dom@21.0.4 jsdom@30.1.3 @vitest/browser-playwright@5.1.0 playwright@1.64.1 @playwright/test@1.64.1 vite@8.3.6 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "vitest @playwright/test playwright"
@@ -25,7 +25,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vitest | 5.1.0 |
 | happy-dom | 21.0.4 |
 | jsdom | 30.1.3 (the same component tests pass; not the recommended environment) |
@@ -312,6 +312,8 @@ A page test with Playwright (the alternative):
 
 ```ts
 // e2e/app.spec.ts
+// The page holds <light-panel><span slot="title">Light</span></light-panel> and the same in <shadow-panel> with "Shadow";
+// each panel's template is <h2><slot name="title">Untitled</slot></h2>.
 import { expect, test } from "@playwright/test";
 
 test("the built page renders the components and they respond", async ({ page }) => {

@@ -4,7 +4,7 @@ description: "Use Nativele web components inside an existing Angular 22 app with
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "@angular/core@22.2.4 @angular/compiler-cli@22.2.4 @angular/build@22.2.6 @angular/cli@22.2.6 typescript@6.0.3 vitest@5.1.0 jsdom@30.1.3"
   author: "Nativele maintainers"
   detects: "@angular/core"
@@ -25,7 +25,7 @@ Nativele components are native custom elements. Angular renders their tags like 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | @angular/core, @angular/common, @angular/compiler, @angular/compiler-cli, @angular/platform-browser, @angular/router | 22.2.4 |
 | @angular/cli, @angular/build | 22.2.6 |
 | typescript | 6.0.3 |

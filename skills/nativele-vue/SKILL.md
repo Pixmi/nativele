@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.1 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |

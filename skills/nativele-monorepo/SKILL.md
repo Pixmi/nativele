@@ -27,7 +27,7 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | npm (workspaces) | 11.19.1, on Node 24.22.2 |
 | pnpm (workspaces) | 12.16.1 |
 | turbo | 2.11.10 (with npm workspaces) |
