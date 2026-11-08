@@ -220,6 +220,8 @@ export interface ModuleFacts {
   imports: Binding[];
   /** `export { a as b } from "spec"` is { local: "b", imported: "a" }; `export * from "spec"` is { local: "*", imported: "*" }. */
   reexports: Binding[];
+  /** The specifiers of `import "spec"`. */
+  sideEffects: string[];
   /** Exported name to local name; a `default` export of a class without a name has no local name. */
   exports: Map<string, string | undefined>;
   classes: ClassDecl[];
@@ -232,6 +234,7 @@ export interface ModuleFacts {
 
 const IDENT = String.raw`[A-Za-z_$][\w$]*`;
 const IMPORT = new RegExp(String.raw`\bimport\s+(?:type\s+)?((?:${IDENT}\s*,?\s*)?(?:\{[^}]*\}|\*\s*as\s+${IDENT})?)\s*from\s*(["'])([^"'\n]+)\2`, "g");
+const SIDE_EFFECT = /\bimport\s*(["'])([^"'\n]+)\1/g;
 const REEXPORT = new RegExp(String.raw`\bexport\s+(?:type\s+)?(\*(?:\s*as\s+(${IDENT}))?|\{[^}]*\})\s*from\s*(["'])([^"'\n]+)\3`, "g");
 const EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
 const EXPORT_CLASS = new RegExp(String.raw`\bexport\s+(default\s+)?(?:abstract\s+)?class\b(?:\s+(?!extends\b)(${IDENT}))?`, "g");
@@ -264,7 +267,7 @@ export function moduleFacts(code: string): ModuleFacts {
     }
     return { line: lo + 1, col: pos - (lineStarts[lo] as number) + 1 };
   };
-  const facts: ModuleFacts = { imports: [], reexports: [], exports: new Map(), classes: [], defines: [], tags: [], dispatched: [] };
+  const facts: ModuleFacts = { imports: [], reexports: [], sideEffects: [], exports: new Map(), classes: [], defines: [], tags: [], dispatched: [] };
   for (const m of code.matchAll(IMPORT)) {
     if (!inCode(m.index)) continue;
     const clause = m[1] as string;
@@ -276,6 +279,7 @@ export function moduleFacts(code: string): ModuleFacts {
     const braces = /\{([^}]*)\}/.exec(clause)?.[1];
     if (braces) for (const [imported, local] of listEntries(braces)) facts.imports.push({ local, imported, spec });
   }
+  for (const m of code.matchAll(SIDE_EFFECT)) if (inCode(m.index)) facts.sideEffects.push(m[2] as string);
   for (const m of code.matchAll(REEXPORT)) {
     if (!inCode(m.index)) continue;
     const what = m[1] as string;
@@ -333,6 +337,12 @@ function bubblesAtTop(obj: string): boolean {
 export interface Sources {
   text(file: string): string | null;
   facts?(file: string): ModuleFacts | undefined;
+}
+
+function factsIn(sources: Sources, file: string): ModuleFacts | undefined {
+  if (sources.facts) return sources.facts(file);
+  const text = sources.text(file);
+  return text === null ? undefined : moduleFacts(text);
 }
 
 function readText(file: string): string | null {
@@ -437,6 +447,16 @@ export class Workspace implements Sources {
     if (!files) lists.set(dir, (files = find(dir, this)));
     return files;
   }
+  /** The index of the modules `entries` reach (see `reachable`), such as those a package exports. */
+  indexFrom(entries: readonly string[]): ComponentIndex {
+    const key = `\u0001${entries.join("\0")}`;
+    let index = this.#indexes.get(key);
+    if (!index) {
+      this.#indexes.set(key, (index = componentIndex(reachable(entries, this), this)));
+      for (const file of index.byTemplate.keys()) this.memo.see(file);
+    }
+    return index;
+  }
   /** The index of the TypeScript files under `dirs`. */
   index(dirs: readonly string[]): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
@@ -501,6 +521,31 @@ export interface ComponentIndex {
 type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string } | { kind: "namespace"; file: string };
 
 const TS_EXTENSIONS = [".ts", ".tsx", ".mts"];
+const isJs = (file: string) => /\.m?js$/.test(file);
+
+/** The files a relative import that resolves to `base` may name, in the order TypeScript tries them: its TypeScript source, then the JavaScript file itself (as a built package ships it). */
+function moduleCandidates(base: string): string[] {
+  const stem = base.replace(/\.(?:m?js|jsx)$/, "");
+  return [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`)), ...(isJs(base) ? [base] : [])];
+}
+
+/** `entries` and the modules they reach through relative imports, re-exports and `import "./x.js"`, templates left out. */
+export function reachable(entries: readonly string[], sources: Sources): string[] {
+  const out = new Set<string>();
+  const queue = [...entries];
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    if (out.has(file)) continue;
+    const m = factsIn(sources, file);
+    if (!m) continue;
+    out.add(file);
+    for (const spec of [...m.imports.map((i) => i.spec), ...m.reexports.map((r) => r.spec), ...m.sideEffects]) {
+      if (!spec.startsWith(".") || /\.html(?:\.js)?$/.test(spec)) continue;
+      const found = moduleCandidates(resolve(dirname(file), spec)).find((c) => out.has(c) || sources.text(c) !== null);
+      if (found) queue.push(found);
+    }
+  }
+  return [...out];
+}
 
 /** Build the index from the TypeScript files `files`, following relative imports into other files as needed. */
 export function componentIndex(files: readonly string[], sources: Sources = new Workspace()): ComponentIndex {
@@ -509,10 +554,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   for (const f of files) if (!listed.has(resolve(f))) listed.set(resolve(f), f);
   const facts = (file: string): ModuleFacts | undefined => {
     if (!modules.has(file)) {
-      const m = sources.facts ? sources.facts(file) : (() => {
-        const text = sources.text(file);
-        return text === null ? undefined : moduleFacts(text);
-      })();
+      const m = factsIn(sources, file);
       if (!m) return undefined;
       modules.set(file, m);
     }
@@ -524,9 +566,8 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     if (base.endsWith(".html")) return undefined;
     const html = /^(.*\.html)\.js$/.exec(base)?.[1];
     if (html) return html;
-    const stem = base.replace(/\.(?:m?js|jsx)$/, "");
-    const candidates = [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`))];
-    return candidates.find((c) => listed.has(c) || modules.has(c)) ?? candidates.find((c) => !c.includes("/node_modules/") && facts(c));
+    const candidates = moduleCandidates(base);
+    return candidates.find((c) => listed.has(c) || modules.has(c)) ?? candidates.find((c) => !c.includes("/node_modules/") && !isJs(c) && facts(c));
   };
   const resolveExport = (file: string, name: string, seen: Set<string>): Target | undefined => {
     if (file.endsWith(".html")) return name === "default" ? { kind: "template", file } : undefined;

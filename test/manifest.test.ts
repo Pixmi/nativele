@@ -296,11 +296,13 @@ describe("lint with a dependency's custom elements manifest", () => {
     });
     const issues = lint(root);
     expect(issues.map((i) => `${i.line} ${i.rule}`)).toEqual(["1 unknown-custom-element", "3 unknown-custom-element", "6 unknown-custom-element", "4 unchecked-custom-elements"]);
-    expect(issues[0]?.message).toBe(`<fk-buton> is not defined in the scanned folders or by the custom elements manifest of fake-wc, so the browser leaves it an undefined element that shows only its children; <fk-button>, defined by the custom elements manifest of fake-wc, is close to it. Did you mean "fk-button"? Fix: correct the tag name; if another package defines it, import that package (it is not in this package's dependencies, or declares no custom elements manifest).`);
+    expect(issues[0]?.message).toBe(`<fk-buton> is not defined in the scanned folders or by the custom elements manifest of fake-wc, so the browser leaves it an undefined element that shows only its children; <fk-button>, defined by the custom elements manifest of fake-wc, is close to it. Did you mean "fk-button"? Fix: correct the tag name; if another package defines it, list that package in this package's dependencies (lint reads a dependency's components when it is a Nativele component package that exports them, and another library's elements when its package declares a custom elements manifest).`);
     expect(issues[1]?.message).toContain(`<x-kid>, defined by a define() in the scanned folders, is close to it.`);
     expect(issues[2]?.message).toContain(`<x-tagmap>, defined by a customElements.define() or HTMLElementTagNameMap entry in the scanned TypeScript, is close to it.`);
     const unchecked = issues[3]?.message ?? "";
-    expect(unchecked).toContain("<fk-pro-thing>, <x-tagmap>, <y-kid>: no define()");
+    expect(unchecked).toContain("<fk-pro-thing>, <y-kid>: no define()");
+    expect(unchecked).toContain("<x-tagmap>: declared only in TypeScript (customElements.define() or an HTMLElementTagNameMap entry), which gives lint the tag name but none of its attributes, events or slots.");
+    expect(unchecked).toContain("for <x-tagmap>, when it is a Nativele component, define it with define()");
     expect(unchecked).not.toMatch(/fk-buton|x-kd|x-tagmpa/);
   });
   it("a define() in the scanned folders wins over a manifest that defines the same tag", () => {

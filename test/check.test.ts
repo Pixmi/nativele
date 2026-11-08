@@ -103,7 +103,7 @@ describe("ts-dom check: unchecked-custom-elements", () => {
       };
       const issues = check();
       expect(issues.map((i) => [i.file, i.line, i.col, i.rule])).toEqual([["one.html", 1, 1, "unchecked-custom-elements"]]);
-      expect(issues[0]?.message).toContain("<vendor-picker>, <vendor-chart>: no define() in the scanned folders, and no custom elements manifest of the package or its dependencies.");
+      expect(issues[0]?.message).toContain("<vendor-picker>, <vendor-chart>: no define() in the scanned folders or in a Nativele component package among the package's dependencies, and no custom elements manifest of the package or its dependencies.");
       expect(check("--ignore=unchecked-custom-elements")).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

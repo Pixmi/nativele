@@ -113,7 +113,7 @@ describe("unchecked-content: an element a rule cannot judge because its composed
     expect(own).toContain("<x-broken> (the template file the class imports does not exist: x-broken.html)");
     expect(own).not.toContain("to the scanned folders");
     const [outside] = messages(`<div data-on-click="go"><x-elsewhere></x-elsewhere></div>`);
-    expect(outside).toContain("for <x-elsewhere>, add the folders that define the project's own components to the scanned folders");
+    expect(outside).toContain("for <x-elsewhere>, when the package defines it, add the folder with its define() to the scanned folders");
   });
   it("is left out with the rules it names", () => {
     expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["click-semantics"], children)).toEqual([]);

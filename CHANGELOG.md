@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, chosen from the whole set by this policy (a minor version when any iteration has a breaking change or a new feature), its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.4 (not published)
+
+### Added
+
+- Lint, `ts-dom check` and the oxlint plugin check the components of the Nativele component packages a template's package depends on (a workspace package or a published one that lists `@nativele/ts-dom`), read from the modules the package's `exports` name (or its `module` or `main`) and those they import: `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-custom-element` and `click-semantics`, and `unknown-slot` when the package ships its templates (a source package). A package built to JavaScript has its props and events checked; `unchecked-content` says that it ships its modules without their templates. `ts-dom gen` is unchanged: generated files import only from the scanned folders.
+
+### Changed
+
+- `unchecked-custom-elements` and `unchecked-content` list a tag that the program only declares (a `customElements.define()` call or an `HTMLElementTagNameMap` entry) as declared only in TypeScript, which gives lint its name but none of its attributes, events or slots, with a Fix for a Nativele component and for another library's element. The Fix for a tag nothing defines now says to list the package that defines it in the package's dependencies, instead of adding another package's folder to the scanned folders.
+
 ## 0.7.3
 
 ### Changed

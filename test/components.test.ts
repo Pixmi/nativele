@@ -104,7 +104,7 @@ describe("a template, its class, its define() and their files", () => {
     expect(at("registry/page.html").map((i) => i[3])).toEqual(["unknown-prop", "unknown-event", "click-semantics"]);
     const unchecked = issues.filter((i) => i.rule === "unchecked-custom-elements");
     expect(unchecked.map((i) => i.file)).toEqual(["plain/host.html"]);
-    expect(unchecked[0]?.message).toContain("<x-plain> (plain/plain.ts:3): define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders.");
+    expect(unchecked[0]?.message).toContain("<x-plain> (plain/plain.ts:3): define() passes a class that lint cannot follow through relative imports to a class extending Component(...).");
     expect(unchecked[0]?.message).not.toContain("No define()");
   });
   it("two classes in one file: each contract error points at that class's template", () => {

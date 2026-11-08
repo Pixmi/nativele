@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -50,6 +50,29 @@ describe("the lint plugin in oxlint", () => {
     writeFileSync(join(dir, "old.ts"), `import view from "./old.html";\nexport const old = () => view;\n`);
     const out = JSON.parse(run(dir, "old.ts")) as { diagnostics: unknown[] };
     expect(out.diagnostics).toEqual([]);
+  }, 30_000);
+
+  it("checks a tag of a Nativele component package the app depends on, run in the app's folder", () => {
+    const root = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ private: true, workspaces: ["packages/*", "apps/*"] }),
+      "packages/ui/package.json": JSON.stringify({ name: "@acme/ui", exports: { ".": "./src/index.ts" }, peerDependencies: { "@nativele/ts-dom": "^0.7.0" } }),
+      "packages/ui/src/index.ts": `export * from "./ui-button.js";\n`,
+      "packages/ui/src/ui-button.html": `<button data-on-click="press">x</button>\n`,
+      "packages/ui/src/ui-button.ts": `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./ui-button.html.js";\nexport class UiButton extends Component(tpl, { emits: { press: event() } }) { press() { this.emit("press"); } }\ndefine("ui-button", UiButton);\n`,
+      "apps/web/package.json": JSON.stringify({ name: "web", dependencies: { "@acme/ui": "*" } }),
+      "apps/web/.oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-event": "warn" } }),
+      "apps/web/src/app-view.html": `<ui-button data-on-pres="go"></ui-button>\n`,
+      "apps/web/src/app-view.ts": `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./app-view.html.js";\nexport class AppView extends Component(tpl) { go() {} }\ndefine("app-view", AppView);\n`,
+    };
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    mkdirSync(join(root, "node_modules/@acme"), { recursive: true });
+    symlinkSync(join(root, "packages/ui"), join(root, "node_modules/@acme/ui"));
+    const out = JSON.parse(run(join(root, "apps/web"), "src/app-view.ts")) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["./app-view.html.js:1:1 [unknown-event]"]);
   }, 30_000);
 
   it("checks a child tag against the definition in the linted file's package when another package defines the same tag", () => {

@@ -26,6 +26,7 @@ export interface ManifestElement {
 /** A manifest a package declares: the elements it defines by tag, or why it cannot be read. */
 export type Manifest = { pkg: string; file: string; elements: ReadonlyMap<string, ManifestElement> } | { pkg: string; file: string; error: string };
 
+const RUNTIME = "@nativele/ts-dom";
 const SUPPORTED_MAJORS = new Set([1, 2]);
 const BASE_CLASSES = new Set(["HTMLElement", "LitElement", "ReactiveElement"]);
 const LITERAL = /^(['"])(.*)\1$/s;
@@ -136,6 +137,18 @@ interface PackageFacts {
   customElements?: string;
   dependencies: string[];
   workspaces: boolean;
+  /** The JavaScript or TypeScript modules the package's `exports` name (any condition but `types`, no `*` patterns), else its `module` or `main`, relative to the package. */
+  entries: string[];
+}
+
+const SCRIPT = /\.(?:m?[jt]sx?|cts|cjs)$/;
+
+/** The files `exports` names, in its order, leaving out `types` conditions, declaration files and `*` patterns. */
+function exportedFiles(value: unknown): string[] {
+  if (typeof value === "string") return value.includes("*") || value.endsWith(".d.ts") || !SCRIPT.test(value) ? [] : [value];
+  if (Array.isArray(value)) return value.flatMap(exportedFiles);
+  if (!isObject(value)) return [];
+  return Object.entries(value).flatMap(([k, v]) => (k === "types" || k.includes("*") ? [] : exportedFiles(v)));
 }
 
 function packageFacts(text: string): PackageFacts {
@@ -143,15 +156,16 @@ function packageFacts(text: string): PackageFacts {
   try {
     json = JSON.parse(text);
   } catch {
-    return { dependencies: [], workspaces: false };
+    return { dependencies: [], workspaces: false, entries: [] };
   }
-  if (!isObject(json)) return { dependencies: [], workspaces: false };
+  if (!isObject(json)) return { dependencies: [], workspaces: false, entries: [] };
   const deps = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"].flatMap((k) => (isObject(json[k]) ? Object.keys(json[k]) : []));
   return {
     ...(typeof json.name === "string" ? { name: json.name } : {}),
     ...(typeof json.customElements === "string" ? { customElements: json.customElements } : {}),
     dependencies: [...new Set(deps)],
     workspaces: "workspaces" in json,
+    entries: [...new Set("exports" in json ? exportedFiles(json.exports) : [json.module, json.main].flatMap(exportedFiles))],
   };
 }
 
@@ -195,25 +209,36 @@ function manifestOf(ws: Workspace, pkgJson: string, pkg: string, field: string):
   return (ws.memo.get(file, "manifest", [text, pkg]) as Manifest | undefined) ?? ws.memo.set(file, "manifest", [text, pkg], parseManifest(text, pkg, file));
 }
 
-/**
- * The custom elements manifests that apply to the templates of the package in `dir`: its own (the `customElements` field of its package.json) and those of its dependencies,
- * each found as node_modules/<name>/package.json from `dir` up to the workspace root. Only those files are read; node_modules is never listed.
- */
+/** The installed dependencies of the package in `dir`, each found as node_modules/<name>/package.json from `dir` up to the workspace root. Only those files are read; node_modules is never listed. */
+function dependenciesAt(ws: Workspace, dir: string): { name: string; file: string; facts: PackageFacts }[] {
+  const own = factsOf(ws, join(dir, "package.json"));
+  if (!own?.dependencies.length) return [];
+  const roots = upToWorkspaceRoot(ws, dir);
+  return own.dependencies.flatMap((name) => {
+    for (const root of roots) {
+      const file = join(root, "node_modules", name, "package.json");
+      const facts = factsOf(ws, file);
+      if (facts) return [{ name, file, facts }];
+    }
+    return [];
+  });
+}
+
+/** The custom elements manifests that apply to the templates of the package in `dir`: its own (the `customElements` field of its package.json) and those of its installed dependencies. */
 export function manifestsAt(ws: Workspace, dir: string): Manifest[] {
   const pkgJson = join(dir, "package.json");
   const own = factsOf(ws, pkgJson);
   if (!own) return [];
   const out: Manifest[] = own.customElements ? [manifestOf(ws, pkgJson, own.name ?? ".", own.customElements)] : [];
-  if (!own.dependencies.length) return out;
-  const roots = upToWorkspaceRoot(ws, dir);
-  for (const name of own.dependencies) {
-    for (const root of roots) {
-      const file = join(root, "node_modules", name, "package.json");
-      const dep = factsOf(ws, file);
-      if (!dep) continue;
-      if (dep.customElements) out.push(manifestOf(ws, file, name, dep.customElements));
-      break;
-    }
-  }
+  for (const dep of dependenciesAt(ws, dir)) if (dep.facts.customElements) out.push(manifestOf(ws, dep.file, dep.name, dep.facts.customElements));
   return out;
+}
+
+/** The installed dependencies of the package in `dir` that are Nativele component packages (they list `@nativele/ts-dom` among their dependencies), with the modules they export, as absolute paths through symbolic links. */
+export function componentPackagesAt(ws: Workspace, dir: string): { pkg: string; entries: string[] }[] {
+  return dependenciesAt(ws, dir).flatMap((dep) => {
+    if (!dep.facts.dependencies.includes(RUNTIME) || !dep.facts.entries.length) return [];
+    const root = dirname(real(dep.file));
+    return [{ pkg: dep.name, entries: dep.facts.entries.map((e) => resolve(root, e)) }];
+  });
 }

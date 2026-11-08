@@ -1,14 +1,16 @@
 /**
  * Why lint cannot read what a custom element renders, as the contracts know it (see `childrenAt` in lint.ts).
- * The first three leave the tag without a contract, so its attributes and events are not checked either (unchecked-custom-elements); the next two leave a component without its template,
+ * The first four leave the tag without a contract, so its attributes and events are not checked either (unchecked-custom-elements); the next three leave a component without its template,
  * and an element of another library has a contract from its custom elements manifest, which does not say what the element renders.
  */
 export type Unread =
   | { cause: "undefined" }
+  | { cause: "declared" }
   | { cause: "not-component"; at: string }
   | { cause: "ambiguous"; packages: readonly string[] }
   | { cause: "template-unfollowed"; at: string }
   | { cause: "template-missing"; file: string }
+  | { cause: "template-unshipped"; pkg: string }
   | { cause: "third-party"; pkg: string };
 
 type Cause = Unread["cause"];
@@ -16,14 +18,19 @@ type Cause = Unread["cause"];
 /** Each cause in the words unchecked-custom-elements and unchecked-content share: what it is, the fact a message adds after it, and the fix. */
 export const UNREAD: { [C in Cause]: { what: string; detail: (u: Extract<Unread, { cause: C }>) => string; fix: string } } = {
   undefined: {
-    what: "no define() in the scanned folders, and no custom elements manifest of the package or its dependencies",
+    what: "no define() in the scanned folders or in a Nativele component package among the package's dependencies, and no custom elements manifest of the package or its dependencies",
     detail: () => "",
-    fix: "add the folders that define the project's own components to the scanned folders (another library's elements are checked when their package declares a custom elements manifest, the customElements field of its package.json)",
+    fix: "when the package defines it, add the folder with its define() to the scanned folders; when another package of the workspace or a published package does, list that package in this package's dependencies (a Nativele component package is read from the modules its exports name; another library's elements are checked when its package declares a custom elements manifest, the customElements field of its package.json)",
+  },
+  declared: {
+    what: "declared only in TypeScript (customElements.define() or an HTMLElementTagNameMap entry), which gives lint the tag name but none of its attributes, events or slots",
+    detail: () => "",
+    fix: "when it is a Nativele component, define it with define() from @nativele/ts-dom in the scanned folders or in a Nativele component package the package depends on; when it is another library's element, have its package declare a custom elements manifest (the customElements field of its package.json)",
   },
   "not-component": {
-    what: "define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders",
+    what: "define() passes a class that lint cannot follow through relative imports to a class extending Component(...)",
     detail: (u) => u.at,
-    fix: "declare a class that extends Component(...) in the scanned folders, and import it by a relative path where define() is called",
+    fix: "declare a class that extends Component(...), and import it by a relative path where define() is called",
   },
   ambiguous: {
     what: "defined in several packages, and not exactly once in the template's package",
@@ -40,6 +47,11 @@ export const UNREAD: { [C in Cause]: { what: string; detail: (u: Extract<Unread,
     detail: (u) => u.file,
     fix: "restore the template file or correct the import path in the class",
   },
+  "template-unshipped": {
+    what: "a component of a package that ships its modules without their .html templates",
+    detail: (u) => u.pkg,
+    fix: "check by hand that the element around it is operable or named, or have the package ship each .html template next to the module that imports it",
+  },
   "third-party": {
     what: "an element of a package whose custom elements manifest declares its attributes, events and slots but not what it renders",
     detail: (u) => u.pkg,
@@ -48,8 +60,9 @@ export const UNREAD: { [C in Cause]: { what: string; detail: (u: Extract<Unread,
 };
 
 export const NOT_DEFINED: Unread = { cause: "undefined" };
+export const DECLARED: Unread = { cause: "declared" };
 
-export const noContract = (u: Unread): boolean => u.cause === "undefined" || u.cause === "not-component" || u.cause === "ambiguous";
+export const noContract = (u: Unread): boolean => u.cause === "undefined" || u.cause === "declared" || u.cause === "not-component" || u.cause === "ambiguous";
 
 export const detailOf = (u: Unread): string => (UNREAD[u.cause].detail as (u: Unread) => string)(u);
 

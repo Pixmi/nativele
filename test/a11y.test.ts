@@ -187,10 +187,10 @@ describe("click-semantics", () => {
     }
     expect(message("x-gone")).toContain(`<x-gone> (the template file the class imports does not exist: ${rel("x-gone.html")})`);
     expect(message("x-gone")).toContain("for <x-gone>, restore the template file or correct the import path in the class");
-    expect(message("x-plain")).toContain(`<x-plain> (define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders: ${rel("x-plain.ts")}:3)`);
+    expect(message("x-plain")).toContain(`<x-plain> (define() passes a class that lint cannot follow through relative imports to a class extending Component(...): ${rel("x-plain.ts")}:3)`);
     expect(message("x-plain")).not.toContain("add the folder");
-    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders, and no custom elements manifest of the package or its dependencies)");
-    expect(message("wa-icon")).toContain("for <wa-icon>, add the folders that define the project's own components to the scanned folders");
+    expect(message("wa-icon")).toContain("<wa-icon> (no define() in the scanned folders or in a Nativele component package among the package's dependencies, and no custom elements manifest of the package or its dependencies)");
+    expect(message("wa-icon")).toContain("for <wa-icon>, when the package defines it, add the folder with its define() to the scanned folders");
   });
 });
 
