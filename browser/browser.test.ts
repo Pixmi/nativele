@@ -267,3 +267,21 @@ describe("components the parser creates inside each other", () => {
     expect(seen).toEqual(["render:", "connected:"]);
   });
 });
+
+describe("a list without data-prop", () => {
+  it("gives update() its item with the custom elements in it upgraded, so their methods and props work before it is inserted", async () => {
+    const seen = await page.evaluate(() => {
+      const el = document.createElement("b-order-rows") as HTMLElement & { fill(n: string[]): void };
+      document.body.append(el);
+      el.fill(["a", "b"]);
+      const kids = [...el.querySelectorAll("b-order-child")] as (HTMLElement & { seen: string[] })[];
+      const out = kids.map((k) => k.seen);
+      el.remove();
+      return out;
+    });
+    expect(seen).toEqual([
+      ["render:a", "connected:a"],
+      ["render:b", "connected:b"],
+    ]);
+  });
+});

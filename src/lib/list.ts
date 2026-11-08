@@ -151,8 +151,8 @@ export class List<L extends ListSchema = ListSchema> {
   }
 
   #create(key: PropertyKey): Entry<L> {
-    // Item components are created in this document, so they are upgraded before the list sets their prop and inserts them.
-    const el = (this.binding ? document.importNode(this.proto, true) : this.proto.cloneNode(true)) as Element;
+    // The prototype is in the inert document of a <template>, whose clones are never upgraded: importing it creates the item in this document, so its custom elements are upgraded before update() or the list sets their props.
+    const el = document.importNode(this.proto, true);
     const holder = document.createDocumentFragment();
     holder.append(el);
     const conds = mountConds(holder);
