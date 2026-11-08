@@ -4,23 +4,44 @@ Part of the [Nativele](../README.md) documentation.
 
 ## Design Principles
 
-- HTML is the single source of structure.
-- TypeScript is the single source of behavior and state.
-- The DOM is the single source of truth for the UI; there is no virtual tree.
-- Updates are explicit, local DOM operations; there is no whole-tree diff.
-- Component lifecycle reuses Custom Elements.
-- State subscriptions exist only where you call `bind`.
-- There is no template language: HTML contains only **names**, never expressions.
-- Type safety: names are derived by codegen, and tsc and lint can check that the HTML and TS match.
+Nativele is a small, reliable UI layer for large applications, not a framework that does everything. These principles decide how a component is meant to be written. The trade-offs they lead to are listed under [Design Decisions](#design-decisions).
 
-Comparison with Vue templates:
+### HTML describes, TypeScript decides
+
+- **Structure lives in the template.** A component's elements, their nesting and where data lands are written in its `.html`. TypeScript that builds the same structure with `createElement` or string assembly hides it from codegen, `tsc` and lint.
+- **The template holds names, not logic.** HTML names holes, `data-if` blocks, lists, refs and handlers; a computed value is computed in TypeScript (`derive`, `render`) and lands in a named hole.
+- **Behavior and state live in TypeScript.** Handlers are methods named by `data-on-*`; the state, props and derived values that the template's names bind to are declared and changed in TypeScript.
+
+### The browser is the runtime
+
+- **The DOM is the view.** There is no virtual tree to keep in sync: what the page shows is what the DOM holds. Holes, `data-if` and lists update it from the data; `render` reaches the rest through `refs`.
+- **Native over invented.** Custom Elements give the lifecycle, Shadow DOM gives native slots, forms give `FormData` and validity, `<dialog>` gives modality. A component that rebuilds one of these in code carries a second, weaker copy of it.
+- **Updates are explicit and local.** Each update changes what changed: a hole skips an unchanged value, a list keeps the elements of the keys that stay, and `render` guards its writes with `changed`.
+
+### Data flows one way, one layer at a time
+
+- **State is the component's own; props are the parent's.** A component changes its state with `set`, never its props, and tells its parent with `emit`.
+- **Crossing layers is explicit.** An event is handled where it is caught, and data several layers away goes through a shared `createStore` bound where it is used, not passed down or re-emitted through every layer.
+
+### Small surface, checked by tools
+
+- **Every tool owns one layer.** The formatter owns markup structure, `ts-dom gen` the template rules, `tsc` names and types (codegen derives them from the HTML), lint usage and data flow, `ts-dom doctor` the project set-up. A rule is checked once, in its layer.
+- **No abstraction for convenience.** The library adds no syntax or implicit behavior to save lines; convenience comes from better checks, messages, docs and Skills. The same holds for the code built on it: a layer that only forwards to the next one adds a place to read without adding a decision.
+- **Few dependencies, no runtime parsing.** The runtime has no dependencies and never parses HTML strings, so it runs under Trusted Types and without a bundler.
+
+### Integrations stay at the edge
+
+- **Nativele does not own the app.** Routing, global state, data fetching, validation, styling and testing belong to mature tools; Nativele components plug into them through props, events, stores and refs.
+- **A framework keeps its own children.** Children a framework renders go into `shadow: true` components; Light DOM slots take only content written in HTML.
+
+## Compared with Vue templates
 
 | Vue | ts-dom | Difference |
 |---|---|---|
 | `{{ expr }}` | `{{ name }}` | Must be a single identifier, not a path or an operation |
-| `v-if` | `data-if="name"` | The condition is decided by TS calling `show(name, bool)` |
-| `v-for` | `<template data-each="name">` | The list is updated by TS calling methods such as `replace` |
-| `<slot>` | `<slot name>` | In Light mode the library moves the content; with `shadow: true` it uses native slots |
+| `v-if` | `data-if="name"` | Bound to the state, prop or derived value of that name, or decided by TS calling `show(name, bool)` |
+| `v-for` | `<template data-each="name">` | The list is updated by TS assigning `items` or calling `replace` |
+| `<slot>` | `<slot name>` | In Light mode the library places the content written in HTML; with `shadow: true` it uses native slots |
 | `<style scoped>` | `<style scoped>` | Implemented with native `@scope`; without `scoped` it is global |
 | `<template>` | The HTML file itself | One `.html` file is one component template |
 

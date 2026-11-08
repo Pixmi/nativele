@@ -324,6 +324,33 @@ override render(view: { name: string }) {
   if (this.refs.name.value !== view.name) this.refs.name.value = view.name;
 }`,
   },
+  "static-markup-in-code": {
+    why: "Structure lives in the template: the elements a component shows, written in its .html, are typed by codegen, checked by tsc and lint, and kept by a list between updates. An element built with document.createElement in the class is hidden from all of them, and a fixed text or attribute it receives (textContent = \"Remove\", type = \"button\", setAttribute(\"role\", \"row\")) is markup written in TypeScript. Only a variable the class assigns from document.createElement or createElementNS is read, and only a string literal without ${} counts as fixed; an element whose content comes from data (a cell a column definition returns) is not reported.",
+    bad: `// order-table.ts
+override render(view) {
+  this.refs.body.replaceChildren(...view.orders.map((o) => {
+    const remove = document.createElement("button");
+    remove.textContent = "Remove";
+    return remove;
+  }));
+}`,
+    good: `<!-- order-table.html -->
+<template data-each="rows">
+  <tr><td>{{ customer }}</td><td><button type="button" data-on-click="removeRow">Remove</button></td></tr>
+</template>`,
+  },
+  "dom-node-in-state": {
+    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a node, an element or a list of them keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Only the type written with as in the state or props option is read (HTMLElement, any HTML, SVG or MathML element interface, Element, Node, DocumentFragment, Text, NodeList, HTMLCollection).",
+    bad: `// order-stats.ts
+class OrderStats extends Component(tpl, {
+  state: { children: [] as HTMLElement[] },
+}) {}`,
+    good: `// order-stats.ts
+class OrderStats extends Component(tpl, {
+  props: { orders: [] as readonly Order[] },
+  derive: { count: (v) => v.orders.length },
+}) {}`,
+  },
   "unchecked-custom-elements": {
     why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). The child's define() is read from the scanned folders and from the Nativele component packages the template's package depends on (those that list @nativele/ts-dom, read from the modules their exports name). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders or such a package and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, a component outside the scanned folders, or one of a package the template's package does not list), a tag declared only in TypeScript (a customElements.define() call or an HTMLElementTagNameMap entry, which names the tag but none of its attributes, events or slots), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) (a plain custom element), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests or two component packages of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned

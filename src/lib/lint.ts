@@ -174,6 +174,8 @@ export const DATA_FLOW_RULES = {
   "unknown-slot": "the child component or library element has no slot of this name, so the element is not shown",
   "unknown-custom-element": "the tag is not defined anywhere lint looks, while a known tag with the same prefix is one or two letters away",
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
+  "static-markup-in-code": "the class creates an element with document.createElement and gives it fixed text or a fixed attribute, structure the template can hold",
+  "dom-node-in-state": "state or a prop holds DOM nodes, a second copy of what the DOM holds",
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
@@ -642,6 +644,19 @@ export function constructorHostChange(body: string): string | undefined {
   return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
 }
 
+const DOM_TYPE = /\bas\s+(?:readonly\s+)?((?:HTML\w*|SVG\w*|MathML\w*)?Element|Node|DocumentFragment|Text|NodeList|HTMLCollection)\b/;
+
+/** The first element the class body creates with document.createElement and gives a string literal: a property such as textContent or type, or setAttribute with a literal value. */
+export function staticMarkup(body: string): { tag: string; write: string } | undefined {
+  for (const m of body.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.createElement(?:NS\s*\([^,]*,|\s*\()\s*["']([\w-]+)["']/g)) {
+    const [, name, tag] = m as unknown as [string, string, string];
+    const v = esc(name);
+    const write = new RegExp(`\\b${v}\\.(?:[A-Za-z]\\w*(?:\\.\\w+)?\\s*=(?!=)\\s*(?:"[^"]*"|'[^']*'|\`[^\`$]*\`)|setAttribute\\(\\s*["'][^"']+["']\\s*,\\s*(?:"[^"]*"|'[^']*'|\`[^\`$]*\`)\\s*\\))`).exec(body.slice(m.index));
+    if (write) return { tag, write: write[0].replace(/\s+/g, " ") };
+  }
+  return undefined;
+}
+
 /**
  * Data-flow checks (suggestions, not errors).
  * - prop-forwarding: a child's prop is assigned straight from one of this component's own props
@@ -837,6 +852,28 @@ export function dataFlow(
         "constructor-host-change",
         `The constructor runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
       );
+  }
+
+  for (const { body } of classes) {
+    const fixed = staticMarkup(body);
+    if (fixed)
+      report(
+        "static-markup-in-code",
+        `The class creates <${fixed.tag}> with document.createElement and gives it a fixed value (${fixed.write}). Structure built in TypeScript is hidden from codegen, tsc and lint, and fixed text and attributes are markup. Fix: write the element in the template; for one per item, put it in a <template data-each> and fill it with this.lists.<name>.replace(...), with holes for what changes. Structure lives in the template: https://github.com/Pixmi/nativele/blob/main/docs/design.md#html-describes-typescript-decides`,
+      );
+  }
+
+  for (const { call } of classes) {
+    for (const option of ["state", "props"] as const) {
+      for (const { key, value } of optionEntries(call, option)) {
+        const type = value && DOM_TYPE.exec(value)?.[1];
+        if (!type) continue;
+        report(
+          "dom-node-in-state",
+          `The ${option === "state" ? "state" : "prop"} "${key}" holds ${type} values. The DOM already holds the nodes, so a copy in ${option} has to be kept in step with it by hand. Fix: keep the data the nodes show in ${option}, and let the template (holes, data-if, a data-each list) or render() through this.refs change the DOM from it. The DOM is the view: https://github.com/Pixmi/nativele/blob/main/docs/design.md#the-browser-is-the-runtime`,
+        );
+      }
+    }
   }
 
   for (const { call, body } of classes) {
