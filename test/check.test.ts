@@ -67,14 +67,16 @@ describe("ts-dom check: missing-handler", () => {
 });
 
 describe("ts-dom check: define-class-not-exported", () => {
-  it("warns at a define() whose class its file does not export, and not for an exported one", () => {
+  it("warns at a define() whose class its file does not export when a template uses the tag; not for an exported class or a tag no template uses", () => {
     const dir = project();
     writeFileSync(join(dir, "tsconfig.json"), `{ "extends": ${JSON.stringify(REPO_TSCONFIG)}, "include": ["."] }`);
     writeFileSync(join(dir, "card.html"), `<p>Card</p>\n`);
-    writeFileSync(join(dir, "card.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./card.html.js";\nclass Card extends Component(tpl) {}\ndefine("x-card", Card);\nexport class Wide extends Component(tpl) {}\ndefine("x-wide", Wide);\n`);
+    writeFileSync(join(dir, "card.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./card.html.js";\nclass Card extends Component(tpl) {}\ndefine("x-card", Card);\nexport class Wide extends Component(tpl) {}\ndefine("x-wide", Wide);\nclass Host extends Component(tpl) {}\ndefine("x-test-host", Host);\n`);
+    writeFileSync(join(dir, "page.html"), `<x-card></x-card><x-wide></x-wide>\n`);
+    writeFileSync(join(dir, "page.ts"), `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {}\ndefine("x-page", Page);\n`);
     const issues = cliJson(["check", ".", "--project=tsconfig.json", "--json"], dir).issues;
     expect(issues.map((i) => [i.file, i.line, i.col, i.rule, i.severity])).toEqual([["card.ts", 4, 1, "define-class-not-exported", "warning"]]);
-    expect(issues[0]?.message).toBe(`define("x-card", Card) passes the class Card, which card.ts does not export, so ts-dom-tags.ts leaves <x-card> out: a ref or a list item of it is typed as HTMLElement, and its props are not checked. Fix: export the class (export class Card ...).`);
+    expect(issues[0]?.message).toBe(`define("x-card", Card) passes the class Card, which card.ts does not export, so ts-dom-tags.ts leaves <x-card> out: a ref or a list item of it in the templates that use it is typed as HTMLElement, and its props are not checked. Fix: export the class (export class Card ...).`);
   }, 30_000);
 });
 

@@ -540,7 +540,7 @@ npx ts-dom check --no-write`,
 # or: npx ts-dom check (it regenerates first)`,
   },
   "define-class-not-exported": {
-    why: "ts-dom-tags.ts registers each tag with the type of its class, which it can only import when the class is exported. A tag whose class is not exported is left out, so a ref of it is typed as plain HTMLElement and tsc checks none of its props; the only error is a TS2339 where the code reads one. Reported by ts-dom check at the define() call, as a warning.",
+    why: "ts-dom-tags.ts registers each tag with the type of its class, which it can only import when the class is exported. A tag whose class is not exported is left out, so a ref of it is typed as plain HTMLElement and tsc checks none of its props; the only error is a TS2339 where the code reads one. Reported by ts-dom check at the define() call, as a warning, for a tag a scanned template uses; a class kept private for a tag no template uses, such as a test's own host, is not reported.",
     bad: `// card.ts
 class Card extends Component(tpl) {}
 define("x-card", Card);`,

@@ -5,9 +5,10 @@ import { A11Y_RULES } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck, splitDirs } from "./lib/check.ts";
 import { DOCTOR_RULES, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
-import { addSkill, libraryVersion, listSkills, projectDependencies, skillsTarget, staleReason } from "./lib/skills.ts";
+import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
+import { packageDependencies } from "./lib/manifest.ts";
 import { checkGenerated, CODEGEN_RULES, CodegenError, duplicateDefines, formatDiagnostics, generateDirs, staleIssue, watchAll } from "./lib/codegen.ts";
-import { scanDefines } from "./lib/components.ts";
+import { scanDefines, Workspace } from "./lib/components.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, runLint } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]
@@ -128,7 +129,7 @@ function skillsCommand(): void {
     }
     return;
   }
-  const deps = projectDependencies(process.cwd());
+  const deps = new Set(packageDependencies(new Workspace(), process.cwd()));
   const rows = skills.map((skill) => {
     const { dir: _dir, ...s } = skill;
     return { ...s, stale: staleReason(skill, version), uses: skill.detects.filter((d) => deps.has(d)) };

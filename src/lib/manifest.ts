@@ -145,7 +145,7 @@ const SCRIPT = /\.(?:m?[jt]sx?|cts|cjs)$/;
 
 /** The files `exports` names, in its order, leaving out `types` conditions, declaration files and `*` patterns. */
 function exportedFiles(value: unknown): string[] {
-  if (typeof value === "string") return value.includes("*") || value.endsWith(".d.ts") || !SCRIPT.test(value) ? [] : [value];
+  if (typeof value === "string") return value.includes("*") || /\.d\.[cm]?ts$/.test(value) || !SCRIPT.test(value) ? [] : [value];
   if (Array.isArray(value)) return value.flatMap(exportedFiles);
   if (!isObject(value)) return [];
   return Object.entries(value).flatMap(([k, v]) => (k === "types" || k.includes("*") ? [] : exportedFiles(v)));
@@ -208,6 +208,9 @@ function manifestOf(ws: Workspace, pkgJson: string, pkg: string, field: string):
   if (text === null) return { pkg, file, error: "does not exist" };
   return (ws.memo.get(file, "manifest", [text, pkg]) as Manifest | undefined) ?? ws.memo.set(file, "manifest", [text, pkg], parseManifest(text, pkg, file));
 }
+
+/** The names the package.json in `dir` lists in its dependencies, devDependencies, peerDependencies and optionalDependencies. */
+export const packageDependencies = (ws: Workspace, dir: string): string[] => factsOf(ws, join(dir, "package.json"))?.dependencies ?? [];
 
 /** The installed dependencies of the package in `dir`, each found as node_modules/<name>/package.json from `dir` up to the workspace root. Only those files are read; node_modules is never listed. */
 function dependenciesAt(ws: Workspace, dir: string): { name: string; file: string; facts: PackageFacts }[] {

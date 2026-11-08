@@ -226,6 +226,7 @@ describe("data-flow checks", () => {
     expect(at(`this.classList.add("card");`)[0]?.message).toMatch(/^The constructor runs this\.classList\.add, .*NotSupportedError.*Fix: do it in connected\(\)/);
     for (const ctor of [`queueMicrotask(() => this.setAttribute("a", ""));`, `this.on(this, "x", () => { this.classList.add("y"); });`, `this.shadowRoot!.append(x);`, `if (this.id === "a") return;`, `const s = "this.append(x)";`]) expect(at(ctor), ctor).toEqual([]);
     expect(flow(`class P extends Component(t) { override connected(): void { this.classList.add("card"); } }`).filter((d) => d.rule === "constructor-host-change")).toEqual([]);
+    expect(flow(`class P extends Component(t) { /** Runs after the constructor() has returned. */ override connected(): void { this.classList.add("card"); } }`).filter((d) => d.rule === "constructor-host-change")).toEqual([]);
   });
   it("custom-event-on-native: an event a child emits without bubbles, written on a native element", () => {
     const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["value-change"]), bubbles: new Set(bubbles) }]]);
@@ -566,7 +567,7 @@ describe("a component class that extends another component class", () => {
     const root = writeTree({
       "base.html": `<button data-on-click="press">{{ label }}</button>\n`,
       "base.ts": `${H}import tpl from "./base.html.js";\nexport class Base extends Component(tpl, { props: { label: "" }, emits: { pick: event() } }) { press() { this.emit("pick"); } }\n`,
-      "fancy.ts": `${H}import { Base } from "./base.js";\nexport class Mid extends Base {}\nexport class Fancy extends Mid { override connected(): void {} }\ndefine("x-fancy", Fancy);\n`,
+      "fancy.ts": `${H}import { Base } from "./base.js";\ninterface Focusable { focus(): void }\nexport class Mid<T = { a: string }> extends Base {}\nexport class Fancy extends Mid<{ a: string }> implements Focusable { override connected(): void {} }\ndefine("x-fancy", Fancy);\n`,
       "page.html": `<x-fancy lable="Go" data-on-pik="go"></x-fancy>\n`,
       "page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) { go() {} }\ndefine("x-page", Page);\n`,
     });

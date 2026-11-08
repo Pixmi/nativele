@@ -130,6 +130,36 @@ describe("light slot dynamic changes", () => {
   });
 });
 
+describe("children no slot takes", () => {
+  it("a comment stays where it is, as natively, and is neither assigned nor warned about", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const el = document.createElement("t-dyn") as Dyn;
+    const note = document.createComment("anchor");
+    el.append(note);
+    document.body.append(el);
+    const later = document.createComment("later");
+    el.append(later);
+    await tick();
+    expect([note.parentNode, later.parentNode]).toEqual([el, el]);
+    expect(el.assignedNodes("")).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+  it("unslotted-node is logged once per tag and slot name on the page, not once per element", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement("t-dyn") as Dyn;
+      document.body.append(el);
+      const lost = document.createElement("u");
+      lost.slot = "elsewhere";
+      el.append(lost);
+    }
+    await tick();
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes(`slot="elsewhere"`))).toHaveLength(1);
+    warn.mockRestore();
+  });
+});
+
 describe("changing the slot attribute reassigns", () => {
   it("head → default → a slot that does not exist", async () => {
     document.body.insertAdjacentHTML("beforeend", `<t-dyn id="rs"><b id="rsb" slot="head">B</b></t-dyn>`);

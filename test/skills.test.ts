@@ -185,3 +185,13 @@ describe("ts-dom doctor and Skills", () => {
     expect(skillIssues(project({ dependencies: { react: "19.3.1" } }))).toEqual([]);
   });
 });
+
+describe("ts-dom skills in a project", () => {
+  it("names, for each Skill, the dependencies of the project in the current folder it covers", async () => {
+    const { cliJson, writeTree } = await import("./helpers.ts");
+    const dir = writeTree({ "package.json": JSON.stringify({ dependencies: { react: "19" }, peerDependencies: { vue: "3" } }) });
+    const { skills } = cliJson<{ skills: { name: string; uses: string[] }[] }>(["skills", "--json"], dir);
+    const uses = Object.fromEntries(skills.filter((s) => s.uses.length).map((s) => [s.name, s.uses]));
+    expect(uses).toEqual({ "nativele-react": ["react"], "nativele-vue": ["vue"] });
+  });
+});

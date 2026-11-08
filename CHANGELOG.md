@@ -18,12 +18,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Lint, `ts-dom check` and the oxlint plugin check the components of the Nativele component packages a template's package depends on (a workspace package or a published one that lists `@nativele/ts-dom`), read from the modules the package's `exports` name (or its `module` or `main`) and those they import: `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-custom-element` and `click-semantics`, and `unknown-slot` when the package ships its templates (a source package). A package built to JavaScript has its props and events checked; `unchecked-content` says that it ships its modules without their templates. `ts-dom gen` is unchanged: generated files import only from the scanned folders.
 
 - Lint rule `constructor-host-change` (data-flow, warning): a component constructor that gives the element itself an attribute, class, style or child (`this.setAttribute`, `this.classList.add`, `this.id =`, `this.append`, ...), which makes a browser report `NotSupportedError` and create an `HTMLUnknownElement` instead; happy-dom and jsdom accept it. Code in a function or arrow the constructor defines is not reported.
-- `ts-dom check` warns `define-class-not-exported` at a `define()` whose class its file does not export, which `ts-dom-tags.ts` leaves out.
-- A Light DOM component that removes a child with no matching slot logs a console warning once per slot name (`unslotted-node`).
+- `ts-dom check` warns `define-class-not-exported` at a `define()` whose class its file does not export, for a tag a scanned template uses: `ts-dom-tags.ts` leaves it out.
+- A Light DOM component that removes a child with no matching slot logs a console warning once per tag and slot name on the page (`unslotted-node`).
 - Lint follows a component class that extends another component class to the `Component(...)` class it extends, and checks the subclass's tag against that contract.
 
 ### Fixes
 
+- A Light DOM component keeps the comments among its children, as a shadow host does, instead of removing them or moving them into the default slot: a framework may keep an anchor comment there.
 - The component type declares `connectedCallback`, `disconnectedCallback` and `connectedMoveCallback`, so an override with `super` compiles (it was TS4113).
 - Several `tsDom()` in one Vite config share one listener per watcher event, so a config with more than ten no longer prints `MaxListenersExceededWarning`.
 - A rule left out with `--ignore` (or the Vite plugin's `a11y.ignore`, or the oxlint rule's `ignore`) is no longer named by `unchecked-content`, which is not reported when every rule it could not judge is left out.

@@ -167,7 +167,7 @@ export function templateImports(code: string): TemplateImport[] {
 
 const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
 const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
-const EXTENDS_CLASS = /\s*extends\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:<[^{]*>\s*)?\{/y;
+const EXTENDS_CLASS = /\s*extends\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)(?![\w$.\s]*\()/y;
 
 /** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
 export function componentClassHeads(code: string): { name?: string; open: number }[] {

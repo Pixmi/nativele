@@ -413,7 +413,7 @@ TypeScript errors that come from the template contract point at the template, no
 - `any` in a component's contract is `any-in-contract` (below).
 - A tag declared with two different classes by two tag maps in one program (TS2717 in `ts-dom-tags.ts`) is `duplicate-define`.
 - Item component problems get their own rule ids.
-- A `define()` whose class its file does not export is `define-class-not-exported` (a warning), at the `define()` call: `ts-dom-tags.ts` leaves the tag out, so its refs are typed as `HTMLElement` and the only other sign is a TS2339 where code reads a prop.
+- A `define()` whose class its file does not export, for a tag a template uses, is `define-class-not-exported` (a warning), at the `define()` call: `ts-dom-tags.ts` leaves the tag out, so its refs are typed as `HTMLElement` and the only other sign is a TS2339 where code reads a prop.
 
 `any-in-contract` is reported where the `any` is declared:
 

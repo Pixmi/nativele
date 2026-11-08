@@ -103,18 +103,6 @@ export function installedCopies(cwd: string, name: string): string[] {
   return [join(cwd, ".claude", "skills", name), join(cwd, ".agents", "skills", name)].filter((d) => existsSync(join(d, "SKILL.md")));
 }
 
-/** The names in the dependencies and devDependencies of the package.json in `cwd`. */
-export function projectDependencies(cwd: string): Set<string> {
-  const file = join(cwd, "package.json");
-  if (!existsSync(file)) return new Set();
-  try {
-    const pkg = JSON.parse(readFileSync(file, "utf8")) as { dependencies?: object; devDependencies?: object };
-    return new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]);
-  } catch {
-    return new Set();
-  }
-}
-
 export function addSkill(skill: Skill, target: string): string {
   const dest = join(target, skill.name);
   mkdirSync(dest, { recursive: true });

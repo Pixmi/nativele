@@ -467,27 +467,23 @@ function atPackage(all: Contracts, file: string): PackageView {
     const known = new Map<string, Known>();
     for (const tag of all.keys()) known.set(tag, { from: "folders" });
     for (const tag of all.declared) if (!known.has(tag)) known.set(tag, { from: "declared" });
-    for (const [tag, defs] of all) {
-      const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
+    /** The one definition of `tag` among `here`: its contract, or why there is none; `packages` names the places of all definitions when there is not exactly one. */
+    const settle = (tag: string, here: readonly { contract: Contract | null; at: string }[], packages: () => string[]) => {
       const one = here.length === 1 ? here[0] : undefined;
       if (one?.contract) {
         contracts.set(tag, one.contract);
         children.set(tag, one.contract);
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
-      else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
-    }
+      else children.set(tag, { unread: { cause: "ambiguous", packages: packages() } });
+    };
+    for (const [tag, defs] of all) settle(tag, defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg), () => defs.map((d) => relative(all.cwd, d.pkg) || "."));
     const bubbling = new Set([...all.dispatched, ...[...all.values()].flatMap((defs) => defs.flatMap((d) => [...(d.contract?.bubbles ?? [])]))]);
     const fromPackages = new Map<string, { pkg: string; contract: Contract | null; at: string }[]>();
     for (const p of all.packages(pkg)) for (const d of p.defines) if (!all.has(d.tag)) fromPackages.set(d.tag, [...(fromPackages.get(d.tag) ?? []), { pkg: p.pkg, contract: d.contract, at: d.at }]);
     for (const [tag, defs] of fromPackages) {
       known.set(tag, { from: "package", pkg: (defs[0] as { pkg: string }).pkg });
-      const one = defs.length === 1 ? defs[0] : undefined;
       for (const d of defs) for (const b of d.contract?.bubbles ?? []) bubbling.add(b);
-      if (one?.contract) {
-        contracts.set(tag, one.contract);
-        children.set(tag, one.contract);
-      } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
-      else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => d.pkg) } });
+      settle(tag, defs, () => defs.map((d) => d.pkg));
     }
     const fromManifests = new Map<string, { pkg: string; el: ManifestElement }[]>();
     const files = new Set<string>();
@@ -601,7 +597,15 @@ const HOST_PROPERTY = /\bthis\s*\.\s*(className|id|title|hidden|tabIndex|role|la
  * Code in a function or arrow defined there runs later, so it does not count.
  */
 export function constructorHostChange(body: string): string | undefined {
-  const head = /\bconstructor\s*\(/.exec(body);
+  let head: RegExpExecArray | null = null;
+  for (const m of body.matchAll(/\bconstructor\s*\(/g)) {
+    let i = 0;
+    while (i < m.index) i = skipNonCode(body, i) > i ? skipNonCode(body, i) : i + 1;
+    if (i === m.index) {
+      head = m;
+      break;
+    }
+  }
   if (!head) return undefined;
   const params = matchClose(body, head.index + head[0].length - 1, "(", ")");
   const open = params < 0 ? -1 : body.indexOf("{", params);
@@ -1026,19 +1030,19 @@ export interface LintOptions {
  * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
  * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
-export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [] }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [] }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[]; tags: string[] }[] } {
   const p = lintProject(ws, dirs, cwd);
   const usage: LintIssue[] = [];
   const flow: LintIssue[] = [];
   const checks: LintIssue[] = [];
   const found: { file: string; html: string; uses: TemplateFindings["uses"] }[] = [];
-  const templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] = [];
+  const templates: { dir: string; file: string; diagnostics: Diagnostic[]; tags: string[] }[] = [];
   const typosReported = !ignore.includes("unknown-custom-element");
   for (const dir of dirs) {
     for (const html of listHtml(dir, ws)) {
       const file = relative(cwd, html);
       const r = lintTemplate(p, html, groups, analyze, ignore);
-      templates.push({ dir, file: html, diagnostics: r.diagnostics });
+      templates.push({ dir, file: html, diagnostics: r.diagnostics, tags: r.uses.map((u) => u.tag) });
       if (r.usage === null) usage.push(noImporter(file, html));
       else for (const d of r.usage) usage.push({ file, ...d });
       for (const d of r.flow) flow.push({ file, ...d });

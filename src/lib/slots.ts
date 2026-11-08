@@ -7,8 +7,11 @@ interface Slot {
   assigned: Node[];
 }
 
-const slotOf = (n: Node): string | null =>
-  n instanceof Element ? (n.getAttribute("slot") ?? "") : n instanceof Text && !n.data.trim() ? null : "";
+/** The slot a host child goes to: an element's slot attribute, "" for text; null for whitespace-only text and for comments, which a slot does not take, as natively. */
+const slotOf = (n: Node): string | null => (n instanceof Element ? (n.getAttribute("slot") ?? "") : n instanceof Text && n.data.trim() ? "" : null);
+
+/** The tags and slot names `unslotted-node` was logged for, so a page logs each once. */
+const warned = new Set<string>();
 
 /**
  * <slot> for Light DOM: each slot is the range between two comments. Placement is decided from where the nodes are, never from the order of mutation records:
@@ -17,7 +20,6 @@ const slotOf = (n: Node): string | null =>
 export class LightSlots {
   #slots: Slot[] = [];
   #own = new WeakSet<Node>();
-  #warned = new Set<string>();
   #observer = new MutationObserver(() => this.#place());
 
   constructor(
@@ -48,14 +50,17 @@ export class LightSlots {
     }
     for (const n of frag.childNodes) if (!user.has(n)) this.own(n);
     for (const n of given) if (slotOf(n) !== null && !this.#slots.some((s) => s.name === slotOf(n))) this.#drop(n);
+    // A comment is no slot's content but stays a child of the host, as natively: a framework may keep an anchor there.
+    frag.append(...given.filter((n) => n instanceof Comment));
   }
 
   /** A Light DOM element cannot keep a child it does not render, as a shadow host does, so the node is removed; that is said once per slot name. */
   #drop(n: Node): void {
     n.parentNode?.removeChild(n);
     const name = slotOf(n) as string;
-    if (this.#warned.has(name)) return;
-    this.#warned.add(name);
+    const key = `${this.host.localName}\0${name}`;
+    if (warned.has(key)) return;
+    warned.add(key);
     const which = name ? `slot="${name}"` : "no slot attribute";
     const slot = name ? `<slot name="${name}">` : "<slot>";
     console.warn(`<${this.host.localName}>: [unslotted-node] a child node with ${which} has no matching slot in the template, so it was removed from the element. Fix: add ${slot} to the template, or give the node the slot attribute of a slot the template has.`);

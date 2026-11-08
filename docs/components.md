@@ -133,6 +133,7 @@ Shadow DOM is verified in real Chrome ([browser/shadow.test.ts](../browser/shado
 - Child nodes added after creation are assigned to the matching slot. Changing the `slot` attribute of an assigned node reassigns it immediately.
 - When a removed node leaves its slot empty, the fallback content comes back.
 - A child with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per slot name (`unslotted-node`). Give the template a `<slot name>` for every node put in from outside, and give the node that `slot`.
+- A comment among the children stays where it is and goes into no slot, as natively, so a framework's anchor comment is kept.
 - Placement follows where the nodes are after each change, not the order of the changes. A child removed and appended back in the same task goes into its slot again, and an assigned node moved to another parent is no longer assigned.
 - `slotchange(name)` is called when a slot's assigned nodes or their order change. The initial assignment at creation does not call it.
 - The component's own nodes are never assigned, even at the top level of the template: list items, `data-if` blocks, `{{ }}` text and a slot's fallback content stay where the template puts them.

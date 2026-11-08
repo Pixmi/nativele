@@ -748,13 +748,8 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
       else throw e;
     }
   }
-  try {
-    const tags = generateTags(dir, ws);
-    if (tags) written.push(tags);
-  } catch (e) {
-    if (e instanceof CodegenError) errors.push(e.message);
-    else throw e;
-  }
+  const tags = generateTags(dir, ws);
+  if (tags) written.push(tags);
   for (const f of orphans(dir, scanned, ws)) rmSync(f, { force: true });
   if (errors.length) throw new CodegenError(errors.join("\n"), written);
   return written;
