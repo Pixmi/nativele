@@ -1,6 +1,7 @@
 import { Component, define } from "@nativele/ts-dom";
 import childTpl from "./order-child.html.js";
 import parentTpl from "./order-parent.html.js";
+import rowsTpl from "./order-rows.html.js";
 
 export class OrderChild extends Component(childTpl, { props: { label: "" } }) {
   seen: string[] = [];
@@ -26,8 +27,6 @@ export class OrderShadow extends Component(parentTpl, { shadow: true, state: { n
   }
 }
 define("b-order-shadow", OrderShadow);
-
-import rowsTpl from "./order-rows.html.js";
 
 export class OrderRows extends Component(rowsTpl) {
   fill(names: string[]): void {
