@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
@@ -149,6 +149,9 @@ A component with slots that receives React children: give it `shadow: true`, the
 
 ```ts
 // src/nv/shadow-card.ts
+import { Component, define } from "@nativele/ts-dom";
+import tpl from "./shadow-card.html.js";
+
 export class ShadowCard extends Component(tpl, { shadow: true }) {}
 define("shadow-card", ShadowCard);
 ```

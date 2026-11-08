@@ -25,7 +25,7 @@ The recommended path is Vitest: component tests in happy-dom, and the few behavi
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | vitest | 5.1.0 |
 | happy-dom | 21.0.4 |
 | jsdom | 30.1.3 (the same component tests pass; not the recommended environment) |
@@ -259,11 +259,12 @@ beforeEach(() => session.set({ user: "guest" }));
 session.set({ user: "Ada" });
 expect(el.textContent?.trim()).toBe("Signed in as Ada");
 
-// Light DOM slots (test/panels.test.ts): children present at connection are placed at once;
-// a child added later is placed by a MutationObserver, after one microtask
-el.append(title);
-await Promise.resolve();
-expect(el.assignedNodes("title")).toEqual([title]);
+// Light DOM slots (test/panels.test.ts): the slots take the children the element has when it connects,
+// so append them before document.body.append(el); a child code appends later stays outside the slots
+const panel = document.createElement("light-panel");
+panel.append(title);
+document.body.append(panel);
+expect(panel.assignedNodes("title")).toEqual([title]);
 
 // Shadow DOM slots: the template is in el.shadowRoot; the native slotchange event also fires after one microtask
 el.shadowRoot!.querySelector("slot[name=title]")!.addEventListener("slotchange", onChange);

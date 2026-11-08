@@ -25,7 +25,7 @@ Nativele components are native custom elements. Angular renders their tags like 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | @angular/core, @angular/common, @angular/compiler, @angular/compiler-cli, @angular/platform-browser, @angular/router | 22.2.4 |
 | @angular/cli, @angular/build | 22.2.6 |
 | typescript | 6.0.3 |

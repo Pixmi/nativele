@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |
@@ -194,6 +194,9 @@ A component with slots that receives Vue children: give it `shadow: true`, then 
 
 ```ts
 // src/nv/shadow-card.ts
+import { Component, define } from "@nativele/ts-dom";
+import tpl from "./shadow-card.html.js";
+
 export class ShadowCard extends Component(tpl, { shadow: true }) {}
 define("nv-shadow-card", ShadowCard);
 ```
