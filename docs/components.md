@@ -132,16 +132,17 @@ Shadow DOM is verified in real Chrome ([browser/shadow.test.ts](../browser/shado
 - Matching is by `slot="name"`. Nodes without a slot attribute go into the default slot, and when there is no content, the fallback content inside `<slot>` is used.
 - `{{ }}`, `data-ref`, and `data-if` in user content are not parsed; they belong to the user's own DOM.
 - Only the **direct child nodes of the host element** are assigned, as with native Shadow DOM; nodes nested deeper are not.
-- Child nodes added after creation are assigned to the matching slot. Changing the `slot` attribute of an assigned node reassigns it immediately.
+- The slots take content written in HTML: the children the element has when it is built, and the nodes a list (`data-each`) or `data-if` of the parent's template puts in later. Changing the `slot` attribute of such a node reassigns it immediately.
+- A node that other code adds after the element is built (a framework rendering children, `appendChild`) is not placed: it stays where it was put, outside every slot, and the console warns once per tag (`unplaced-child`). Use `shadow: true` for children a framework or code adds, or put the content into an element of the template that the component exposes through a ref ([Design decisions](design.md#design-decisions)).
 - When a removed node leaves its slot empty, the fallback content comes back.
-- A child with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per slot name (`unslotted-node`). Give the template a `<slot name>` for every node put in from outside, and give the node that `slot`.
+- A child written in HTML with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per tag and slot name (`unslotted-node`).
 - A comment among the children stays where it is and goes into no slot, as natively, so a framework's anchor comment is kept.
 - Placement follows where the nodes are after each change, not the order of the changes. A child removed and appended back in the same task goes into its slot again, and an assigned node moved to another parent is no longer assigned.
 - `slotchange(name)` is called when a slot's assigned nodes or their order change. The initial assignment at creation does not call it.
 - The component's own nodes are never assigned, even at the top level of the template: list items, `data-if` blocks, `{{ }}` text and a slot's fallback content stay where the template puts them.
 - While a slot has assigned nodes, its fallback is kept aside. The `data-if` blocks and lists inside the fallback keep following `show` and the list's items, so the fallback comes back as they last left it.
 - The rendered Light DOM has no `<slot>` elements: each slot position is the range between the comments `<!--slot:name-->` and `<!--/slot:name-->` (`<!--slot:-->` for the default slot). Read what a slot holds with `assignedNodes(name)` (`assignedNodes("")` for the default slot) rather than querying for `slot`.
-- Dynamic changes rely on a `MutationObserver`, which observes only while the element is connected and is disconnected on removal; children added, removed or moved while the element is disconnected are placed when it is connected again.
+- Dynamic changes rely on a `MutationObserver`, which observes only while the element is connected and is disconnected on removal; content written in HTML that is added, removed or moved while the element is disconnected is placed when it is connected again.
 
 ```ts
 class Card extends Component(tpl) {
@@ -151,14 +152,9 @@ class Card extends Component(tpl) {
 
 ### Slots and children managed by a framework
 
-In Light mode the host's children are moved into the slot positions inside the template, so they no longer sit where the framework that rendered them put them.
+Give a component whose children a framework (React, Vue, Svelte, Angular, Preact, ...) renders `shadow: true`: the browser assigns its slots natively, and the framework can insert, remove and reorder the children freely.
 
-When a framework (React, Vue, Svelte, Angular, Preact, ...) later inserts, removes or reorders those children, it works against nodes that have moved. Depending on the framework, the update throws a DOM error, or an added node lands next to an anchor in another slot, where `assignedNodes()` no longer matches the page.
-
-Use one of:
-
-- `shadow: true` on the component: the browser assigns slots natively, and the children can change freely.
-- One stable element per slot that the framework never removes, with the changing content inside it (`<div slot="title">...</div>`, and a plain `<div>` for the default slot). An empty wrapper still fills its slot, so the slot's fallback content does not show; when the fallback matters, use `shadow: true`.
+A Light DOM component projects only the children it has when it is built and takes nothing the framework adds later, so a framework that changes the children after that works against nodes that have moved, and new ones stay outside the slots (`unplaced-child`).
 
 ### Styles
 

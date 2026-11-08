@@ -1,5 +1,6 @@
 import { Component, define } from "@nativele/ts-dom";
 import tpl from "./card.html.js";
+import parentTpl from "./card-parent.html.js";
 
 export class LightCard extends Component(tpl) {
   changes: string[] = [];
@@ -15,6 +16,8 @@ export class ShadowCard extends Component(tpl, { shadow: true }) {
     this.text.title = "shadow";
   }
 }
+export class CardParent extends Component(parentTpl, { state: { on: false } }) {}
 define("light-card", LightCard);
 define("shadow-card", ShadowCard);
-Object.assign(window, { LightCard, ShadowCard });
+define("light-card-parent", CardParent);
+Object.assign(window, { LightCard, ShadowCard, CardParent });

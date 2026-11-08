@@ -203,19 +203,8 @@ Used from Svelte:
 2. **Event attribute names.** Only `on` plus the exact event name works (`onitem-select`). Nativele events do not bubble, so put the handler on the element that emits.
    - `onItemSelect` listens to an event named `ItemSelect` and never fires. With the declaration it is also a `svelte-check` error.
    - The legacy directive `on:item-select` fires too, but use only the event attributes. In a runes component `on:` is deprecated (`event_directive_deprecated`), a component cannot mix it with event attributes (`mixed_event_handler_syntaxes`), and the declaration in step 7 does not type it.
-3. **Light DOM slots and Svelte-managed children do not mix.** Use `shadow: true`, or one stable element per slot and let Svelte change only what is inside it (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
-
-   ```svelte
-   <light-card>
-     <div slot="title">{#if showTitle}<span>Title</span>{/if}</div>
-     <div>{#each rows as r (r)}<p>{r}</p>{/each}</div>
-   </light-card>
-   ```
-
-   - Nativele moves the comment nodes Svelte uses as anchors into the slot positions together with the children.
-   - Svelte does not throw, but goes wrong silently: an `{#if}` that adds `<span slot="title">` back inserts it next to its anchor in the default slot, so the title slot shows its fallback, and `assignedNodes()` stops matching the page.
-   - Keyed `{#each}` reordering happened to look right, but do not rely on it.
-
+3. **Children Svelte renders need `shadow: true`.** Give a component with slots that receives Svelte children `shadow: true`, so the browser assigns its slots natively (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - In a Light DOM component, children Svelte adds after the element is built stay outside the slots, and the console warns `unplaced-child`.
 4. **New objects for changed props.** A Nativele component compares props by reference. Changing a `$state` object in place (`item.name = "kiwi"`) does not re-render it; assign a new object (`item = { ...item, name: "kiwi" }`).
 5. **Write closing tags.** `<info-card ... />` works, but the Svelte compiler warns `element_invalid_self_closing_tag` (shown in the dev server's terminal); write `<info-card ...></info-card>`.
 6. **Template types need the declaration** in step 7.
@@ -248,10 +237,10 @@ In the browser, against the dev server (production builds drop Svelte's warnings
 
 - the element has no attribute for the object prop (`el.getAttributeNames()`) and `el.item` is the object;
 - the handler runs once per event;
-- children that Svelte toggles with `{#if}` and changes with keyed `{#each}` stay in the right slot, both in a `shadow: true` component and in stable wrappers in a Light DOM component;
+- children that Svelte toggles with `{#if}` and changes with keyed `{#each}` stay in the right slot of a `shadow: true` component;
 - the console has no errors or warnings.
 
-Read a slot with `el.assignedNodes(name)`, where `""` is the default slot; it works in both modes, and a Light DOM component has no `<slot>` elements once rendered. Svelte leaves comment nodes as anchors among the children, so compare elements, not all nodes.
+Read a slot of a `shadow: true` component with `el.assignedNodes(name)`, where `""` is the default slot. Svelte leaves comment nodes as anchors among the children, so compare elements, not all nodes.
 
 ## Troubleshooting
 
@@ -263,7 +252,7 @@ Read a slot with `el.assignedNodes(name)`, where `""` is the default slot; it wo
 | `Mixing old (on:item-select) and new syntaxes for event handling is not allowed` | `on:` and event attributes in the same component | use only event attributes |
 | `svelte-check`: `Parameter 'e' implicitly has an 'any' type` on a handler of a Nativele tag | the declaration file is missing, or the component class is not exported | add `src/nativele-svelte.d.ts`, export the class, run `npx ts-dom check src/nv` |
 | `svelte-check`: `Unused '@ts-expect-error' directive` in `types-check.ts` | the declaration is not applied | same as above |
-| A slotted child shows up in the wrong slot, or the fallback shows although Svelte rendered the child | Svelte-managed children directly inside a Light DOM component with slots | `shadow: true`, or a stable wrapper element per slot |
+| Svelte children appear outside the slots, the console warns `unplaced-child` | the component with slots uses Light DOM | give it `shadow: true` |
 | The component does not update after `item.name = ...` | the object was changed in place; props compare by reference | assign a new object |
 | `Self-closing HTML tags for non-void elements are ambiguous` | `<info-card />` | write `<info-card></info-card>` |
 

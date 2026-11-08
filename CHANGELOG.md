@@ -11,6 +11,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.6 (not published)
+
+### Changed
+
+- **Breaking**: Light DOM slots take only content written in HTML: the children an element has when it is built, and the nodes a list or `data-if` of a parent Nativele template puts in later. A node that a framework or other code adds after the element is built is no longer moved into a slot: it stays where it was put, and the console warns once per tag (`unplaced-child`). Children a framework renders belong in a `shadow: true` component; content from TypeScript goes into an element the component exposes through a ref. The framework Skills no longer offer one stable wrapper element per slot in a Light DOM component.
+
 ## 0.7.5 (not published)
 
 ### Changed

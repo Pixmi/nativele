@@ -24,6 +24,12 @@ function move(n: Node, end: Node): void {
   parent?.insertBefore(n, end);
 }
 
+/** The nodes a Nativele list or data-if put in after a component was built: content written in HTML, which the slots of a Light DOM element around it take, as they take the element's children when it is built. */
+export const fromTemplate = new WeakSet<Node>();
+
+/** The tags `unplaced-child` was logged for. */
+const warnedForeign = new Set<string>();
+
 /** The tags and slot names `unslotted-node` was logged for, so a page logs each once. */
 const warned = new Set<string>();
 
@@ -34,6 +40,8 @@ const warned = new Set<string>();
 export class LightSlots {
   #slots: Slot[] = [];
   #own = new WeakSet<Node>();
+  /** The children the element had when it was built. */
+  #given = new WeakSet<Node>();
   #observer = new MutationObserver(() => this.#place());
 
   constructor(
@@ -47,6 +55,7 @@ export class LightSlots {
 
   project(frag: DocumentFragment, given: Node[]): void {
     const user = new Set(given);
+    for (const n of given) this.#given.add(n);
     for (const el of frag.querySelectorAll("slot")) {
       const name = el.getAttribute("name") ?? "";
       const nodes = given.filter((n) => slotOf(n) === name);
@@ -66,6 +75,14 @@ export class LightSlots {
     for (const n of given) if (slotOf(n) !== null && !this.#slots.some((s) => s.name === slotOf(n))) this.#drop(n);
     // A comment is no slot's content but stays a child of the host, as natively: a framework may keep an anchor there.
     frag.append(...given.filter((n) => n instanceof Comment));
+  }
+
+  /** A child that other code (a framework, appendChild) added after the element was built stays where it was put; Light DOM slots take only content written in HTML. Said once per tag. */
+  #foreign(): void {
+    const tag = this.host.localName;
+    if (warnedForeign.has(tag)) return;
+    warnedForeign.add(tag);
+    console.warn(`<${tag}>: [unplaced-child] a child was added by code after the element was built, and Light DOM slots place only content written in HTML, so it stays where it was put. Fix: use shadow: true for children a framework or code adds, or put the content into an element of the template that the component exposes through a ref.`);
   }
 
   /** A Light DOM element cannot keep a child it does not render, as a shadow host does, so the node is removed; that is said once per slot name. */
@@ -103,6 +120,8 @@ export class LightSlots {
   }
 
   #user = (n: Node): boolean => !this.#own.has(n) && slotOf(n) !== null;
+  /** Content written in HTML: a child the element had when it was built, or a node a Nativele list or data-if put in. Only it is placed in slots. */
+  #placed = (n: Node): boolean => this.#user(n) && (this.#given.has(n) || fromTemplate.has(n));
 
   #place(): void {
     const at = new Map<Node, Slot | null>();
@@ -110,6 +129,10 @@ export class LightSlots {
     for (const s of this.#slots) for (const n of this.#range(s)) at.set(n, s);
     for (const [n, here] of at) {
       if (!this.#user(n)) continue;
+      if (!this.#placed(n)) {
+        this.#foreign();
+        continue;
+      }
       const target = this.#slots.find((s) => s.name === slotOf(n));
       if (!target) this.#drop(n);
       else if (here !== target) move(n, target.end);
@@ -117,7 +140,7 @@ export class LightSlots {
     const changed: string[] = [];
     for (const s of this.#slots) {
       const range = this.#range(s);
-      const nodes = range.filter(this.#user);
+      const nodes = range.filter(this.#placed);
       if (nodes.length && !s.parked) {
         s.parked = document.createDocumentFragment();
         s.parked.append(...range.filter((n) => this.#own.has(n)));

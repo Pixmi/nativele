@@ -52,7 +52,7 @@ The rules come from the custom element standard and hold for any framework. Each
    | Does the compiler need to be told that hyphenated tags are custom elements? | Otherwise it may try to resolve them as framework components and warn or fail. |
    | Does a binding set a JS property or an HTML attribute on a custom element, and how do you force a property? | Objects and arrays reach a Nativele component only as properties. |
    | How do you listen to a DOM event with an exact, hyphenated name? | Nativele events use names like `item-select`, and some syntaxes change the case. |
-   | Does the framework add, move and remove the children it renders inside the tag? | Light DOM slots move those children (limitation 3). |
+   | Does the framework add, move and remove the children it renders inside the tag? | A component with slots that receives them needs `shadow: true` (limitation 3). |
 
 4. Import every Nativele component module in the app's entry file, before the framework mounts anything:
 
@@ -137,10 +137,6 @@ export function App() {
     <>
       <nv-info-card label="Fruit" count={picked.length} item={item} onitem-select={(e) => setPicked((p) => [...p, e.detail.id])} />
       <nv-text-field value={text} onvalue-change={(e) => setText(e.detail.value)} />
-      <nv-light-card>
-        <div slot="title">{item && <span>{item.name}</span>}</div>
-        <div>{picked.map((id, i) => <p key={i}>{id}</p>)}</div>
-      </nv-light-card>
     </>
   );
 }
@@ -155,15 +151,14 @@ A template ref is typed from the same map: `useRef<HTMLElementTagNameMap["nv-inf
    - A property set before `define()` is kept: Nativele takes it over when the element is upgraded.
    - So when a module really is loaded later, set object props through the framework's property syntax. Where it has none (Preact), set them from a ref, `ref={(el) => { if (el) el.item = item; }}`, and leave `item={item}` out of that tag, or Preact also writes the attribute.
 2. **Props.** Set arrays and objects as properties; only string, number and boolean props can come from an attribute: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
-3. **Light DOM slots and framework-managed children do not mix.** Use `shadow: true`, or one stable element per slot that the framework never removes, with the changing content inside it (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
-   - A framework that inserts, removes or reorders the children of a Light DOM host with slots can fail or leave nodes in the wrong slot.
-   - In Preact, toggling or reordering such children throws `NotFoundError: Failed to execute 'moveBefore' on 'Element'` or `'insertBefore' on 'Node'`, and the slot loses its children.
+3. **Children the framework renders need `shadow: true`.** Give a component with slots that receives the framework's children `shadow: true`, so the browser assigns its slots natively (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - In a Light DOM component, children the framework adds after the element is built stay outside the slots, and the console warns `unplaced-child`.
 4. **Events do not bubble.** Put the listener on the component's element, not on an ancestor, and read `event.detail`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
 5. **Lifecycle.** Subscribe in `connected()`, and do not rely on a move running it.
    - `connected()` runs each time the element is inserted and `disconnected()` each time it is removed; `bind` subscriptions end on removal and start again on insertion.
    - A framework that moves an element (reordering a keyed list) with `insertBefore` runs both. One that moves it with `moveBefore` keeps it connected, so neither runs and its subscriptions continue.
    - Preact 11 uses `moveBefore` where the browser has it (Chrome does) and `insertBefore` elsewhere.
-   - Either way the moved element keeps its props and the children in its Light DOM slots.
+   - Either way the moved element keeps its props and its slotted children.
 6. **Object props change by a new object.** Give the element a new object when a field changes (`{ ...item, qty }`). A Nativele prop renders again only when it receives a new value (`Object.is`), so an object changed in place shows the old data.
 7. **The framework's templates are checked by the framework's type checker**, with the declaration from step 5, not by the Nativele rules. How much it checks depends on the framework:
    - With the Preact declaration, `tsc` reports a wrong prop type, a wrong object shape, a wrong use of `e.detail`, an unknown prop name, an event prop in the wrong case (`onItemSelect`) and an unknown tag.
@@ -195,10 +190,10 @@ In the browser, render a component with an object prop and an event listener, an
 
 - the element has no attribute for the object prop (`el.getAttributeNames()`) and `el.<prop>` is the object;
 - the listener runs once per event;
-- children that the framework toggles, reorders, adds and removes stay in the right slot;
+- when the app passes children to a component with slots, the children that the framework toggles, reorders, adds and removes stay in the right slot of that `shadow: true` component;
 - the console has no errors or framework warnings. Run this check once against the dev server too, because production builds drop framework warnings.
 
-Read a slot with `el.assignedNodes(name)`, where `""` is the default slot; it works in both modes, and a Light DOM component has no `<slot>` elements once rendered. Frameworks leave comment and empty text nodes as anchors among the children, so compare elements, not all nodes.
+Read a slot of a `shadow: true` component with `el.assignedNodes(name)`, where `""` is the default slot. Frameworks leave comment and empty text nodes as anchors among the children, so compare elements, not all nodes.
 
 ## Troubleshooting
 
@@ -208,7 +203,7 @@ Read a slot with `el.assignedNodes(name)`, where `""` is the default slot; it wo
 | An object prop shows `[object Object]`, or the element has an attribute holding it | the framework set an attribute: the element was not defined yet, or the binding syntax sets attributes | import the module before mounting; use the framework's property binding, or a ref (limitation 1) |
 | The framework warns that it cannot resolve the component `info-card` | its compiler treats the tag as a framework component | mark hyphenated tags as custom elements in the framework's compiler options |
 | The event listener never runs | the name was changed (camelCase; Preact's `onItemSelect` listens to `itemselect`), or the listener is on an ancestor | listen with the exact name (`onitem-select`), on the element that emits |
-| Children vanish, appear outside the slot, or the framework throws during an update (Preact: `NotFoundError: Failed to execute 'moveBefore'`) | framework-managed children inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
+| Framework children appear outside the slots, the console warns `unplaced-child` | the component with slots uses Light DOM | give it `shadow: true` |
 | `connected()` does not run when a keyed list reorders | the framework moved the element with `moveBefore`, so it stayed connected | nothing to fix: its subscriptions continue (limitation 5) |
 | `ts-dom check` reports `TS2307: Cannot find module` for a framework file (`./App.vue`, ...) | plain `tsc` cannot read the framework's files | see the list below |
 | `Property 'nv-info-card' does not exist on type 'JSX.IntrinsicElements'`, or the framework's type checker does not know the tag | no declaration built from `ts-dom-tags.ts`, or the component class is not exported | add the declaration (step 5), export the class, run `ts-dom gen` |

@@ -1,3 +1,4 @@
+import { fromTemplate } from "./slots.ts";
 interface Cond {
   el: Element;
   anchor: Comment;
@@ -23,7 +24,10 @@ export function mountConds(root: ParentNode): Conds {
   const show = (name: string, on: boolean): void => {
     for (const { el, anchor } of map.get(name) ?? []) {
       if (on) {
-        if (!el.isConnected && el.parentNode === null) anchor.after(el);
+        if (!el.isConnected && el.parentNode === null) {
+          fromTemplate.add(el);
+          anchor.after(el);
+        }
       } else el.remove();
     }
   };

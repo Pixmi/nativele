@@ -52,20 +52,18 @@ describe("Real browser: Light DOM", () => {
     expect(await page.$$eval("style[data-ts-dom]", (e) => e.length)).toBe(2);
     expect(await page.$("light-card style")).toBeNull();
   });
-  it("dynamically adding and removing slot content, and slotchange", async () => {
+  it("slot content a parent template's data-if shows and hides later, and slotchange", async () => {
     const out = await page.evaluate(async () => {
       const tick = () => new Promise((r) => setTimeout(r));
-      const el = document.createElement("light-card") as HTMLElement & { changes: string[] };
-      document.body.append(el);
+      const p = document.createElement("light-card-parent") as HTMLElement & { set(s: { on: boolean }): void; refs: { kid: HTMLElement & { changes: string[] } } };
+      document.body.append(p);
       await tick();
+      const el = p.refs.kid;
       const fallback = el.querySelector("header")?.textContent;
-      const b = document.createElement("b");
-      b.slot = "head";
-      b.textContent = "N";
-      el.append(b);
+      p.set({ on: true });
       await tick();
       const added = el.querySelector("header")?.textContent;
-      b.remove();
+      p.set({ on: false });
       await tick();
       const restored = el.querySelector("header")?.textContent;
       return { fallback, added, restored, changes: el.changes };
@@ -201,11 +199,13 @@ describe("what only a browser checks", () => {
     const onConsole = (m: { type(): string; text(): string }) => m.type() === "warning" && warnings.push(m.text());
     page.on("console", onConsole);
     const parent = await page.evaluate(async () => {
-      const card = document.getElementById("parsed") as HTMLElement;
+      const card = document.createElement("light-card");
       const lost = document.createElement("u");
       lost.slot = "nope";
       card.append(lost);
+      document.body.append(card);
       await new Promise((r) => setTimeout(r));
+      card.remove();
       return lost.parentNode === null;
     });
     page.off("console", onConsole);

@@ -184,10 +184,10 @@ const text = ref("");
 - `label`, `count` and `item` arrive as properties; the object is the same object Vue passed, and the element has no `item` attribute. Changing them from Vue state re-renders the Nativele component.
 - `@item-select` uses the exact event name; `e.detail` is typed from the component's `emits`.
 
-Children and slots: a `shadow: true` component takes Vue children directly; a Light DOM component (the default) takes one stable element per slot, with Vue changing only what is inside it.
+A component with slots that receives Vue children: give it `shadow: true`, then pass children directly.
 
 ```html
-<!-- src/nv/shadow-card.html (and the same in src/nv/light-card.html) -->
+<!-- src/nv/shadow-card.html -->
 <h2><slot name="title">Untitled</slot></h2>
 <div><slot></slot></div>
 ```
@@ -196,10 +196,6 @@ Children and slots: a `shadow: true` component takes Vue children directly; a Li
 // src/nv/shadow-card.ts
 export class ShadowCard extends Component(tpl, { shadow: true }) {}
 define("nv-shadow-card", ShadowCard);
-
-// src/nv/light-card.ts
-export class LightCard extends Component(tpl) {}
-define("nv-light-card", LightCard);
 ```
 
 ```vue
@@ -207,11 +203,6 @@ define("nv-light-card", LightCard);
   <span v-if="showTitle" slot="title">{{ title }}</span>
   <p v-for="r in rows" :key="r.id">{{ r.text }}</p>
 </nv-shadow-card>
-
-<nv-light-card>
-  <div slot="title"><span v-if="showTitle">{{ title }}</span></div>
-  <div><p v-for="r in rows" :key="r.id">{{ r.text }}</p></div>
-</nv-light-card>
 ```
 
 ## Known limitations
@@ -231,14 +222,13 @@ define("nv-light-card", LightCard);
 5. **`v-model` does not work on a Nativele component.** Use a prop and an event, as `nv-text-field` above: `:value="text" @value-change="(e) => (text = e.detail.value)"`.
    - `v-model` compiles, `vue-tsc` accepts it and Vue logs no warning. It writes the first value into the element, but typing never updates the Vue state.
    - In the component, compare before writing the input's value, so the cursor does not jump ("A Small Reminder About Form Inputs" in the components guide).
-6. **Light DOM slots and Vue children do not mix.** Use `shadow: true`, or one stable element per slot as in the example (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
-   - When `v-if` or `v-for` changes the children of a Light DOM host with slots, the update throws and the slots show the wrong children.
-   - The errors are `Cannot read properties of null (reading 'insertBefore')` and `Cannot set properties of null (setting '__vnode')`.
+6. **Children Vue renders need `shadow: true`.** Give a component with slots that receives Vue children `shadow: true`, so the browser assigns its slots natively (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - In a Light DOM component, children Vue adds after the element is built stay outside the slots, and the console warns `unplaced-child`.
 7. **Lifecycle follows the DOM.** Subscribe in `connected()`, as the lists guide says for moved items.
 
    | Vue action | What the element sees |
    |---|---|
-   | keyed `v-for` reorders | the same element moves: `disconnected()` then `connected()`, props and Light DOM slot children kept, `bind` subscriptions restart |
+   | keyed `v-for` reorders | the same element moves: `disconnected()` then `connected()`, props and slotted children kept, `bind` subscriptions restart |
    | `<KeepAlive>` deactivates | `disconnected()`; no store updates while inactive |
    | `<KeepAlive>` activates | the same element returns: `connected()`, and `bind` calls back at once with the current value |
    | `v-if` removes | `disconnected()`; subscriptions end |
@@ -286,7 +276,7 @@ In the browser, against the dev server (production builds drop Vue warnings), ch
 - a kebab-case Vue component still renders;
 - the console has no errors or `[Vue warn]` lines.
 
-A Light DOM component has no `<slot>` elements once rendered. Read a slot with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
+Read a slot of a `shadow: true` component with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
 
 ## Troubleshooting
 
@@ -298,7 +288,7 @@ A Light DOM component has no `<slot>` elements once rendered. Read a slot with `
 | An object prop shows `[object Object]`, or the element has an attribute holding it | the element was not defined when Vue rendered it, or the prop is written in kebab-case | import the module before `mount()`; write `:selectedItem`, not `:selected-item`; for a module loaded later, use `.item` |
 | The event listener never runs | the name after `@` differs from the emitted name (`@itemSelect` for `item-select`) | write the exact event name |
 | The Vue value bound with `v-model` never changes | `v-model` does not work on custom elements like this | a prop plus an event (limitation 5) |
-| `Cannot read properties of null (reading 'insertBefore')` or `(setting '__vnode')`, children in the wrong slot | Vue changed children of a Light DOM component with slots | `shadow: true`, or a stable element per slot |
+| Vue children appear outside the slots, the console warns `unplaced-child` | the component with slots uses Light DOM | give it `shadow: true` |
 | `TS7006: Parameter 'e' implicitly has an 'any' type` in an `@item-select` handler, wrong props not reported | the declaration is missing, or the component class is not exported | add `src/nativele-vue.d.ts`, export the class, run `ts-dom gen` |
 | `TS1117: An object literal cannot have multiple properties with the same name` | two spellings of one event on the same element (`@picked-one` and `@pickedOne` are both `onPickedOne` in the types) | keep one, with the exact event name |
 | `ts-dom check` reports `TS2307: Cannot find module './App.vue'` | `vue-tsc` is not installed, so `ts-dom check` runs plain `tsc` | keep `vue-tsc` in `devDependencies` |

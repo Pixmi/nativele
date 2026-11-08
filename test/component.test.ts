@@ -4,6 +4,7 @@ import tpl from "./list.html.js";
 import lightTpl from "./light.html.js";
 import hostTpl from "./host.html.js";
 import wrapTpl from "./wrap.html.js";
+import dynParentTpl from "./dyn-parent.html.js";
 import styledTpl from "./styled.html.js";
 import { UserCard } from "../examples/user-card.ts";
 
@@ -84,22 +85,23 @@ class Dyn extends Component(lightTpl) {
   }
 }
 define("t-dyn", Dyn);
+class DynParent extends Component(dynParentTpl, { state: { on: false, lost: false } }) {}
+define("t-dyn-parent", DynParent);
 const tick = () => new Promise((r) => setTimeout(r));
 
 describe("light slot dynamic changes", () => {
-  it("children added later are assigned and trigger slotchange", async () => {
-    const el = document.createElement("t-dyn") as Dyn;
-    document.body.append(el);
+  it("a parent template's data-if shown after the element was built is assigned and triggers slotchange; hiding it brings the fallback back", async () => {
+    const p = document.createElement("t-dyn-parent") as DynParent;
+    document.body.append(p);
     await tick();
+    const el = p.refs.kid as Dyn;
     expect(el.querySelector("header")?.textContent).toBe("fallback");
-    const b = document.createElement("b");
-    b.slot = "head";
-    b.textContent = "N";
-    el.append(b);
+    p.set({ on: true });
     await tick();
     expect(el.querySelector("header")?.textContent).toBe("N");
+    expect(el.assignedNodes("head").map((n) => n.textContent)).toEqual(["N"]);
     expect(el.changes).toEqual(["head"]);
-    b.remove();
+    p.set({ on: false });
     await tick();
     expect(el.querySelector("header")?.textContent).toBe("fallback");
     expect(el.changes).toEqual(["head", "head"]);
@@ -109,22 +111,23 @@ describe("light slot dynamic changes", () => {
     const el = document.createElement("t-dyn") as Dyn;
     const early = document.createElement("s");
     early.slot = "nope";
-    el.append(early);
-    document.body.append(el);
-    expect(early.parentNode).toBeNull();
-    await tick();
-    el.append(document.createElement("i"));
     const lost = document.createElement("u");
     lost.slot = "nope";
     const other = document.createElement("q");
     other.slot = "other";
-    el.append(lost, other);
-    await tick();
+    el.append(early, document.createElement("i"), lost, other);
+    document.body.append(el);
     expect(el.querySelector("main i")).not.toBeNull();
-    expect([lost.parentNode, other.parentNode]).toEqual([null, null]);
+    expect([early.parentNode, lost.parentNode, other.parentNode]).toEqual([null, null, null]);
+    const p = document.createElement("t-dyn-parent") as DynParent;
+    document.body.append(p);
+    p.set({ lost: true });
+    await tick();
+    expect(p.refs.kid.querySelector("s")).toBeNull();
     expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
       `<t-dyn>: [unslotted-node] a child node with slot="nope" has no matching slot in the template, so it was removed from the element. Fix: add <slot name="nope"> to the template, or give the node the slot attribute of a slot the template has.`,
       expect.stringContaining(`slot="other"`),
+      expect.stringContaining(`slot="gone"`),
     ]);
     warn.mockRestore();
   });
@@ -149,10 +152,10 @@ describe("children no slot takes", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (let i = 0; i < 3; i++) {
       const el = document.createElement("t-dyn") as Dyn;
-      document.body.append(el);
       const lost = document.createElement("u");
       lost.slot = "elsewhere";
       el.append(lost);
+      document.body.append(el);
     }
     await tick();
     expect(warn.mock.calls.filter((c) => String(c[0]).includes(`slot="elsewhere"`))).toHaveLength(1);
@@ -186,10 +189,10 @@ describe("assignedNodes", () => {
     expect(el.assignedNodes("").map((n) => n.textContent)).toEqual(["x"]);
     const empty = document.getElementById("an2") as Dyn;
     expect(empty.assignedNodes("head")).toEqual([]);
-    const i = document.createElement("i");
-    empty.append(i);
+    el.querySelector("b")?.removeAttribute("slot");
     await tick();
-    expect(empty.assignedNodes("")).toEqual([i]);
+    expect(el.assignedNodes("head")).toEqual([]);
+    expect(el.assignedNodes("").map((n) => n.textContent)).toEqual(["x", "H"]);
   });
 });
 

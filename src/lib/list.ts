@@ -1,4 +1,5 @@
 import { mountConds } from "./cond.ts";
+import { fromTemplate } from "./slots.ts";
 import { mountHoles } from "./text.ts";
 import type { IsAny } from "./template.ts";
 import type { TextValue } from "./text.ts";
@@ -178,6 +179,7 @@ export class List<L extends ListSchema = ListSchema> {
       entry = this.#create(key);
       this.#items.set(key, entry);
       this.#run(entry, key, item, update);
+      fromTemplate.add(entry.el);
       this.anchor.parentNode?.insertBefore(entry.el, this.anchor);
       return;
     }
@@ -233,6 +235,7 @@ export class List<L extends ListSchema = ListSchema> {
         this.#run(entry, k, it, update);
       }
       if (entry.el.nextSibling !== after || entry.el.parentNode !== parent) {
+        fromTemplate.add(entry.el);
         if (entry.el.parentNode === parent && parent?.moveBefore) parent.moveBefore(entry.el, after);
         else parent?.insertBefore(entry.el, after);
       }
