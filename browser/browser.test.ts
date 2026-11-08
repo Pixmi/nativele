@@ -268,6 +268,24 @@ describe("components the parser creates inside each other", () => {
   });
 });
 
+describe("a component moved out and back in", () => {
+  it.each(["b-order-light", "b-order-shadow"])("%s runs connected() after the components inside it, on every connection", async (tag) => {
+    const log = await page.evaluate((tag) => {
+      const w = window as Window & { orderLog?: string[] };
+      w.orderLog = [];
+      const el = document.createElement(tag);
+      document.body.append(el);
+      el.remove();
+      document.body.append(el);
+      el.remove();
+      const out = w.orderLog;
+      delete w.orderLog;
+      return out;
+    }, tag);
+    expect(log).toEqual(["child", "parent", "child", "parent"]);
+  });
+});
+
 describe("a list without data-prop", () => {
   it("gives update() its item with the custom elements in it upgraded, so their methods and props work before it is inserted", async () => {
     const seen = await page.evaluate(() => {

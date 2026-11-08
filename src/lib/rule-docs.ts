@@ -340,7 +340,7 @@ override render(view) {
 </template>`,
   },
   "dom-node-in-state": {
-    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a set of nodes keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Read is the type written with as, or the type argument of new Set<...> or new Map<...> when it has one parameter: an array, ReadonlyArray, Map or Set of an element interface (HTML, SVG or MathML), Element, Node or Text, an object array that holds one, a DocumentFragment, NodeList or HTMLCollection. A single element, such as an anchor a parent passes to a popover, is a reference to a node, not a copy, and is not reported.",
+    why: "The DOM is the view: what the page shows is what the DOM holds. A state or prop whose value is a set of nodes keeps a second copy that render() has to put back by hand on every change, and the data the nodes show is no longer in state. Read is the type written with as, or the type argument of new Set<...> or new Map<...> when it has one parameter: an array, ReadonlyArray, Map or Set of an element interface (HTML, SVG or MathML), Element, Node or Text, an object array that holds one, a DocumentFragment, NodeList or HTMLCollection. A single element, such as an anchor a parent passes to a popover, is a reference to a node, not a copy, and a function type that returns nodes (() => Node[]) holds none: neither is reported.",
     bad: `// order-stats.ts
 class OrderStats extends Component(tpl, {
   state: { children: [] as HTMLElement[] },

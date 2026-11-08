@@ -37,6 +37,22 @@ function waitingFor(el: Element): Element | undefined {
   return undefined;
 }
 
+function componentsInside(root: Element): Element[] {
+  const out: Element[] = [];
+  const walk = (parent: ParentNode): void => {
+    for (const el of parent.children) {
+      if (starters.has(el)) out.push(el);
+      else {
+        walk(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    }
+  };
+  walk(root);
+  if (root.shadowRoot) walk(root.shadowRoot);
+  return out;
+}
+
 /** Throw `errors` as one error: the error itself when there is one. */
 function rethrow(errors: unknown[], message: string): void {
   if (errors.length === 1) throw errors[0];
@@ -356,6 +372,7 @@ export function Component(
     #waitingForParse = false;
 
     #started = false;
+    #live = false;
 
     #state: Record<string, unknown> = { ...(opts.state as Record<string, unknown> | undefined) };
     #props: Record<string, unknown> = { ...propDefaults };
@@ -623,8 +640,8 @@ export function Component(
     }
 
     #start(): void {
+      if (this.#live) return;
       const errors: unknown[] = [];
-      const first = !this.#started;
       let begun = false;
       try {
         this.#begin();
@@ -632,19 +649,19 @@ export function Component(
       } catch (e) {
         errors.push(e);
       }
-      if (first) {
-        const waiting = unstarted.get(this) ?? [];
-        unstarted.delete(this);
-        for (const el of waiting) {
-          try {
-            starters.get(el)?.();
-          } catch (e) {
-            errors.push(e);
-          }
+      // The components inside start before connected(), on every connection: a browser runs the connectedCallback of a tree moved in, and of a shadow tree #begin built, from the outside in.
+      const waiting = unstarted.get(this) ?? [];
+      unstarted.delete(this);
+      for (const el of new Set([...componentsInside(this), ...waiting])) {
+        try {
+          starters.get(el)?.();
+        } catch (e) {
+          errors.push(e);
         }
       }
       if (begun) {
         this.#slots?.observe();
+        this.#live = true;
         try {
           this.connected();
         } catch (e) {
@@ -683,6 +700,7 @@ export function Component(
     disconnectedCallback(): void {
       // A component removed while it waited for the component around it never started: there is nothing to undo.
       if (!this.#started) return;
+      this.#live = false;
       this.#slots?.disconnect();
       const errors: unknown[] = [];
       for (const fn of [...this.#cleanups.splice(0), () => this.disconnected()]) {

@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.9 (not published)
+
+### Changed
+
+- **Breaking**: on every connection, the components inside a component run `connected()` before it, in Light DOM and Shadow DOM. Before, a component moved out and back in ran `connected()` before the ones inside it, the reverse of its first start, and a Shadow DOM component ran it before the components of its shadow tree even the first time; a parent that changed a child's elements in `connected()` was then undone by the child's own `connected()`. happy-dom ran them in yet another order.
+
+### Fixes
+
+- `dom-node-in-state` no longer reports a prop or state typed as a function that returns nodes (`null as (() => Node | readonly Node[]) | null`).
+
 ## 0.7.8
 
 ### Added

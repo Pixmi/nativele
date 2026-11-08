@@ -646,9 +646,10 @@ export function constructorHostChange(body: string): string | undefined {
 
 const DOM_NODE = /(?<![\w$.])((?:HTML|SVG|MathML)\w*Element|Element|Node|Text|DocumentFragment|NodeList|HTMLCollection)\b/;
 
-/** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy. */
+/** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy, and a function that returns nodes holds none. */
 export function domCollection(value: string): string | undefined {
   const typed = /\bas\s([\s\S]*)/.exec(value)?.[1] ?? "";
+  if (typed.includes("=>")) return undefined;
   const generic = /\bnew\s+(?:Map|Set|WeakMap|WeakSet)\s*<([\s\S]*)/.exec(value)?.[1];
   const node = DOM_NODE.exec(generic ?? typed)?.[1];
   if (!node) return undefined;
