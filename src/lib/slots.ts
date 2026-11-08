@@ -10,6 +10,20 @@ interface Slot {
 /** The slot a host child goes to: an element's slot attribute, "" for text; null for whitespace-only text and for comments, which a slot does not take, as natively. */
 const slotOf = (n: Node): string | null => (n instanceof Element ? (n.getAttribute("slot") ?? "") : n instanceof Text && n.data.trim() ? "" : null);
 
+/** Put `n` before `end`, with `moveBefore` where the browser has it, so a component moved into another slot stays connected (its `connected()` does not run again). */
+function move(n: Node, end: Node): void {
+  const parent = end.parentNode;
+  if (parent?.moveBefore && n.isConnected && parent.isConnected) {
+    try {
+      parent.moveBefore(n, end);
+      return;
+    } catch {
+      // moveBefore refuses some moves (another root, a node type it cannot move); a plain insert still works.
+    }
+  }
+  parent?.insertBefore(n, end);
+}
+
 /** The tags and slot names `unslotted-node` was logged for, so a page logs each once. */
 const warned = new Set<string>();
 
@@ -98,7 +112,7 @@ export class LightSlots {
       if (!this.#user(n)) continue;
       const target = this.#slots.find((s) => s.name === slotOf(n));
       if (!target) this.#drop(n);
-      else if (here !== target) target.end.before(n);
+      else if (here !== target) move(n, target.end);
     }
     const changed: string[] = [];
     for (const s of this.#slots) {

@@ -343,6 +343,7 @@ When the slotted element is an `<h2>` too, the same locator matches both, the sl
    - Chrome has `moveBefore`: the same move runs neither callback and keeps focus.
    - Computed styles are not reliable in a DOM shim: jsdom ignores the `@scope` rule that `<style scoped>` produces, while happy-dom applies it.
    - happy-dom and jsdom accept a constructor that gives the element an attribute or a child. Chrome reports `NotSupportedError` and creates an `HTMLUnknownElement` instead, so the component never renders (lint: `constructor-host-change`). Load each page once in a browser before calling a change done.
+   - In happy-dom, a child component in a `shadow: true` parent's template connects before the parent renders, so it first renders without the props the parent gives it; in Chrome the parent renders first. Test that order in a `*.browser.test.ts`.
    - Light DOM slot placement runs a microtask after a change, in every environment: a node with no matching slot is removed then, with a console warning. Assert after `await Promise.resolve()`.
    - Everything else the example covers behaves the same in happy-dom, jsdom and Chrome: custom elements and attribute changes, `MutationObserver` (Light DOM slots), Shadow DOM, native slots and `slotchange`, events, lists, `data-if` and stores.
 2. **Import the module, not only the type.** Add `import "../src/nv/counter-card.ts"`; importing the parent is enough, because its generated module imports the child components its template uses.

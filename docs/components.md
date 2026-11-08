@@ -104,6 +104,8 @@ Set the element's own class, role and other attributes in `connected()`. A templ
 
 A Light DOM component builds its content when it is connected. While the document is still being parsed, it waits for `DOMContentLoaded`, so that its children have arrived. A `shadow: true` component builds its content into its shadow root in the constructor.
 
+In both modes the child components of the template start after the parent's first render, so each child first renders with the props that render gives it. A child builds its own content when it starts, so in the parent's first render it has no `refs` of its own yet: set its props there, and call its methods from a later render or an event handler. In Light mode the children have started by the time the parent's `connected()` runs; in Shadow mode they start after it.
+
 So an element made with `document.createElement` in Light mode has no children, and empty `refs` and `text`, until it is appended to the document. Set props before that, and read the DOM after it.
 
 `define(name, Class)` registers the element once: calling it again with a name that is already defined does nothing and keeps the first class (`customElements.define` itself would throw). A test that re-imports a component module therefore keeps the first class.
@@ -234,6 +236,8 @@ How updates run (the reasons are in [Design](design.md#design-decisions)):
 
 Elements and other DOM objects, events, `Storage`, `History`, functions, dates, regular expressions and promises inside them keep their own type. When you annotate `render`'s `view` or a helper that takes the state, use read-only types: `readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`.
 
+A prop with no sensible default, such as an object the parent always gives, is declared with `null`: `props: { message: null as Message | null }`. Its type then says it can be absent, so `tsc` makes every use handle `null`. An interface the element implements types it the way the element gives it, `message: DeepReadonly<Message> | null`; assigning a plain `Message` to it still compiles.
+
 ### Common DOM operations in render
 
 `render` uses the DOM directly; the library adds no wrapper for attributes or classes, because the native APIs are already typed through `refs`:
@@ -249,6 +253,13 @@ Elements and other DOM objects, events, `Storage`, `History`, functions, dates, 
 | A list | `this.lists.x.items = view.x` for components, `this.lists.x.replace(...)` for plain elements (see [Lists](lists.md)) |
 
 Guard each block with `changed.has(...)` so a change elsewhere does not redo it.
+
+Write a value only when it differs. A hole skips a text that is the same, and `skipUnchanged` skips a list row whose item is the same object, but a direct write does not:
+
+- writing an `<img>` or `<iframe>` `src` again reloads it;
+- writing a `contenteditable` element's content, or a form control's value, while the user types moves the caret.
+
+So show changing text through a hole or `derive`, and compare before a direct write: `if (this.refs.frame.src !== view.url) this.refs.frame.src = view.url`.
 
 ## Events: data-on-*
 

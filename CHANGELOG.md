@@ -11,6 +11,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.5 (not published)
+
+### Changed
+
+- **Breaking**: the child components of a Light DOM component's template start after the parent's first render, as those of a `shadow: true` component do, so each child first renders with the props that render gives it (it rendered once with its defaults before). In that first render a child has not built its own content yet: call its methods from a later render or an event handler.
+- **Breaking**: `replace()` and `upsert()` call `update` for a new item before inserting it, as assigning `items` does, so a component in it connects with the properties `update` set. Read layout after the list call, not in `update`.
+
+### Fixes
+
+- When a cleanup registered with `onCleanup`, `bind` or `on` throws, the others still run; one error is rethrown as it is, several as an `AggregateError`.
+- Light DOM slots move a node into another slot with `moveBefore` where the browser has it, so a component moved there stays connected.
+
+### Docs
+
+- Changing text and attributes go through holes, props, derive or `skipUnchanged`; a direct write in `render` compares first. An interface for a component's prop types it as `DeepReadonly<T> | null`, the type the element gives.
+
 ## 0.7.4
 
 ### Added

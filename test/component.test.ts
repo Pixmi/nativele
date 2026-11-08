@@ -320,6 +320,32 @@ export function typeOnly(r: Rows) {
   void r.lists.nope;
 }
 
+describe("onCleanup", () => {
+  it("runs every cleanup when one throws, then reports the errors", () => {
+    const el = document.createElement("t-rows") as Rows;
+    document.body.append(el);
+    const ran: string[] = [];
+    el.onCleanup(() => {
+      ran.push("a");
+      throw new Error("first");
+    });
+    el.onCleanup(() => ran.push("b"));
+    el.onCleanup(() => {
+      ran.push("c");
+      throw new Error("third");
+    });
+    let thrown: unknown;
+    try {
+      el.disconnectedCallback();
+    } catch (e) {
+      thrown = e;
+    }
+    expect(ran).toEqual(["a", "b", "c"]);
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors.map((e) => (e as Error).message)).toEqual(["first", "third"]);
+  });
+});
+
 describe("list keys and read-only binding", () => {
   it("replace throws on duplicate keys and leaves the list as it was", () => {
     const r = document.createElement("t-rows") as Rows;

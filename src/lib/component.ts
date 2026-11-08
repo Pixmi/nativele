@@ -23,6 +23,13 @@ export interface EventDecl<T = void> {
   /** Type inference only; does not exist at runtime. */
   readonly "~detail"?: T;
 }
+/**
+ * The components whose first render is running, innermost last, each with the starts of the components that connected inside it meanwhile.
+ * Such a component starts when that render is over, so it first renders with the props the render gave it: the order of a shadow host, which connects before its shadow tree.
+ */
+const firstRenders: { el: Element; waiting: (() => void)[] }[] = [];
+const insideOf = (outer: Element, el: Element): boolean => outer !== el && (outer.contains(el) || (outer.shadowRoot?.contains(el) ?? false));
+
 export function event<T = void>(opts: { bubbles?: boolean } = {}): EventDecl<T> {
   return { bubbles: opts.bubbles };
 }
@@ -331,6 +338,7 @@ export function Component(
     #cleanups: (() => void)[] = [];
     #owned = new WeakMap<Element, Map<string, string>>();
     #built = false;
+
     #started = false;
 
     #state: Record<string, unknown> = { ...(opts.state as Record<string, unknown> | undefined) };
@@ -576,10 +584,27 @@ export function Component(
         document.addEventListener("DOMContentLoaded", () => this.isConnected && this.#start(), { once: true });
         return;
       }
-      this.#start();
+      let outer: (typeof firstRenders)[number] | undefined;
+      for (let i = firstRenders.length - 1; i >= 0 && !outer; i--) if (insideOf((firstRenders[i] as (typeof firstRenders)[number]).el, this)) outer = firstRenders[i];
+      if (outer) outer.waiting.push(() => this.isConnected && this.#start());
+      else this.#start();
     }
 
     #start(): void {
+      const first = !this.#started;
+      const own = { el: this as Element, waiting: [] as (() => void)[] };
+      if (first) firstRenders.push(own);
+      try {
+        this.#begin();
+      } finally {
+        if (first) firstRenders.splice(firstRenders.indexOf(own), 1);
+      }
+      for (const start of own.waiting) start();
+      this.#slots?.observe();
+      this.connected();
+    }
+
+    #begin(): void {
       this.#build();
       if (!this.#started) {
         this.#started = true;
@@ -600,8 +625,6 @@ export function Component(
           this.#flush(); // handle set() calls made inside render()
         }
       }
-      this.#slots?.observe();
-      this.connected();
     }
 
     /** Opts in to atomic moves (`moveBefore`): a moved component stays connected, keeping its state, focus and subscriptions. */
@@ -609,8 +632,17 @@ export function Component(
 
     disconnectedCallback(): void {
       this.#slots?.disconnect();
-      for (const fn of this.#cleanups.splice(0)) fn();
+      const errors: unknown[] = [];
+      for (const fn of this.#cleanups.splice(0)) {
+        try {
+          fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
       this.disconnected();
+      if (errors.length === 1) throw errors[0];
+      if (errors.length) throw new AggregateError(errors, `<${this.localName}>: ${errors.length} cleanups threw when the element was removed; every cleanup ran.`);
     }
 
     connected(): void {}

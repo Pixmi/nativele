@@ -221,4 +221,4 @@ Notes:
 
 Assigning `items` sets the `data-prop` property of a new item before its element goes into the document, so the item component is connected with its item already set and its first render shows it.
 
-`replace()` and `upsert()` put a new item's element into the document first and then call `update`. So a child component placed in such an item is connected before the parent has set its properties. There, build per-item state when the child first receives data, for example in a property setter, and guard a render in `connected()` with the data it needs.
+`replace()` and `upsert()` also call `update` for a new item before its element goes into the document, so a child component placed in it is connected with the properties `update` set, and its first render shows them. `update` therefore runs on an element that is not connected yet for a new item: read layout (sizes, positions) after the list call, not in `update`.

@@ -213,3 +213,50 @@ describe("what only a browser checks", () => {
     expect(warnings).toEqual([expect.stringContaining(`<light-card>: [unslotted-node] a child node with slot="nope" has no matching slot`)]);
   });
 });
+
+describe("Light DOM slots in a browser with moveBefore", () => {
+  it("a component moved to another slot stays connected", async () => {
+    const connects = await page.evaluate(async () => {
+      class Count extends HTMLElement {
+        static connects = 0;
+        connectedCallback(): void {
+          Count.connects++;
+        }
+        connectedMoveCallback(): void {}
+      }
+      customElements.define("x-count-connects", Count);
+      const card = document.createElement("light-card");
+      const kid = document.createElement("x-count-connects");
+      kid.slot = "head";
+      card.append(kid);
+      document.body.append(card);
+      await new Promise((r) => setTimeout(r));
+      const before = Count.connects;
+      kid.removeAttribute("slot");
+      await new Promise((r) => setTimeout(r));
+      const placed = card.querySelector("main x-count-connects") === kid;
+      card.remove();
+      return { placed, connects: Count.connects - before };
+    });
+    expect(connects).toEqual({ placed: true, connects: 0 });
+  });
+});
+
+describe("render order", () => {
+  it("a child component in a Light or Shadow DOM parent's template connects and renders first with the props the parent's first render gives it", async () => {
+    const seen = await page.evaluate(async () => {
+      await customElements.whenDefined("b-order-light");
+      return ["b-order-light", "b-order-shadow"].map((tag) => {
+        const parent = document.createElement(tag) as HTMLElement & { refs: { kid: { seen: string[] } } };
+        document.body.append(parent);
+        const s = parent.refs.kid.seen;
+        parent.remove();
+        return s;
+      });
+    });
+    expect(seen).toEqual([
+      ["render:Ada", "connected:Ada"],
+      ["render:Ada", "connected:Ada"],
+    ]);
+  });
+});
