@@ -779,7 +779,7 @@ npx ts-dom check`,
 "typecheck": "ts-dom check src"`,
   },
   "vite-plugin-missing": {
-    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout.",
+    why: "The Vite plugin regenerates the .html.ts files while the dev server runs. Without it, edits to a template are not reflected until gen is run by hand. A vitest.config file replaces vite.config for Vitest, so unless it has the plugin too or merges vite.config, the tests start without generated files and fail on a clean checkout. The plugin counts as used when the config imports @nativele/ts-dom/vite, or imports by a relative path a module that does (a helper that returns tsDom()), up to three imports deep.",
     bad: `// vite.config.ts
 export default defineConfig({ plugins: [] });
 // vitest.config.ts next to a vite.config.ts that has tsDom()

@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixes
 
+- `ts-dom doctor` no longer reports `vite-plugin-missing` for a Vite or Vitest config that gets `tsDom()` from a helper module: it follows the config's relative imports, up to three deep, to the import of `@nativele/ts-dom/vite`.
 - `constructor-host-change` also reports `this.insertBefore(...)`, and an instance field initializer that changes the element (`#mark = this.classList.add("card")`), since field initializers run in the constructor.
 - A list or `data-if` of a parent template written directly inside a Light DOM component with slots puts its elements straight into their slot. Before, each `items =`, `replace()` or `data-if` inserted them at the top level of the element first, and the slot moved them in afterwards: in a browser without `moveBefore` they were disconnected and connected again (losing focus, running `connected()` twice), and a list moved its items out of the slot on every update.
 - `dom-node-in-state` no longer reports a prop or state typed as a function that returns nodes (`null as (() => Node | readonly Node[]) | null`).
