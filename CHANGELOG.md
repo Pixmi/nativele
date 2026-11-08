@@ -11,27 +11,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
-## 0.7.6 (not published)
+## 0.7.6
 
 ### Changed
 
+- **Breaking**: a component inside another component, in its Light DOM or its shadow tree at any depth, starts after the outer component's first render, as a browser orders a shadow host and its shadow tree. So a child of a template first renders with the props that render gives it (in a Light DOM parent it rendered once with its defaults before). In that first render a child has not built its own content yet: call its methods from a later render or an event handler. One that throws while starting does not keep the others or the outer component's `connected()` from running; a component removed before it started is not told it was disconnected.
+- **Breaking**: `replace()` and `upsert()` call `update` for a new item before inserting it, as assigning `items` does, so a component in it connects with the properties `update` set. Read layout after the list call, not in `update`. An `upsert()` whose `update` throws leaves no item behind.
 - **Breaking**: Light DOM slots take only content written in HTML: the children an element has when it is built, and the nodes a list or `data-if` of a parent Nativele template puts in later. A node that a framework or other code adds after the element is built is no longer moved into a slot: it stays where it was put, and the console warns once per tag (`unplaced-child`). Children a framework renders belong in a `shadow: true` component; content from TypeScript goes into an element the component exposes through a ref. The framework Skills no longer offer one stable wrapper element per slot in a Light DOM component.
-
-## 0.7.5 (not published)
-
-### Changed
-
-- **Breaking**: the child components of a Light DOM component's template start after the parent's first render, as those of a `shadow: true` component do, so each child first renders with the props that render gives it (it rendered once with its defaults before). In that first render a child has not built its own content yet: call its methods from a later render or an event handler.
-- **Breaking**: `replace()` and `upsert()` call `update` for a new item before inserting it, as assigning `items` does, so a component in it connects with the properties `update` set. Read layout after the list call, not in `update`.
 
 ### Fixes
 
-- When a cleanup registered with `onCleanup`, `bind` or `on` throws, the others still run; one error is rethrown as it is, several as an `AggregateError`.
+- When a cleanup registered with `onCleanup`, `bind` or `on`, or `disconnected()` itself, throws, the others still run; one error is rethrown as it is, several as an `AggregateError`.
 - Light DOM slots move a node into another slot with `moveBefore` where the browser has it, so a component moved there stays connected.
 
 ### Docs
 
-- Changing text and attributes go through holes, props, derive or `skipUnchanged`; a direct write in `render` compares first. An interface for a component's prop types it as `DeepReadonly<T> | null`, the type the element gives.
+- Changing text and attributes go through holes, props, derive or `skipUnchanged`; a direct write in `render` compares first. A prop the parent always gives is declared with `null`, and an interface for it types it as `DeepReadonly<T> | null`, the type the element gives.
+- Design decision: Light DOM slots take only content written in HTML.
 
 ## 0.7.4
 

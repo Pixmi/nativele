@@ -349,6 +349,29 @@ describe("onCleanup", () => {
   });
 });
 
+describe("disconnected() and cleanups", () => {
+  it("an error from disconnected() is reported with the cleanups' errors", () => {
+    class D extends Component(tpl) {
+      override disconnected(): void {
+        throw new Error("disconnected");
+      }
+    }
+    define("t-disc", D);
+    const el = document.createElement("t-disc") as D;
+    document.body.append(el);
+    el.onCleanup(() => {
+      throw new Error("cleanup");
+    });
+    let thrown: unknown;
+    try {
+      el.disconnectedCallback();
+    } catch (e) {
+      thrown = e;
+    }
+    expect((thrown as AggregateError).errors.map((e) => (e as Error).message)).toEqual(["cleanup", "disconnected"]);
+  });
+});
+
 describe("list keys and read-only binding", () => {
   it("replace throws on duplicate keys and leaves the list as it was", () => {
     const r = document.createElement("t-rows") as Rows;

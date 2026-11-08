@@ -24,11 +24,24 @@ export interface EventDecl<T = void> {
   readonly "~detail"?: T;
 }
 /**
- * The components whose first render is running, innermost last, each with the starts of the components that connected inside it meanwhile.
- * Such a component starts when that render is over, so it first renders with the props the render gave it: the order of a shadow host, which connects before its shadow tree.
+ * Each component that has not finished its first start, with the components that connected inside it meanwhile (in its Light DOM or shadow tree, at any depth).
+ * They start when it is done, so they first render with the props its first render gave them: the order a browser gives a shadow host and its shadow tree.
  */
-const firstRenders: { el: Element; waiting: (() => void)[] }[] = [];
-const insideOf = (outer: Element, el: Element): boolean => outer !== el && (outer.contains(el) || (outer.shadowRoot?.contains(el) ?? false));
+const unstarted = new WeakMap<Element, Element[]>();
+/** How each component starts once the component it waited for is done. */
+const starters = new WeakMap<Element, () => void>();
+
+/** The nearest component around `el`, across shadow roots, that has not finished its first start. */
+function waitingFor(el: Element): Element | undefined {
+  for (let n: Node | null = el.parentNode; n; n = n instanceof ShadowRoot ? n.host : n.parentNode) if (n instanceof Element && unstarted.has(n)) return n;
+  return undefined;
+}
+
+/** Throw `errors` as one error: the error itself when there is one. */
+function rethrow(errors: unknown[], message: string): void {
+  if (errors.length === 1) throw errors[0];
+  if (errors.length) throw new AggregateError(errors, message);
+}
 
 export function event<T = void>(opts: { bubbles?: boolean } = {}): EventDecl<T> {
   return { bubbles: opts.bubbles };
@@ -338,6 +351,9 @@ export function Component(
     #cleanups: (() => void)[] = [];
     #owned = new WeakMap<Element, Map<string, string>>();
     #built = false;
+    /** Waiting in the list of the component around it, to start when that one has started. */
+    #queued = false;
+    #waitingForParse = false;
 
     #started = false;
 
@@ -371,6 +387,11 @@ export function Component(
 
     constructor() {
       super();
+      unstarted.set(this, []);
+      starters.set(this, () => {
+        this.#queued = false;
+        if (this.isConnected) this.#start();
+      });
       // A prop assigned before the element was upgraded became an own property that shadows the accessor: take the value back and delete it
       for (const k of propKeys) {
         if (Object.hasOwn(this, k)) {
@@ -581,27 +602,56 @@ export function Component(
     connectedCallback(): void {
       // While the parser creates the element its children have not arrived yet, so Light mode waits for the document to be parsed before reading slot content
       if (!shadow && !this.#built && document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => this.isConnected && this.#start(), { once: true });
+        if (!this.#waitingForParse) {
+          this.#waitingForParse = true;
+          document.addEventListener("DOMContentLoaded", () => {
+            this.#waitingForParse = false;
+            if (this.isConnected && !this.#started && !this.#queued) this.#connect();
+          }, { once: true });
+        }
         return;
       }
-      let outer: (typeof firstRenders)[number] | undefined;
-      for (let i = firstRenders.length - 1; i >= 0 && !outer; i--) if (insideOf((firstRenders[i] as (typeof firstRenders)[number]).el, this)) outer = firstRenders[i];
-      if (outer) outer.waiting.push(() => this.isConnected && this.#start());
-      else this.#start();
+      this.#connect();
+    }
+
+    #connect(): void {
+      const outer = waitingFor(this);
+      if (!outer) return this.#start();
+      if (this.#queued) return;
+      this.#queued = true;
+      unstarted.get(outer)?.push(this);
     }
 
     #start(): void {
+      const errors: unknown[] = [];
       const first = !this.#started;
-      const own = { el: this as Element, waiting: [] as (() => void)[] };
-      if (first) firstRenders.push(own);
+      let begun = false;
       try {
         this.#begin();
-      } finally {
-        if (first) firstRenders.splice(firstRenders.indexOf(own), 1);
+        begun = true;
+      } catch (e) {
+        errors.push(e);
       }
-      for (const start of own.waiting) start();
-      this.#slots?.observe();
-      this.connected();
+      if (first) {
+        const waiting = unstarted.get(this) ?? [];
+        unstarted.delete(this);
+        for (const el of waiting) {
+          try {
+            starters.get(el)?.();
+          } catch (e) {
+            errors.push(e);
+          }
+        }
+      }
+      if (begun) {
+        this.#slots?.observe();
+        try {
+          this.connected();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+      rethrow(errors, `<${this.localName}>: it or ${errors.length - 1} of the components inside it threw when they started; the others started.`);
     }
 
     #begin(): void {
@@ -631,18 +681,18 @@ export function Component(
     connectedMoveCallback(): void {}
 
     disconnectedCallback(): void {
+      // A component removed while it waited for the component around it never started: there is nothing to undo.
+      if (!this.#started) return;
       this.#slots?.disconnect();
       const errors: unknown[] = [];
-      for (const fn of this.#cleanups.splice(0)) {
+      for (const fn of [...this.#cleanups.splice(0), () => this.disconnected()]) {
         try {
           fn();
         } catch (e) {
           errors.push(e);
         }
       }
-      this.disconnected();
-      if (errors.length === 1) throw errors[0];
-      if (errors.length) throw new AggregateError(errors, `<${this.localName}>: ${errors.length} cleanups threw when the element was removed; every cleanup ran.`);
+      rethrow(errors, `<${this.localName}>: ${errors.length} cleanups threw when the element was removed; every cleanup ran.`);
     }
 
     connected(): void {}

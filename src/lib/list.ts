@@ -178,7 +178,12 @@ export class List<L extends ListSchema = ListSchema> {
     if (!entry) {
       entry = this.#create(key);
       this.#items.set(key, entry);
-      this.#run(entry, key, item, update);
+      try {
+        this.#run(entry, key, item, update);
+      } catch (e) {
+        this.#items.delete(key);
+        throw e;
+      }
       fromTemplate.add(entry.el);
       this.anchor.parentNode?.insertBefore(entry.el, this.anchor);
       return;

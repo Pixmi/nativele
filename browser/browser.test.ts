@@ -260,3 +260,10 @@ describe("render order", () => {
     ]);
   });
 });
+
+describe("components the parser creates inside each other", () => {
+  it("a Light DOM component inside another starts once", async () => {
+    const seen = await page.evaluate(() => (document.getElementById("parsed-kid") as HTMLElement & { seen: string[] }).seen);
+    expect(seen).toEqual(["render:", "connected:"]);
+  });
+});

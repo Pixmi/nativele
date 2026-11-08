@@ -168,6 +168,15 @@ describe("list items assignment (data-key and data-prop)", () => {
     list.lists.todos.replace([{ id: 1, title: "a2" }], (t) => t.id, set);
     expect(calls.at(-1)).toBe(1);
   });
+  it("an upsert() whose update throws leaves no item behind, so the next upsert of the key inserts it", () => {
+    const list = mount();
+    expect(() => list.lists.todos.upsert(9, { id: 9, title: "x" }, () => {
+      throw new Error("bad item");
+    })).toThrow("bad item");
+    expect(list.lists.todos.has(9)).toBe(false);
+    list.lists.todos.upsert(9, { id: 9, title: "x" }, (t, { el }) => (el.todo = t));
+    expect(rows(list).map((r) => r.titleWhenConnected)).toEqual(["x"]);
+  });
   it("replace() still works on any list", () => {
     const list = mount();
     list.lists.plain.replace(["x", "y"], (s) => s, (s, { text }) => (text.n = s));
