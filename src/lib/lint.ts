@@ -608,39 +608,33 @@ function withoutComments(code: string): string {
   return out;
 }
 
-/** The members of a class `body` at its top level, each with the blocks inside it collapsed to `{}`: one member ends at a `;`, or at a line end outside parentheses and brackets. */
+/**
+ * The members of a class `body` at its top level, as written. A member ends at a `;`, or at a line end outside brackets where the statement is complete:
+ * the line does not end with an operator, and the next line does not go on with one, as a formatter writes a long initializer on the next line.
+ */
 function classMembers(body: string): string[] {
-  let depth = 0;
-  let top = "";
-  for (let i = body.indexOf("{") + 1; i < body.length; i++) {
-    const end = skipNonCode(body, i);
-    if (end > i) {
-      if (depth === 0) top += body.slice(i, end);
-      i = end - 1;
-    } else if (body[i] === "{") {
-      if (depth++ === 0) top += "{}";
-    } else if (body[i] === "}") {
-      if (depth-- === 0) break;
-    } else if (depth === 0) top += body[i];
-  }
+  const open = body.indexOf("{");
   const members: string[] = [];
-  let nesting = 0;
-  let start = 0;
-  for (let i = 0; i < top.length; i++) {
-    const end = skipNonCode(top, i);
+  let depth = 0;
+  let start = open + 1;
+  for (let i = start; i < body.length; i++) {
+    const end = skipNonCode(body, i);
     if (end > i) {
       i = end - 1;
       continue;
     }
-    const c = top[i] as string;
-    if (c === "(" || c === "[") nesting++;
-    else if (c === ")" || c === "]") nesting--;
-    else if (nesting === 0 && (c === ";" || c === "\n")) {
-      members.push(top.slice(start, i).trim());
+    const c = body[i] as string;
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) {
+      if (depth-- === 0) {
+        members.push(body.slice(start, i).trim());
+        break;
+      }
+    } else if (depth === 0 && (c === ";" || (c === "\n" && !/[=+\-*/%&|^!?:,.<>(]\s*$/.test(body.slice(start, i)) && !/^\s*[.?([+\-*/%&|^,:=)]/.test(body.slice(i + 1))))) {
+      members.push(body.slice(start, i).trim());
       start = i + 1;
     }
   }
-  members.push(top.slice(start).trim());
   return members.filter(Boolean);
 }
 

@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
+## 0.7.10 (not published)
+
+### Fixes
+
+- `constructor-host-change` reads a field initializer that a formatter wraps onto the next line (`readonly mark =` and then `this.classList.add("x")`) and one inside an object literal: a class member now ends where its statement ends, not at every line break.
+
+### Docs
+
+- `npx ts-dom rules --explain=prop-forwarding` no longer describes one application's plugin interface as a case the rule does not fit.
+- README: the Quick Start and the short version use `ts-dom check`, which generates, type-checks and lints in one pass; the counter example, which showed what the first example already does, is removed; `llms.txt` sets up with `ts-dom check` too.
+
 ## 0.7.9
 
 ### Added
