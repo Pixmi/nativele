@@ -100,6 +100,31 @@ describe("a parent template's list and data-if inside a Light DOM slot component
   });
 });
 
+describe("a parent template's list and data-if inside a slot that the component keeps out of the document", () => {
+  it("land in the slot while it is out, and connect once when it is put back", async () => {
+    const out = await page.evaluate(async () => {
+      const tick = () => new Promise((r) => setTimeout(r));
+      const counter = (window as unknown as { CountConnects: { connects: number } }).CountConnects;
+      const p = document.createElement("b-modal-parent") as HTMLElement & { fill(n: string[]): void; set(s: { on: boolean }): void; refs: { dlg: HTMLElement & { open(): void; refs: { content: HTMLElement } } } };
+      document.body.append(p);
+      p.fill(["a", "b"]);
+      p.set({ on: true });
+      await tick();
+      const whileOut = counter.connects;
+      const dlg = p.refs.dlg;
+      dlg.open();
+      await tick();
+      const content = dlg.refs.content;
+      const items = [...content.querySelectorAll("i")].map((n) => n.textContent);
+      const counted = !!content.querySelector("b-count-connects");
+      const connects = counter.connects;
+      p.remove();
+      return { whileOut, connects, items, counted };
+    });
+    expect(out).toEqual({ whileOut: 0, connects: 1, items: ["a", "b"], counted: true });
+  });
+});
+
 describe("Real browser: assignedNodes", () => {
   it("assignedNodes is consistent between light and shadow", async () => {
     const r = await page.evaluate(() => {
