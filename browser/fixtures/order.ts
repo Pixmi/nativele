@@ -26,3 +26,17 @@ export class OrderShadow extends Component(parentTpl, { shadow: true, state: { n
   }
 }
 define("b-order-shadow", OrderShadow);
+
+import rowsTpl from "./order-rows.html.js";
+
+export class OrderRows extends Component(rowsTpl) {
+  fill(names: string[]): void {
+    this.lists.rows.replace(names, (n) => n, (n, { el }) => {
+      const kid = el.querySelector("b-order-child") as OrderChild;
+      kid.batch(() => {
+        kid.label = n;
+      });
+    });
+  }
+}
+define("b-order-rows", OrderRows);
