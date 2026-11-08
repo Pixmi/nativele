@@ -41,6 +41,24 @@ const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : 
  * Optional Vite plugin: generates `.html.ts` when the build starts and regenerates it while the dev server runs.
  * ts-dom does not depend on it: `ts-dom gen` (or `--watch`) together with tsc is enough.
  */
+type Watcher = { on(ev: string, fn: (f: string) => void): void };
+const watched = new WeakMap<Watcher, Map<string, ((f: string) => void)[]>>();
+
+/** Each tsDom() of a config handles `ev` through one listener on the dev server's watcher, which has a listener limit of 10 per event (a monorepo gives one tsDom() per package). */
+function onWatcher(watcher: Watcher, ev: string, fn: (f: string) => void): void {
+  let events = watched.get(watcher);
+  if (!events) watched.set(watcher, (events = new Map()));
+  let fns = events.get(ev);
+  if (!fns) {
+    events.set(ev, (fns = []));
+    const all = fns;
+    watcher.on(ev, (f) => {
+      for (const each of all) each(f);
+    });
+  }
+  fns.push(fn);
+}
+
 export function tsDom(opts: TsDomPluginOptions = {}) {
   const generate = { runtime: opts.runtime, whitespace: opts.whitespace, include: opts.include, exclude: opts.exclude };
   const a11y = opts.a11y === true ? {} : opts.a11y || null;
@@ -152,7 +170,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
     configureServer(server: { watcher: { add(p: string | string[]): void; on(ev: string, fn: (f: string) => void): void }; config: { logger: Logger } }) {
       const logger = server.config.logger;
       server.watcher.add(dirs);
-      server.watcher.on("add", (f) => {
+      onWatcher(server.watcher, "add", (f) => {
         ws = new Workspace(memo);
         const file = resolve(f);
         if (file.endsWith(".html")) regenerate(file, logger);
@@ -161,7 +179,7 @@ export function tsDom(opts: TsDomPluginOptions = {}) {
           recheck(file, logger);
         }
       });
-      server.watcher.on("unlink", (f) => {
+      onWatcher(server.watcher, "unlink", (f) => {
         ws = new Workspace(memo);
         const file = resolve(f);
         if (file.endsWith(".html")) {

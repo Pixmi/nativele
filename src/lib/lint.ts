@@ -165,6 +165,7 @@ export const DATA_FLOW_RULES = {
   "prop-forwarding": "do not pass your own prop straight through to a child component (prop drilling)",
   "emit-forwarding": "do not re-emit a child's event unchanged (emit chain)",
   "props-mutation": "do not modify props inside the component",
+  "constructor-host-change": "the constructor gives the element itself an attribute, class, style or child, which makes a browser create an unknown element instead",
   "custom-event-on-native": "a custom event belongs on the child component tag that emits it, not on a native element",
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
@@ -591,6 +592,52 @@ function gates(line: string, ref: string, test: "differs" | "same", at?: number)
   return false;
 }
 
+const HOST_CALL = /\bthis\s*\.\s*(setAttribute|setAttributeNS|toggleAttribute|append|appendChild|prepend|replaceChildren|insertAdjacentElement|insertAdjacentHTML|insertAdjacentText)\s*\(/;
+const HOST_MEMBER = /\bthis\s*\.\s*(classList|dataset|style)\s*\.\s*\w+/;
+const HOST_PROPERTY = /\bthis\s*\.\s*(className|id|title|hidden|tabIndex|role|lang|dir|slot|inert|draggable|textContent|innerHTML|innerText|aria[A-Z]\w*)\s*=(?!=)/;
+
+/**
+ * The first change to the element itself that the constructor of the class `body` makes when it runs (`this.setAttribute(`, `this.classList.add`, `this.id =`, ...), or undefined.
+ * Code in a function or arrow defined there runs later, so it does not count.
+ */
+export function constructorHostChange(body: string): string | undefined {
+  const head = /\bconstructor\s*\(/.exec(body);
+  if (!head) return undefined;
+  const params = matchClose(body, head.index + head[0].length - 1, "(", ")");
+  const open = params < 0 ? -1 : body.indexOf("{", params);
+  const close = open < 0 ? -1 : matchClose(body, open, "{", "}");
+  if (close < 0) return undefined;
+  const ctor = body.slice(open + 1, close);
+  let code = "";
+  for (let i = 0; i < ctor.length; i++) {
+    const end = skipNonCode(ctor, i);
+    if (end > i) {
+      code += " ".repeat(end - i);
+      i = end - 1;
+      continue;
+    }
+    const later = ctor.startsWith("=>", i) ? i + 2 : /^function\b/.test(ctor.slice(i)) && !/[\w$]/.test(ctor[i - 1] ?? "") ? ctor.indexOf("{", i) : -1;
+    if (later < 0) {
+      code += ctor[i];
+      continue;
+    }
+    let j = later;
+    while (/\s/.test(ctor[j] ?? "")) j++;
+    if (ctor[j] === "{") j = matchClose(ctor, j, "{", "}");
+    else for (let depth = 0; j < ctor.length; j++) {
+      const skip = skipNonCode(ctor, j);
+      if (skip > j) j = skip - 1;
+      else if ("([{".includes(ctor[j] as string)) depth++;
+      else if (")]}".includes(ctor[j] as string) && depth-- === 0) break;
+      else if (depth === 0 && (ctor[j] === "," || ctor[j] === ";")) break;
+    }
+    if (j < 0) j = ctor.length;
+    code += " ".repeat(j - i);
+    i = j - 1;
+  }
+  return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
+}
+
 /**
  * Data-flow checks (suggestions, not errors).
  * - prop-forwarding: a child's prop is assigned straight from one of this component's own props
@@ -777,6 +824,15 @@ export function dataFlow(
         );
       }
     });
+  }
+
+  for (const { body } of classes) {
+    const change = constructorHostChange(body);
+    if (change)
+      report(
+        "constructor-host-change",
+        `The constructor runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
+      );
   }
 
   for (const { call, body } of classes) {

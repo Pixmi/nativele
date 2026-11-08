@@ -176,6 +176,11 @@ export interface ComponentInstance<S extends Schema> extends HTMLElement {
   assignedNodes(name: S["slots"]): Node[];
   connected(): void;
   disconnected(): void;
+  /** The Custom Elements callbacks the component implements. Override connected() and disconnected() instead; an override of these must call super. */
+  connectedCallback(): void;
+  disconnectedCallback(): void;
+  /** Keeps a component moved with moveBefore connected, with its state, focus and subscriptions. */
+  connectedMoveCallback(): void;
   /** Light mode: called when slot content changes after creation (the initial assignment does not trigger it). */
   slotchange(name: S["slots"]): void;
 }

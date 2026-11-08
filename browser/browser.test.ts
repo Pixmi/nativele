@@ -169,3 +169,47 @@ describe("Real browser: fallback without @scope (CSS nesting)", () => {
     expect(r.display).toBe("block"); // :scope → & must work too
   });
 });
+
+describe("what only a browser checks", () => {
+  it("a constructor that gives the element an attribute or a child: the browser reports NotSupportedError and creates an HTMLUnknownElement instead", async () => {
+    const before = errors.length;
+    const made = await page.evaluate(() => {
+      class Attr extends HTMLElement {
+        constructor() {
+          super();
+          this.setAttribute("role", "list");
+        }
+      }
+      class Child extends HTMLElement {
+        constructor() {
+          super();
+          this.append(document.createElement("b"));
+        }
+      }
+      customElements.define("x-ctor-attr", Attr);
+      customElements.define("x-ctor-child", Child);
+      return ["x-ctor-attr", "x-ctor-child"].map((tag) => document.createElement(tag).constructor.name);
+    });
+    expect(made).toEqual(["HTMLUnknownElement", "HTMLUnknownElement"]);
+    const reported = errors.splice(before);
+    expect(reported).toHaveLength(2);
+    for (const e of reported) expect(e).toMatch(/NotSupportedError|must not have/);
+  });
+
+  it("a Light DOM child with no matching slot is removed from the element, with a console warning", async () => {
+    const warnings: string[] = [];
+    const onConsole = (m: { type(): string; text(): string }) => m.type() === "warning" && warnings.push(m.text());
+    page.on("console", onConsole);
+    const parent = await page.evaluate(async () => {
+      const card = document.getElementById("parsed") as HTMLElement;
+      const lost = document.createElement("u");
+      lost.slot = "nope";
+      card.append(lost);
+      await new Promise((r) => setTimeout(r));
+      return lost.parentNode === null;
+    });
+    page.off("console", onConsole);
+    expect(parent).toBe(true);
+    expect(warnings).toEqual([expect.stringContaining(`<light-card>: [unslotted-node] a child node with slot="nope" has no matching slot`)]);
+  });
+});

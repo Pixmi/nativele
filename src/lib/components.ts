@@ -167,14 +167,15 @@ export function templateImports(code: string): TemplateImport[] {
 
 const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
 const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
+const EXTENDS_CLASS = /\s*extends\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:<[^{]*>\s*)?\{/y;
 
 /** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
 export function componentClassHeads(code: string): { name?: string; open: number }[] {
   return classHeads(code, () => true).flatMap((h) => (h.open === undefined ? [] : [{ ...(h.name ? { name: h.name } : {}), open: h.open }]));
 }
 
-function classHeads(code: string, inCode: (pos: number) => boolean): { name?: string; at: number; open?: number }[] {
-  const out: { name?: string; at: number; open?: number }[] = [];
+function classHeads(code: string, inCode: (pos: number) => boolean): { name?: string; at: number; open?: number; base?: string }[] {
+  const out: { name?: string; at: number; open?: number; base?: string }[] = [];
   for (const m of code.matchAll(CLASS_NAME)) {
     if (!inCode(m.index)) continue;
     let at = m.index + m[0].length;
@@ -185,7 +186,9 @@ function classHeads(code: string, inCode: (pos: number) => boolean): { name?: st
     }
     EXTENDS_COMPONENT.lastIndex = at;
     const e = EXTENDS_COMPONENT.exec(code);
-    out.push({ ...(m[1] ? { name: m[1] } : {}), at: m.index, ...(e ? { open: at + e[0].length - 1 } : {}) });
+    EXTENDS_CLASS.lastIndex = at;
+    const base = e ? undefined : EXTENDS_CLASS.exec(code)?.[1]?.replace(/\s+/g, "");
+    out.push({ ...(m[1] ? { name: m[1] } : {}), at: m.index, ...(e ? { open: at + e[0].length - 1 } : {}), ...(base ? { base } : {}) });
   }
   return out;
 }
@@ -215,6 +218,8 @@ interface ClassDecl {
   col: number;
   /** `arg` is the identifier or the member access (`t.card`) passed to Component(). */
   component?: { arg?: string; call: string; body: string; endLine: number };
+  /** The class it extends, when that is not a `Component(...)` call: an identifier or a member access. */
+  base?: string;
 }
 export interface ModuleFacts {
   imports: Binding[];
@@ -291,7 +296,7 @@ export function moduleFacts(code: string): ModuleFacts {
   for (const m of code.matchAll(EXPORT_CLASS)) if (inCode(m.index)) facts.exports.set(m[1] ? "default" : (m[2] as string), m[2]);
   for (const m of code.matchAll(EXPORT_DEFAULT)) if (inCode(m.index)) facts.exports.set("default", m[1]);
   for (const head of classHeads(code, inCode)) {
-    const decl: ClassDecl = { ...(head.name ? { name: head.name } : {}), ...loc(head.at) };
+    const decl: ClassDecl = { ...(head.name ? { name: head.name } : {}), ...loc(head.at), ...(head.base ? { base: head.base } : {}) };
     const span = head.open === undefined ? null : classSpan(code, head.open);
     if (head.open !== undefined && span) {
       const call = code.slice(head.open, span.callEnd + 1);
@@ -614,17 +619,18 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const byTemplate = new Map<string, ComponentRef[]>();
   const importers = new Map<string, { file: string; local: string }[]>();
   const defines: DefineSite[] = [];
+  function addComponent(file: string, c: ClassDecl): void {
+    if (!c.component) return;
+    const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
+    const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg.split(".")[0] } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
+    components.push(ref);
+    byFile.set(file, [...(byFile.get(file) ?? []), ref]);
+    if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
+  }
   for (const [file, path] of listed) {
     const m = facts(file);
     if (!m) continue;
-    for (const c of m.classes) {
-      if (!c.component) continue;
-      const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
-      const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg.split(".")[0] } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
-      components.push(ref);
-      byFile.set(file, [...(byFile.get(file) ?? []), ref]);
-      if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
-    }
+    for (const c of m.classes) addComponent(file, c);
     for (const i of m.imports) {
       const t = i.imported === "default" || i.imported === "*" ? target(file, i.spec) : undefined;
       if (t?.endsWith(".html")) importers.set(t, [...(importers.get(t) ?? []), { file, local: i.local }]);
@@ -638,8 +644,20 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     return { class: { file: t.file, ...(t.name ? { name: t.name } : {}), ...(exportName ? { exportName } : {}) } };
   }
   const byTag = new Map<string, DefineSite[]>();
+  /** The component class `cls` is, or the nearest class above it that is one, following `extends` through the index (a subclass has the contract of the Component(...) class it extends). */
+  const componentOf = (cls: { file: string; name?: string }, seen = new Set<string>()): ComponentRef | undefined => {
+    const own = byFile.get(cls.file)?.find((r) => r.name === cls.name);
+    const key = `${cls.file}\0${cls.name}`;
+    if (own || !cls.name || seen.has(key)) return own;
+    seen.add(key);
+    const base = facts(cls.file)?.classes.find((c) => c.name === cls.name)?.base;
+    const t = base ? resolveLocal(cls.file, base) : undefined;
+    if (t?.kind !== "class") return undefined;
+    if (!byFile.get(t.file)?.some((r) => r.name === t.name)) for (const c of facts(t.file)?.classes ?? []) if (c.name === t.name) addComponent(t.file, c);
+    return componentOf(t, seen);
+  };
   for (const d of defines) {
-    const c = d.class && byFile.get(d.class.file)?.find((r) => r.name === d.class?.name);
+    const c = d.class && componentOf(d.class);
     if (c) {
       d.component = c;
       c.defines.push(d);

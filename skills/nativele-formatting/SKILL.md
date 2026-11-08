@@ -166,6 +166,8 @@ define("issue-meta", IssueMeta);
    - Prettier skips a git-ignored file in both cases.
 6. **Prettier changes SVG text.** It formats the content of an SVG `<text>` as blocks, so where text and a `<tspan>` touch (`Hello<tspan>World</tspan>`) it can put a line break between them, which renders as a space in either whitespace mode; oxfmt keeps them inline. Keep such text on one line with `<!-- prettier-ignore -->` before the `<svg>`.
 
+7. **An inline element keeps one space at each end of its content.** `collapse` turns `<span>\n  Save\n</span>` into `" Save "`, so `textContent` and the accessible name gain the spaces. Write inline content flush (`<span>Save</span>`); Prettier 3.9.10 keeps it so, also when it moves the element onto its own line.
+
 ## Verify
 
 ```sh

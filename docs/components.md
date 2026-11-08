@@ -87,14 +87,19 @@ Provided members:
 | `root` | The element itself (default), or the `ShadowRoot` (`shadow: true`) |
 | `connected()` / `disconnected()` | Override to attach your own behavior |
 
-`this.on()` types the listener's parameter like a `data-on-*` handler's. On an element, an unannotated parameter gets the type `HTMLElementEventMap` lists for the name. A parameter typed narrower than `Event` must accept the event the target declares: its `emits`, its `on<name>` property, then `HTMLElementEventMap`. A name the target does not declare is not checked.
+`this.on()` types the listener's parameter like a `data-on-*` handler's. On an element, an unannotated parameter gets the type `HTMLElementEventMap` lists for the name. A parameter typed narrower than `Event` must accept the event the target declares: its `emits`, its `on<name>` property, then `HTMLElementEventMap`. A name the target does not declare is not checked: type the parameter as the event it is, such as `(e: CustomEvent<{ id: number }>)` or `EmitEvent<Child, "x">`.
 
-The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`; you can also override them directly (remember to call `super`). Children a framework or your code adds after the element is connected are placed in their slot in a microtask (a `MutationObserver` in Light mode, native `slotchange` in Shadow mode), so read `assignedNodes` after `await Promise.resolve()`.
+The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`, which the component type declares. Override `connected()` and `disconnected()`; an override of the callbacks themselves must call `super`.
+
+Children a framework or your code adds after the element is connected are placed in their slot in a microtask (a `MutationObserver` in Light mode, native `slotchange` in Shadow mode). Read `assignedNodes`, or assert in a test, after `await Promise.resolve()`.
+
+`set()` and props work before the element is connected: it renders with the last values when it connects.
 
 Set the element's own class, role and other attributes in `connected()`. A template describes the element's content, not the element itself, so it has no place for them.
 
 - Add to what the tag already has rather than replacing it, so that what the parent writes on the tag stays: `this.classList.add("card")`, and `if (!this.hasAttribute("role")) this.setAttribute("role", "listitem")`.
-- Do not set them in the constructor: `document.createElement` throws when a custom element's constructor adds attributes.
+- Do not set them in the constructor. When `document.createElement` or the HTML parser creates an element whose constructor added attributes or children, a browser reports `NotSupportedError` and creates an `HTMLUnknownElement` instead, so the component never renders. happy-dom and jsdom accept it, so only a browser shows it; lint reports it as `constructor-host-change`.
+- Listeners on the element itself also go in `connected()`, with `this.on(this, type, fn)`: the component attaches its `data-on-*` listeners when it builds its content, and a listener added earlier, in the constructor, runs before them.
 - Style the element itself with `:host` in the `<style>` of a `shadow: true` component, and with the tag as the selector in Light mode ([Styles](#styles)).
 
 A Light DOM component builds its content when it is connected. While the document is still being parsed, it waits for `DOMContentLoaded`, so that its children have arrived. A `shadow: true` component builds its content into its shadow root in the constructor.
@@ -126,7 +131,8 @@ Shadow DOM is verified in real Chrome ([browser/shadow.test.ts](../browser/shado
 - `{{ }}`, `data-ref`, and `data-if` in user content are not parsed; they belong to the user's own DOM.
 - Only the **direct child nodes of the host element** are assigned, as with native Shadow DOM; nodes nested deeper are not.
 - Child nodes added after creation are assigned to the matching slot. Changing the `slot` attribute of an assigned node reassigns it immediately.
-- When a removed node leaves its slot empty, the fallback content comes back. Nodes with no matching slot are not rendered, as natively.
+- When a removed node leaves its slot empty, the fallback content comes back.
+- A child with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per slot name (`unslotted-node`). Give the template a `<slot name>` for every node put in from outside, and give the node that `slot`.
 - Placement follows where the nodes are after each change, not the order of the changes. A child removed and appended back in the same task goes into its slot again, and an assigned node moved to another parent is no longer assigned.
 - `slotchange(name)` is called when a slot's assigned nodes or their order change. The initial assignment at creation does not call it.
 - The component's own nodes are never assigned, even at the top level of the template: list items, `data-if` blocks, `{{ }}` text and a slot's fallback content stay where the template puts them.
@@ -262,6 +268,7 @@ removeItem(e: MouseEvent, hit: EventHit) { this.set((s) => ({ items: s.items.fil
 - `hit.key` and `hit.item` are untyped and optional. In a handler for list items, name the item type and key field, `hit: EventHit<Todo, "id">`, to type `hit.item` as `Todo` and `hit.key` as `Todo["id"]`.
 - For extra parameters, put them in `data-*` attributes and read `hit.el.dataset` in the method.
 - **Event delegation**: the listeners for an event type are attached once at the component root, so a longer list adds no listeners and adding or removing items needs no rebinding.
+- Only events that reach the root are handled. An element of the template that is moved out of the component, such as a `<dialog>` appended to `document.body`, no longer triggers its `data-on-*`, with no error. Keep it inside, use the native behavior (`<button formmethod="dialog">`), share the state through a store, or listen on that element with `this.on(el, ...)`.
 - Each dispatch is handled by whether it bubbles, not by its name. A non-bubbling one (`focus`, `blur`, `mouseenter`, an event emitted without `bubbles: true`) is caught in the capture phase and handled only on its target.
 - A bubbling one calls the handler methods from the inside out in the bubble phase, so a `stopPropagation()` below a handler, or in an inner handler, stops the chain.
 - **Only elements in the component's own template count**: content a user puts into a slot does not trigger anything even if it has `data-on-click`.
@@ -279,7 +286,7 @@ Codegen records the tag and event each handler is bound to, and `define()` check
 | `data-on-<event>` on a child component tag whose class declares `<event>` in `emits` | `EmitEvent<Child, "<event>">` (`CustomEvent<Detail>`) |
 | Any other `data-on-<event>` whose element has an `on<event>` property | That property's event: `onenterpictureinpicture` on a `<video>` is `PictureInPictureEvent` |
 | Any other `data-on-<event>`, on a native element or as a native event on a component tag | The type `HTMLElementEventMap` lists: `click` is `MouseEvent`, `keydown` `KeyboardEvent`, `submit` `SubmitEvent` |
-| A name none of them declares | Not checked: type the parameter as the event the handler expects |
+| A name none of them declares | Not checked: type the parameter as the event the handler expects, `CustomEvent<Detail>` or `EmitEvent<Child, "<event>">` |
 
 - `click` is `PointerEvent` in recent DOM types, which a `MouseEvent` parameter accepts.
 - A name none of them declares is, for example, a bubbling event of a child caught on a wrapper, or a third-party element's event no map declares. A third-party element's events are typed as in [Custom elements from other libraries](#custom-elements-from-other-libraries).
@@ -449,6 +456,7 @@ The same `data-flow` group checks the parent's HTML against each child's `props`
 - the attributes, events and slots on a child's tag (`unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot`)
 - custom element tags and event names on native elements (`unknown-custom-element`, `custom-event-on-native`, `unknown-native-event`)
 - form control writes in `render()` (`unguarded-input-value`)
+- a constructor that changes the element itself (`constructor-host-change`), which makes a browser create an unknown element instead
 
 `npx ts-dom rules` lists every rule, and `npx ts-dom rules --explain=<id>` explains one with an example. The tables in [Lint](tooling.md#lint-optional) cover what each rule reads.
 
@@ -458,7 +466,7 @@ Recommended practices:
 
 - **Data and events cross only one layer**: the parent owns the data and passes props down, and the child notifies with events.
 - **Data shared across many layers uses a shared store**: put `createStore` in a separate module, and have the components that need it import it directly and subscribe with `this.bind(store, fn)`, so the intermediate layers do not need to know about it or forward it.
-- When an event has to cross two layers, handle it explicitly in the middle layer (it has its own logic) instead of forwarding it as-is.
+- When an event has to cross two layers, handle it explicitly in the middle layer (it has its own logic) instead of forwarding it as-is. Re-emitting it from a `this.on()` listener is the same chain, which lint cannot see.
 
 ```ts
 // session.ts — components at any depth can use it directly, no layer-by-layer passing

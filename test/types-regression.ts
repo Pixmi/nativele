@@ -57,3 +57,14 @@ export const typedHit = (hit: EventHit<Todo, "id">): number => hit.key + hit.ite
 export const plainHit = (hit: EventHit): PropertyKey | undefined => hit.key;
 // @ts-expect-error: "name" is not a field of Todo
 export const badField = (hit: EventHit<Todo, "name">) => hit;
+
+// The Custom Elements callbacks are members of the component type, so overriding one (and calling super) compiles (no TS4113).
+export class OwnCallbacks extends Component(tpl, { state, derive: { double: (s) => s.count * 2 } }) {
+  override connectedCallback(): void {
+    super.connectedCallback();
+  }
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+  }
+  override connectedMoveCallback(): void {}
+}

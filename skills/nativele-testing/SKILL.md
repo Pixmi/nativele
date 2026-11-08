@@ -342,6 +342,8 @@ When the slotted element is an `<h2>` too, the same locator matches both, the sl
    - happy-dom 21 and jsdom 30 have no `Element.prototype.moveBefore`. A list item that moves on reorder is taken out and put back: `disconnected()` and `connected()` run, `bind` subscriptions end and start again, and a focused input in it loses focus.
    - Chrome has `moveBefore`: the same move runs neither callback and keeps focus.
    - Computed styles are not reliable in a DOM shim: jsdom ignores the `@scope` rule that `<style scoped>` produces, while happy-dom applies it.
+   - happy-dom and jsdom accept a constructor that gives the element an attribute or a child. Chrome reports `NotSupportedError` and creates an `HTMLUnknownElement` instead, so the component never renders (lint: `constructor-host-change`). Load each page once in a browser before calling a change done.
+   - Light DOM slot placement runs a microtask after a change, in every environment: a node with no matching slot is removed then, with a console warning. Assert after `await Promise.resolve()`.
    - Everything else the example covers behaves the same in happy-dom, jsdom and Chrome: custom elements and attribute changes, `MutationObserver` (Light DOM slots), Shadow DOM, native slots and `slotchange`, events, lists, `data-if` and stores.
 2. **Import the module, not only the type.** Add `import "../src/nv/counter-card.ts"`; importing the parent is enough, because its generated module imports the child components its template uses.
    - `import type { CounterCard }` (or `import { type CounterCard }`) is erased, so `define()` never runs. `document.createElement("counter-card")` returns a plain element that never renders, while `tsc` still types it as `CounterCard`.

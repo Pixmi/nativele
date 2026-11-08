@@ -303,7 +303,7 @@ With `--a11y`, `unchecked-content` names the same causes, and four more, for con
 | --- | --- | --- |
 | Not defined: no `define()` in the scanned folders or a component package, and no manifest | both | Scan the folder with its `define()`, or list the package that defines it in the dependencies |
 | Declared only in TypeScript (`customElements.define()`, `HTMLElementTagNameMap`) | both | Define a Nativele component with `define()`; another library's package needs a manifest |
-| `define()` passes a class lint cannot follow to a class extending `Component(...)` | both | Import the class by a relative path where `define()` is called |
+| `define()` passes a class lint cannot follow, through relative imports and `extends`, to a class extending `Component(...)` | both | Import the class by a relative path where `define()` is called |
 | Defined in several packages, and not exactly once in the template's package | both | Keep one `define()` of a tag per package |
 | `Component()` gets a template lint cannot follow to an `.html` imported by a relative path | `unchecked-content` | Pass a template imported by a relative path (`import tpl from "./x.html.js"`) |
 | The template file the class imports does not exist | `unchecked-content` | Restore the file or correct the import path |
@@ -345,7 +345,7 @@ A misnested closing tag such as `<p><div></p></div>` is a syntax error for the f
 
 Every message has a stable rule id and explains what is wrong, why, and how to fix it. `npx ts-dom rules` lists the ids of the static checks, and `npx ts-dom rules --explain=<id>` explains one.
 
-At run time, `Component()` and components throw errors with a `[rule id]` and a fix, at definition, connection and use. These runtime ids (`render-loop`, `missing-key`, `item-prop-missing` and others) are not in `ts-dom rules`.
+At run time, `Component()` and components throw errors with a `[rule id]` and a fix, at definition, connection and use, and log warnings such as `unslotted-node` and `host-in-light-dom` to the console. These runtime ids (`render-loop`, `missing-key`, `item-prop-missing` and others) are not in `ts-dom rules`.
 
 ### ts-dom doctor
 
@@ -413,6 +413,7 @@ TypeScript errors that come from the template contract point at the template, no
 - `any` in a component's contract is `any-in-contract` (below).
 - A tag declared with two different classes by two tag maps in one program (TS2717 in `ts-dom-tags.ts`) is `duplicate-define`.
 - Item component problems get their own rule ids.
+- A `define()` whose class its file does not export is `define-class-not-exported` (a warning), at the `define()` call: `ts-dom-tags.ts` leaves the tag out, so its refs are typed as `HTMLElement` and the only other sign is a TS2339 where code reads a prop.
 
 `any-in-contract` is reported where the `any` is declared:
 
@@ -462,7 +463,7 @@ In a CI job, `ts-dom check --no-write` and `ts-dom gen --check` work only when t
 | `unused-item-name` | A name inside a list item is never referenced |
 | `no-importer` | No component class passes this template to `Component()`, and no TypeScript file imports it (a module that only re-exports it does not count) |
 
-lint compares per **class body** of `class X extends Component(tpl)`, where `tpl` is followed through the imports to its template, in any scanned file:
+lint compares per **class body** of `class X extends Component(tpl)`, where `tpl` is followed through the imports to its template, in any scanned file. A class that extends such a class has its contract for the child-component checks:
 
 - a default import of the `.html.js`;
 - a name exported by a module that re-exports it (`export { default as cardTpl } from "./card.html.js"`, `export *`);

@@ -17,6 +17,7 @@ const slotOf = (n: Node): string | null =>
 export class LightSlots {
   #slots: Slot[] = [];
   #own = new WeakSet<Node>();
+  #warned = new Set<string>();
   #observer = new MutationObserver(() => this.#place());
 
   constructor(
@@ -46,6 +47,18 @@ export class LightSlots {
       this.#slots.push({ name, start, end, parked, assigned: nodes });
     }
     for (const n of frag.childNodes) if (!user.has(n)) this.own(n);
+    for (const n of given) if (slotOf(n) !== null && !this.#slots.some((s) => s.name === slotOf(n))) this.#drop(n);
+  }
+
+  /** A Light DOM element cannot keep a child it does not render, as a shadow host does, so the node is removed; that is said once per slot name. */
+  #drop(n: Node): void {
+    n.parentNode?.removeChild(n);
+    const name = slotOf(n) as string;
+    if (this.#warned.has(name)) return;
+    this.#warned.add(name);
+    const which = name ? `slot="${name}"` : "no slot attribute";
+    const slot = name ? `<slot name="${name}">` : "<slot>";
+    console.warn(`<${this.host.localName}>: [unslotted-node] a child node with ${which} has no matching slot in the template, so it was removed from the element. Fix: add ${slot} to the template, or give the node the slot attribute of a slot the template has.`);
   }
 
   /** Like the native slot.assignedNodes(): the nodes currently assigned to the slot (fallback content excluded). */
@@ -79,8 +92,7 @@ export class LightSlots {
     for (const [n, here] of at) {
       if (!this.#user(n)) continue;
       const target = this.#slots.find((s) => s.name === slotOf(n));
-      // With no matching slot the node is not rendered, like the native behavior
-      if (!target) n.parentNode?.removeChild(n);
+      if (!target) this.#drop(n);
       else if (here !== target) target.end.before(n);
     }
     const changed: string[] = [];

@@ -22,6 +22,7 @@ export const CHECK_RULES = {
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
   "item-class-not-exported": "the item component class passed to define() is not exported (found by tsc)",
+  "define-class-not-exported": "define() passes a class its file does not export, so ts-dom-tags.ts leaves the tag out and its elements are typed as HTMLElement",
   tsc: "any other TypeScript error, as tsc reports it",
   "tsc-not-found": "TypeScript is not installed in the project, so types were not checked and the check fails",
   "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
@@ -350,6 +351,11 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
   for (const d of duplicateDefines(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
+  for (const d of ws.index(dirs).defines) {
+    if (!d.class || d.class.exportName !== undefined) continue;
+    const name = d.class.name ?? d.id;
+    issues.push({ file: rel(d.file), line: d.line, col: d.col, rule: "define-class-not-exported", severity: "warning", message: `define("${d.tag}", ${d.id}) passes the class ${name}, which ${rel(d.class.file)} does not export, so ts-dom-tags.ts leaves <${d.tag}> out: a ref or a list item of it is typed as HTMLElement, and its props are not checked. Fix: export the class (export class ${name} ...).` });
+  }
 
   if (options.write === false) {
     const defs = scanDefines(dirs, ws);
