@@ -10,6 +10,7 @@ import ifListTpl from "./if-list.html.js";
 import holeTpl from "./hole.html.js";
 import fallbackTpl from "./fallback.html.js";
 import mixedTpl from "./mixed.html.js";
+import parentTpl from "./parent.html.js";
 import type { ScenarioName } from "./expected.ts";
 
 interface Row {
@@ -104,6 +105,22 @@ class Mixed extends Component(mixedTpl, { state: { title: "", msg: false, note: 
 }
 define("tl-mixed", Mixed);
 
+class Parent extends Component(parentTpl, { state: { on: false, rows: [] as readonly Row[], named: [] as readonly Row[] } }) {
+  override render(v: { rows: readonly Row[]; named: readonly Row[] }): void {
+    this.lists.rows.replace(v.rows, key, update);
+    this.lists.named.replace(v.named, key, update);
+  }
+}
+define("tl-parent", Parent);
+
+class Foreign extends Component(defaultTpl) {
+  changes: string[] = [];
+  override slotchange(name: ""): void {
+    this.changes.push(name);
+  }
+}
+define("tl-foreign", Foreign);
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const items = (el: Element) => [...el.querySelectorAll(".it")].map((n) => n.textContent?.trim());
 const texts = (nodes: Node[]) => nodes.map((n) => n.textContent);
@@ -119,6 +136,8 @@ const user = (tag: string, text: string, slot?: string) => {
   if (slot) n.slot = slot;
   return n;
 };
+const slots = (el: Default | Foreign) => ({ layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes.splice(0) });
+const named = (el: Named) => ({ layout: layout(el), x: texts(el.assignedNodes("x")), changes: el.changes.splice(0) });
 const report = (el: Mixed) => ({ layout: layout(el), x: texts(el.assignedNodes("x")), assigned: texts(el.assignedNodes("")), changes: el.changes.splice(0) });
 
 async function mount<T extends HTMLElement>(tag: string, init?: (el: T) => void): Promise<T> {
@@ -127,6 +146,21 @@ async function mount<T extends HTMLElement>(tag: string, init?: (el: T) => void)
   document.body.append(el);
   await tick();
   return el;
+}
+
+/** Runs `run` with console.warn captured, and gives each warning up to its rule id. */
+async function warned(run: () => Promise<unknown>): Promise<{ result: unknown; warnings: string[] }> {
+  const warn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (msg: unknown) => {
+    const s = String(msg);
+    warnings.push(s.slice(0, s.indexOf("]") + 1));
+  };
+  try {
+    return { result: await run(), warnings };
+  } finally {
+    console.warn = warn;
+  }
 }
 
 async function added(tag: "tl-noslot" | "tl-first"): Promise<unknown> {
@@ -162,11 +196,10 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { items: items(el), same: after.every((n) => before.includes(n)) };
   },
   "default slot: items stay at the list, only user nodes are assigned, no slotchange from items": async () => {
-    const el = await mount<Default>("tl-default", (e) => e.set({ rows: rows(1, 2) }));
-    const u = document.createElement("u");
-    u.textContent = "U";
-    el.append(u);
-    await tick();
+    const el = await mount<Default>("tl-default", (e) => {
+      e.set({ rows: rows(1, 2) });
+      e.append(user("u", "U"));
+    });
     el.changes = [];
     el.set({ rows: rows(1, 2, 3) });
     await tick();
@@ -176,13 +209,11 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { layoutAfterAdd, layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes };
   },
   "named slot: items stay at the list and are not assigned": async () => {
-    const el = await mount<Named>("tl-named", (e) => e.set({ rows: rows(1) }));
+    const el = await mount<Named>("tl-named", (e) => {
+      e.set({ rows: rows(1) });
+      e.append(user("b", "X", "x"));
+    });
     el.set({ rows: rows(1, 2) });
-    await tick();
-    const x = document.createElement("b");
-    x.slot = "x";
-    x.textContent = "X";
-    el.append(x);
     await tick();
     return { layout: layout(el), assigned: texts(el.assignedNodes("x")), changes: el.changes };
   },
@@ -214,28 +245,20 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { detached, reconnected: items(el) };
   },
   "top-level slot: fallback comes back unassigned and leaves again": async () => {
-    const el = await mount<Fallback>("tl-fallback");
-    const b = document.createElement("b");
-    b.textContent = "U";
-    el.append(b);
-    await tick();
+    const b = user("b", "U");
+    const el = await mount<Fallback>("tl-fallback", (e) => e.append(b));
     el.changes = [];
     b.remove();
     await tick();
     await tick();
     const removed = { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: [...el.changes] };
-    const i = document.createElement("i");
-    i.textContent = "V";
-    el.append(i);
+    el.append(b);
     await tick();
     return { removed, readded: { layout: layout(el), assigned: texts(el.assignedNodes("")) } };
   },
   "an assigned node moved to another parent is unassigned": async () => {
-    const el = await mount<Default>("tl-default");
-    const u = document.createElement("u");
-    u.textContent = "U";
-    el.append(u);
-    await tick();
+    const u = user("u", "U");
+    const el = await mount<Default>("tl-default", (e) => e.append(u));
     el.changes = [];
     const box = document.createElement("div");
     document.body.append(box);
@@ -274,11 +297,9 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return items(el);
   },
   "an assigned node removed and appended back in the same task stays in its slot": async () => {
-    const el = await mount<Default>("tl-default");
     const a = user("u", "A");
     const b = user("u", "B");
-    el.append(a, b);
-    await tick();
+    const el = await mount<Default>("tl-default", (e) => e.append(a, b));
     el.changes = [];
     a.remove();
     el.append(a);
@@ -290,18 +311,28 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { backAtTheEnd, sameOrder: { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes } };
   },
   "a child appended while the element is disconnected is slotted when it is connected again": async () => {
-    const el = await mount<Default>("tl-default");
+    const p = await mount<Parent>("tl-parent");
+    const d = p.refs.d as Default;
+    const at = d.nextSibling;
+    d.remove();
+    p.set({ on: true });
+    p.insertBefore(d, at);
+    await tick();
+    const template = slots(d);
+    const g = user("u", "G");
+    const el = await mount<Default>("tl-default", (e) => e.append(g));
+    g.remove();
+    await tick();
+    el.changes = [];
     el.remove();
-    el.append(user("u", "U"));
+    el.append(g);
     document.body.append(el);
     await tick();
-    return { layout: layout(el), assigned: texts(el.assignedNodes("")), changes: el.changes };
+    return { template, given: slots(el) };
   },
   "a hidden data-if in a slot fallback stays hidden when the fallback comes back": async () => {
-    const el = await mount<Mixed>("tl-mixed");
     const u = user("u", "U");
-    el.append(u);
-    await tick();
+    const el = await mount<Mixed>("tl-mixed", (e) => e.append(u));
     el.changes = [];
     u.remove();
     await tick();
@@ -320,9 +351,14 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { hidden, shown, assigned, back: report(el) };
   },
   "list items in a slot fallback leave with the fallback and come back with it": async () => {
-    const el = await mount<Mixed>("tl-mixed", (e) => e.set({ rows: rows(1) }));
-    const first = report(el);
     const x = user("b", "X", "x");
+    const el = await mount<Mixed>("tl-mixed", (e) => {
+      e.set({ rows: rows(1) });
+      e.append(x);
+    });
+    x.remove();
+    await tick();
+    const first = report(el);
     el.append(x);
     await tick();
     el.set({ rows: rows(1, 2) });
@@ -333,9 +369,7 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     return { first, filled, back: report(el) };
   },
   "the template's own top-level nodes are never assigned: text hole, data-if block and slot comments": async () => {
-    const el = await mount<Mixed>("tl-mixed");
-    el.append(user("u", "U"), user("b", "X", "x"));
-    await tick();
+    const el = await mount<Mixed>("tl-mixed", (e) => e.append(user("u", "U"), user("b", "X", "x")));
     el.changes = [];
     el.set({ title: "T", msg: true });
     await tick();
@@ -343,5 +377,34 @@ export const scenarios: Record<ScenarioName, () => Promise<unknown>> = {
     el.set({ msg: false });
     await tick();
     return { shown, hidden: report(el) };
+  },
+  "a node code appends after the element was built stays where it was put, unassigned, and warns once per tag": () =>
+    warned(async () => {
+      const a = await mount<Foreign>("tl-foreign");
+      const b = await mount<Foreign>("tl-foreign");
+      a.append(user("u", "A"));
+      b.prepend(user("u", "B"));
+      await tick();
+      return { a: slots(a), b: slots(b) };
+    }),
+  "a parent template's data-if inside the tag, shown after the element was built, lands in its slot and fires slotchange": async () => {
+    const p = await mount<Parent>("tl-parent");
+    const d = p.refs.d as Default;
+    const before = slots(d);
+    p.set({ on: true });
+    await tick();
+    const shown = slots(d);
+    p.set({ on: false });
+    await tick();
+    return { before, shown, hidden: slots(d) };
+  },
+  "a parent template's data-each inside the tag puts its items into the slot their slot attribute names": async () => {
+    const p = await mount<Parent>("tl-parent", (e) => e.set({ rows: rows(1, 2), named: rows(3) }));
+    const e = p.refs.e as Default;
+    const n = p.refs.n as Named;
+    const first = { e: slots(e), n: named(n) };
+    p.set({ rows: rows(2, 4, 1), named: [] });
+    await tick();
+    return { first, after: { e: slots(e), n: named(n) } };
   },
 };

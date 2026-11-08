@@ -6,6 +6,7 @@
     <!-- Components are defined before parsing: Light DOM slots must wait for DOMContentLoaded -->
     <light-card id="parsed"><b slot="head">H</b>body</light-card>
     <shadow-card id="shadow"><b slot="head">SH</b>sbody</shadow-card>
+    <light-card id="parsed-outer"><b-order-child id="parsed-kid"></b-order-child></light-card>
     <script type="module" src="./card.ts"></script>
     <script type="module" src="./lazy.ts"></script>
     <script type="module" src="./media.ts"></script>
@@ -18,5 +19,6 @@
     <script type="module" src="./rating-input.ts"></script>
     <script type="module" src="./locale-greeting.ts"></script>
     <script type="module" src="./locale-cart.ts"></script>
+    <script type="module" src="./order.ts"></script>
   </body>
 </html>

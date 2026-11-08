@@ -1,4 +1,5 @@
 import { mountConds } from "./cond.ts";
+import { fromTemplate } from "./slots.ts";
 import { mountHoles } from "./text.ts";
 import type { IsAny } from "./template.ts";
 import type { TextValue } from "./text.ts";
@@ -100,7 +101,7 @@ export class List<L extends ListSchema = ListSchema> {
       throw new Error(`[invalid-items] items must be an array of objects, but got ${items === null ? "null" : typeof items}. Fix: assign an array, for example items = view.todos ?? [].`);
     }
     if (items.length) this.#checkProp();
-    this.#reconcile(items, this.#keyOf, this.#assign, true, true);
+    this.#reconcile(items, this.#keyOf, this.#assign, true);
   }
 
   // Checked once, before the list changes, so a wrong data-prop leaves no half-built list behind.
@@ -177,7 +178,15 @@ export class List<L extends ListSchema = ListSchema> {
     if (!entry) {
       entry = this.#create(key);
       this.#items.set(key, entry);
+      try {
+        this.#run(entry, key, item, update);
+      } catch (e) {
+        this.#items.delete(key);
+        throw e;
+      }
+      fromTemplate.add(entry.el);
       this.anchor.parentNode?.insertBefore(entry.el, this.anchor);
+      return;
     }
     this.#run(entry, key, item, update);
   }
@@ -205,11 +214,11 @@ export class List<L extends ListSchema = ListSchema> {
 
   /** Keyed reconciliation: remove extra items, create missing ones, reorder, and call update() for every item. */
   replace<T>(items: readonly T[], key: (item: T) => PropertyKey, update: Update<L, T>, opts: ReplaceOptions = {}): void {
-    this.#reconcile(items, key, update, opts.skipUnchanged === true, false);
+    this.#reconcile(items, key, update, opts.skipUnchanged === true);
   }
 
-  /** `updateFirst`: a new item is updated before it is inserted, so an item component is connected with its prop already set. */
-  #reconcile<T>(items: readonly T[], key: (item: T) => PropertyKey, update: Update<L, T>, skipUnchanged: boolean, updateFirst: boolean): void {
+  /** A new item is updated before it is inserted, so a component in it is connected with its properties already set. */
+  #reconcile<T>(items: readonly T[], key: (item: T) => PropertyKey, update: Update<L, T>, skipUnchanged: boolean): void {
     const next = new Set<PropertyKey>();
     for (const it of items) {
       const k = key(it);
@@ -224,17 +233,19 @@ export class List<L extends ListSchema = ListSchema> {
       const it = items[i] as T;
       const k = key(it);
       let entry = this.#items.get(k);
+      const created = !entry;
       if (!entry) {
         entry = this.#create(k);
         this.#items.set(k, entry);
-        if (updateFirst) this.#run(entry, k, it, update);
+        this.#run(entry, k, it, update);
       }
       if (entry.el.nextSibling !== after || entry.el.parentNode !== parent) {
+        fromTemplate.add(entry.el);
         if (entry.el.parentNode === parent && parent?.moveBefore) parent.moveBefore(entry.el, after);
         else parent?.insertBefore(entry.el, after);
       }
       after = entry.el;
-      this.#run(entry, k, it, update, skipUnchanged);
+      if (!created) this.#run(entry, k, it, update, skipUnchanged);
     }
   }
 }

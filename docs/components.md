@@ -104,6 +104,8 @@ Set the element's own class, role and other attributes in `connected()`. A templ
 
 A Light DOM component builds its content when it is connected. While the document is still being parsed, it waits for `DOMContentLoaded`, so that its children have arrived. A `shadow: true` component builds its content into its shadow root in the constructor.
 
+In both modes the child components of the template start after the parent's first render, so each child first renders with the props that render gives it. A child builds its own content when it starts, so in the parent's first render it has no `refs` of its own yet: set its props there, and call its methods from a later render or an event handler. In Light mode the children have started by the time the parent's `connected()` runs; in Shadow mode they start after it.
+
 So an element made with `document.createElement` in Light mode has no children, and empty `refs` and `text`, until it is appended to the document. Set props before that, and read the DOM after it.
 
 `define(name, Class)` registers the element once: calling it again with a name that is already defined does nothing and keeps the first class (`customElements.define` itself would throw). A test that re-imports a component module therefore keeps the first class.
@@ -130,16 +132,17 @@ Shadow DOM is verified in real Chrome ([browser/shadow.test.ts](../browser/shado
 - Matching is by `slot="name"`. Nodes without a slot attribute go into the default slot, and when there is no content, the fallback content inside `<slot>` is used.
 - `{{ }}`, `data-ref`, and `data-if` in user content are not parsed; they belong to the user's own DOM.
 - Only the **direct child nodes of the host element** are assigned, as with native Shadow DOM; nodes nested deeper are not.
-- Child nodes added after creation are assigned to the matching slot. Changing the `slot` attribute of an assigned node reassigns it immediately.
+- The slots take content written in HTML: the children the element has when it is built, and the nodes a list (`data-each`) or `data-if` of the parent's template puts in later. Changing the `slot` attribute of such a node reassigns it immediately.
+- A node that other code adds after the element is built (a framework rendering children, `appendChild`) is not placed: it stays where it was put, outside every slot, and the console warns once per tag (`unplaced-child`). Use `shadow: true` for children a framework or code adds, or put the content into an element of the template that the component exposes through a ref ([Design decisions](design.md#design-decisions)).
 - When a removed node leaves its slot empty, the fallback content comes back.
-- A child with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per slot name (`unslotted-node`). Give the template a `<slot name>` for every node put in from outside, and give the node that `slot`.
+- A child written in HTML with no matching slot is removed from the element, unlike a shadow host, which keeps such a child without rendering it. The console warns once per tag and slot name (`unslotted-node`).
 - A comment among the children stays where it is and goes into no slot, as natively, so a framework's anchor comment is kept.
 - Placement follows where the nodes are after each change, not the order of the changes. A child removed and appended back in the same task goes into its slot again, and an assigned node moved to another parent is no longer assigned.
 - `slotchange(name)` is called when a slot's assigned nodes or their order change. The initial assignment at creation does not call it.
 - The component's own nodes are never assigned, even at the top level of the template: list items, `data-if` blocks, `{{ }}` text and a slot's fallback content stay where the template puts them.
 - While a slot has assigned nodes, its fallback is kept aside. The `data-if` blocks and lists inside the fallback keep following `show` and the list's items, so the fallback comes back as they last left it.
 - The rendered Light DOM has no `<slot>` elements: each slot position is the range between the comments `<!--slot:name-->` and `<!--/slot:name-->` (`<!--slot:-->` for the default slot). Read what a slot holds with `assignedNodes(name)` (`assignedNodes("")` for the default slot) rather than querying for `slot`.
-- Dynamic changes rely on a `MutationObserver`, which observes only while the element is connected and is disconnected on removal; children added, removed or moved while the element is disconnected are placed when it is connected again.
+- Dynamic changes rely on a `MutationObserver`, which observes only while the element is connected and is disconnected on removal; content written in HTML that is added, removed or moved while the element is disconnected is placed when it is connected again.
 
 ```ts
 class Card extends Component(tpl) {
@@ -149,14 +152,9 @@ class Card extends Component(tpl) {
 
 ### Slots and children managed by a framework
 
-In Light mode the host's children are moved into the slot positions inside the template, so they no longer sit where the framework that rendered them put them.
+Give a component whose children a framework (React, Vue, Svelte, Angular, Preact, ...) renders `shadow: true`: the browser assigns its slots natively, and the framework can insert, remove and reorder the children freely.
 
-When a framework (React, Vue, Svelte, Angular, Preact, ...) later inserts, removes or reorders those children, it works against nodes that have moved. Depending on the framework, the update throws a DOM error, or an added node lands next to an anchor in another slot, where `assignedNodes()` no longer matches the page.
-
-Use one of:
-
-- `shadow: true` on the component: the browser assigns slots natively, and the children can change freely.
-- One stable element per slot that the framework never removes, with the changing content inside it (`<div slot="title">...</div>`, and a plain `<div>` for the default slot). An empty wrapper still fills its slot, so the slot's fallback content does not show; when the fallback matters, use `shadow: true`.
+A Light DOM component projects only the children it has when it is built and takes nothing the framework adds later, so a framework that changes the children after that works against nodes that have moved, and new ones stay outside the slots (`unplaced-child`).
 
 ### Styles
 
@@ -234,6 +232,8 @@ How updates run (the reasons are in [Design](design.md#design-decisions)):
 
 Elements and other DOM objects, events, `Storage`, `History`, functions, dates, regular expressions and promises inside them keep their own type. When you annotate `render`'s `view` or a helper that takes the state, use read-only types: `readonly Item[]`, or `DeepReadonly<State>` from `@nativele/ts-dom`.
 
+A prop with no sensible default, such as an object the parent always gives, is declared with `null`: `props: { message: null as Message | null }`. Its type then says it can be absent, so `tsc` makes every use handle `null`. An interface the element implements types it the way the element gives it, `message: DeepReadonly<Message> | null`; assigning a plain `Message` to it still compiles.
+
 ### Common DOM operations in render
 
 `render` uses the DOM directly; the library adds no wrapper for attributes or classes, because the native APIs are already typed through `refs`:
@@ -249,6 +249,13 @@ Elements and other DOM objects, events, `Storage`, `History`, functions, dates, 
 | A list | `this.lists.x.items = view.x` for components, `this.lists.x.replace(...)` for plain elements (see [Lists](lists.md)) |
 
 Guard each block with `changed.has(...)` so a change elsewhere does not redo it.
+
+Write a value only when it differs. A hole skips a text that is the same, and `skipUnchanged` skips a list row whose item is the same object, but a direct write does not:
+
+- writing an `<img>` or `<iframe>` `src` again reloads it;
+- writing a `contenteditable` element's content, or a form control's value, while the user types moves the caret.
+
+So show changing text through a hole or `derive`, and compare before a direct write: `if (this.refs.frame.src !== view.url) this.refs.frame.src = view.url`.
 
 ## Events: data-on-*
 

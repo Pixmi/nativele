@@ -68,3 +68,17 @@ export class OwnCallbacks extends Component(tpl, { state, derive: { double: (s) 
   }
   override connectedMoveCallback(): void {}
 }
+
+// A prop the parent always gives is declared with null; an interface types it as the element gives it (docs/components.md).
+interface RenderedMessage {
+  id: number;
+  tags: string[];
+}
+interface MessageRenderer {
+  message: import("@nativele/ts-dom").DeepReadonly<RenderedMessage> | null;
+}
+export class MessageView extends Component(tpl, { props: { message: null as RenderedMessage | null }, state, derive: { double: (s) => s.count * 2 } }) implements MessageRenderer {
+  inc(): void {}
+  del(): void {}
+}
+new MessageView().message = { id: 1, tags: [] };

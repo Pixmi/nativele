@@ -23,7 +23,7 @@ A component is two files. The HTML holds structure and names (`{{ name }}`, `dat
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | typescript | 7.0.2 |
 
 Verified on 2026-11-08 by agent trials: fresh agents built real components with only this Skill, and the results were checked independently. The library's own CI type-checks, lints and runs the examples in the repository in real Chrome.
@@ -134,7 +134,8 @@ define("todo-app", TodoApp);
 - Read `this.state.x` and `this.props.x` (in `render`, its `view`); change state only with `this.set()`; `this.batch()` combines updates: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - With `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a list item names one of them; show store data by copying it into state in the `bind` callback: https://github.com/Pixmi/nativele/blob/main/docs/recipes.md#showing-data-from-a-store
 - `store.set` replaces the whole value (`this.set` merges): spread the rest yourself: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
-- Lists, attributes and focus go in `render(view, changed)`; annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- Lists, attributes and focus go in `render(view, changed)`; child components start after the parent's first render, so set their props there and call their methods later (a later render or an event handler); annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
+- Show changing text through a `{{ hole }}` or `derive`, which skip an unchanged value; a direct write in `render` (an `<img>` or `<iframe>` `src`, a `contenteditable`, a control's value) runs again on every render it is not guarded from, so compare first: https://github.com/Pixmi/nativele/blob/main/docs/components.md#common-dom-operations-in-render
 - Props go down, events go up; `emit` does not bubble; data needed several levels away goes in a shared `createStore`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
 - State, props and the view are deeply read-only: replace objects (`{ ...todo, done: true }`), never change them in place: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - A `data-each` list is never nested: the inner list belongs to its own item component: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
@@ -145,7 +146,7 @@ define("todo-app", TodoApp);
   - A list has no callback for a created item, and `replace()`'s `update` runs for every item on every call.
 - A template has no place for the element's own class, role or attributes; add them in `connected()` (`this.classList.add("card")`), never in the constructor, where a browser rejects them (`constructor-host-change`): https://github.com/Pixmi/nativele/blob/main/docs/components.md#components
 - Listeners on the element itself go in `connected()` too, with `this.on(this, type, fn)`: `data-on-*` handlers are attached when the content is built, so one added earlier runs before them: https://github.com/Pixmi/nativele/blob/main/docs/components.md#components
-- A node put into a Light DOM component from outside needs a `<slot name>` in the template and `slot="name"` on the node; one with no matching slot is removed a microtask later, with a console warning (`unslotted-node`): https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-in-light-mode
+- Light DOM slots take content written in HTML: the children at build, and what a parent template's list or `data-if` puts in. Content from TypeScript goes into an element the component exposes through a ref, and children a framework renders into a `shadow: true` component; a node added by code after build stays outside the slots (`unplaced-child`): https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-in-light-mode
 - `data-on-*` handles events that reach the component root: an element of the template moved elsewhere (a `<dialog>` appended to `document.body`) no longer triggers them. Keep it inside, use native behavior (`formmethod="dialog"`), a store, or `this.on(el, ...)`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#events-data-on-
 - Export the class passed to `define()`: `ts-dom-tags.ts` lists only exported classes, and `ts-dom check` warns `define-class-not-exported` otherwise.
 - Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both: https://github.com/Pixmi/nativele/blob/main/docs/components.md#safeguards-in-types-and-at-runtime

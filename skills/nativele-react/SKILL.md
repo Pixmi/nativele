@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
@@ -149,6 +149,9 @@ A component with slots that receives React children: give it `shadow: true`, the
 
 ```ts
 // src/nv/shadow-card.ts
+import { Component, define } from "@nativele/ts-dom";
+import tpl from "./shadow-card.html.js";
+
 export class ShadowCard extends Component(tpl, { shadow: true }) {}
 define("shadow-card", ShadowCard);
 ```
@@ -164,18 +167,8 @@ define("shadow-card", ShadowCard);
 
 1. **Define before render.** Import every Nativele module before React first renders its tag (step 6). Otherwise props become attributes and object props are lost.
 2. **Event prop names.** Only `on` plus the exact event name works (`onitem-select`); `onItemSelect` and `onItem-select` never fire. Nativele events do not bubble by default, so put the handler on the element that emits. A ref with `addEventListener` in `useEffect` also works (remove it in the cleanup).
-3. **Light DOM slots and React children do not mix.** Use `shadow: true`, or one stable React element per slot and let React change only what is inside it (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
-
-   ```tsx
-   <light-card>
-     <div slot="title">{showTitle && <span>{title}</span>}</div>
-     <div>{rows.map((r) => <p key={r.id}>{r.text}</p>)}</div>
-   </light-card>
-   ```
-
-   - When React inserts, removes or reorders the children of a Light DOM host with slots, it fails with `insertBefore`/`removeChild` errors that unmount the root, or leaves nodes outside the slot.
-   - Changing text in place and appending at the end happen to work, but do not rely on that.
-
+3. **Children React renders need `shadow: true`.** Give a component with slots that receives React children `shadow: true`, so the browser assigns its slots natively (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - In a Light DOM component, children React adds after the element is built stay outside the slots, and the console warns `unplaced-child`.
 4. **New objects for changed props.** A Nativele component compares props by reference; pass a new object when the data changes (React state updates usually do).
 5. **TSX types need the declaration** in step 7. Without it, every Nativele tag is `TS2339: Property 'info-card' does not exist on type 'JSX.IntrinsicElements'`.
    - Check the declaration with a `.tsx` that has a wrong prop under `// @ts-expect-error`, because `skipLibCheck` can hide mistakes inside the declaration itself.
@@ -197,7 +190,7 @@ npm run build                # expect: ✓ built (it runs ts-dom gen, tsc -b and
 
 Pass `tsc` the tsconfig from step 3: the template's root `tsconfig.json` only lists `references`, so `tsc --noEmit` without `-p` checks nothing (`nativele-typescript`).
 
-In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. A Light DOM component has no `<slot>` elements once rendered; check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
+In the browser, render a component with an object prop and an event handler, and check that the element has no `item` attribute (`el.getAttributeNames()`), that `el.item` is the object, and that the handler fires once per click. On the `shadow: true` component, check where the children ended up with `el.assignedNodes(name)`, where `""` is the default slot.
 
 ## Troubleshooting
 
@@ -206,7 +199,7 @@ In the browser, render a component with an object prop and an event handler, and
 | `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | `tsc -b` runs before the generated files exist | start the script with `ts-dom gen src/nv &&`; for CI, `nativele-ci` |
 | An object prop shows `[object Object]` or is missing | the component was rendered before `define()` ran | import the component module in the entry file before rendering |
 | The event handler never runs | the prop name is camelCased (`onItemSelect`) | use `on` plus the exact event name (`onitem-select`) |
-| `insertBefore`/`removeChild` errors, the React root disappears | React children changed inside a Light DOM component with slots | use `shadow: true`, or stable wrapper elements per slot |
+| React children appear outside the slots, the console warns `unplaced-child` | the component with slots uses Light DOM | give it `shadow: true` |
 | `TS2339: Property 'x-y' does not exist on type 'JSX.IntrinsicElements'` | the declaration file is missing, or the component class is not exported | add `src/nativele-react.d.ts`, export the class, run `ts-dom gen` |
 
 ## See also

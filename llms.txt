@@ -15,7 +15,7 @@ Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `
 - `data-on-<event>="method"`: a lowercase event name and a method name only; calls the public `method(e, hit: EventHit)`, checked against the template: [events](docs/components.md#events-data-on-).
 - A handler's `e` is typed as the event it receives: `EmitEvent<Child, "name">` on a child component tag, else the DOM type (`click` is a `PointerEvent`): [events](docs/components.md#events-data-on-).
 - Never name a handler like a DOM or Nativele member (`remove`, `click`, `set`, `render`): [events](docs/components.md#events-data-on-).
-- `<slot name="x">`: Light DOM by default (the library moves the children; a child with no matching slot is removed, with a console warning), native with `shadow: true`: [Slots in Light mode](docs/components.md#slots-in-light-mode).
+- `<slot name="x">`: Light DOM by default, where the slots take only content written in HTML (the children at build, and what a parent template's list or `data-if` puts in); native with `shadow: true`: [Slots in Light mode](docs/components.md#slots-in-light-mode).
 - `data-on-*` handles events that reach the component root; an element moved out of it (a `<dialog>` in `document.body`) no longer triggers them: [events](docs/components.md#events-data-on-).
 - `<style>` only at the top level of the file; `<style scoped>` limits it to the component in Light DOM: [styles](docs/components.md#styles).
 - Another component: write its tag; the generated module imports it: [composition](docs/components.md#composition-using-multiple-components-together).
@@ -108,7 +108,7 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 - `package.json` needs `"type": "module"` (with `tsc` emitting NodeNext, and with Vite): [setup](docs/tooling.md#installation-and-setup).
 - `slotchange()` is Light DOM only; with `shadow: true` use the native `slotchange` event: [Light and Shadow](docs/components.md#light-default-and-shadow).
 - A Light DOM component builds its content when connected (a `shadow: true` one in the constructor), so a new element has no children, `refs` or `text` until it is appended: [components](docs/components.md#components).
-- Inside a framework, children the framework later changes in a Light DOM host with slots break or land in the wrong slot: use `shadow: true`, or one stable element per slot: [framework children](docs/components.md#slots-and-children-managed-by-a-framework).
+- Children a framework renders go into a `shadow: true` component; a Light DOM component leaves what is added after it is built outside its slots (`unplaced-child`): [framework children](docs/components.md#slots-and-children-managed-by-a-framework).
 
 ## Docs
 - [README](README.md): introduction, the short version, Nativele Skills, quick start, examples. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.

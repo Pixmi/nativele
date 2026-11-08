@@ -25,7 +25,7 @@ Nativele components are native custom elements. Angular renders their tags like 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.4 (the last agent trial) |
+| @nativele/ts-dom | 0.7.6 (the last agent trial) |
 | @angular/core, @angular/common, @angular/compiler, @angular/compiler-cli, @angular/platform-browser, @angular/router | 22.2.4 |
 | @angular/cli, @angular/build | 22.2.6 |
 | typescript | 6.0.3 |
@@ -68,7 +68,6 @@ Verified on 2026-11-06 in Google Chrome 148, against `ng serve` (development and
    // src/main.ts
    import "./nv/info-card.js";
    import "./nv/shadow-card.js";
-   import "./nv/light-card.js";
    import { bootstrapApplication } from '@angular/platform-browser';
    import { appConfig } from './app/app.config';
    import { App } from './app/app';
@@ -119,7 +118,7 @@ define("info-card", InfoCard);
 ```
 
 ```html
-<!-- src/nv/shadow-card.html and src/nv/light-card.html -->
+<!-- src/nv/shadow-card.html -->
 <h2><slot name="title">Untitled</slot></h2>
 <div><slot></slot></div>
 ```
@@ -131,15 +130,6 @@ import tpl from "./shadow-card.html.js";
 
 export class ShadowCard extends Component(tpl, { shadow: true }) {}
 define("shadow-card", ShadowCard);
-```
-
-```ts
-// src/nv/light-card.ts
-import { Component, define } from "@nativele/ts-dom";
-import tpl from "./light-card.html.js";
-
-export class LightCard extends Component(tpl) {}
-define("light-card", LightCard);
 ```
 
 The Angular component that uses them:
@@ -211,19 +201,6 @@ export class App {
   }
 </shadow-card>
 
-<light-card id="light">
-  <div slot="title">
-    @if (showTitle()) {
-      <span>Light</span>
-    }
-  </div>
-  <div>
-    @for (r of rows(); track r) {
-      <p>{{ r }}</p>
-    }
-  </div>
-</light-card>
-
 <button type="button" id="rotate" (click)="rotate()">Rotate</button>
 <button type="button" id="toggle-b" (click)="toggleB()">Toggle b</button>
 <button type="button" id="toggle-title" (click)="showTitle.set(!showTitle())">Toggle title</button>
@@ -245,9 +222,8 @@ export class App {
    - So `select($event.detail)` fails with `TS2339: Property 'detail' does not exist on type 'Event'`, and a handler parameter typed `CustomEvent<...>` fails with `TS2345`.
    - A wrong event name in `EmitEvent` becomes `never` and fails with `Property 'detail' does not exist on type 'never'`. Nothing checks that the cast names the element the listener is on.
 3. **Bind properties, not attributes, for objects.** `[attr.item]="item()"` writes the attribute `item="[object Object]"` and the prop stays `null`. `[attr.count]` works for a number prop (the attribute text is converted), but `[count]` is simpler.
-4. **Light DOM slots and Angular-managed children do not mix.** Use `shadow: true`, or one stable element per slot that Angular never removes, with `@if`/`@for` inside it, as `light-card` above (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
-   - When `@if` or `@for` sit directly inside a Light DOM host with slots, a node Angular re-inserts lands in the wrong place, and Angular reports no error.
-   - For example, a `<span slot="title">` brought back by `@if` ends up in the default slot while the title shows its fallback, and `assignedNodes()` stops matching the page.
+4. **Children Angular renders need `shadow: true`.** Give a component with slots that receives Angular children `shadow: true`, so the browser assigns its slots natively (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - In a Light DOM component, children Angular adds after the element is built stay outside the slots, and the console warns `unplaced-child`.
 5. **Zoneless rendering is scheduled.** A test that reads the DOM right after dispatching an event must wait: in Playwright, wait for the expected text; in TestBed, `await fixture.whenStable()`.
    - In the CLI's default zoneless app, Angular updates the DOM after a click in a later task, so code that reads the DOM right after `button.click()` sees the old values.
    - With `zone.js`, the DOM is already updated when `click()` returns.
@@ -281,10 +257,10 @@ In the browser, against `npm start` (the development server shows Angular's warn
 - the element has no attribute for the object prop (`el.getAttributeNames()`) and `el.item` is the object;
 - a click on the component's button runs the `(item-select)` handler once and updates the Angular view;
 - after `@for` reorders hosts, each keeps its own `item`, and its events still fire;
-- children that `@if`/`@for` toggle, reorder, add and remove stay in the right slot;
+- children that `@if`/`@for` toggle, reorder, add and remove stay in the right slot of the `shadow: true` component;
 - no errors or warnings in the console.
 
-Read a slot with `el.assignedNodes(name)`, where `""` is the default slot; it works in both modes. Compare elements only, because Angular leaves comment anchors among the children.
+Read a slot of a `shadow: true` component with `el.assignedNodes(name)`, where `""` is the default slot. Compare elements only, because Angular leaves comment anchors among the children.
 
 With Playwright, wait for each expected change instead of reading the DOM right after a click (limitation 5).
 
@@ -299,7 +275,7 @@ With Playwright, wait for each expected change instead of reading the DOM right 
 | `Could not resolve "./info-card.html.js"` from `ng build` or `ng serve` | the template modules were not generated | use `npm start` or `npm run build` (step 4), and restart a running `ng serve` |
 | An object prop is `null`, and the element has `item="[object Object]"` | `[attr.item]` was used | bind the property: `[item]` |
 | The element stays empty | its module is not imported | import it in `src/main.ts` (step 8) |
-| A slotted child shows in the wrong slot or the slot fallback stays visible | `@if`/`@for` directly inside a Light DOM component with slots | `shadow: true`, or a stable element per slot |
+| Angular children appear outside the slots, the console warns `unplaced-child` | the component with slots uses Light DOM | give it `shadow: true` |
 | `ts-dom check` reports `invalid-hole` or `no-importer` in `src/app/app.html` | the command ran without a folder and read Angular templates | pass the Nativele folder: `ts-dom check src/nv` |
 | `ts-dom doctor` warns `tsconfig-not-strict` | `strict` is off for the TypeScript version in use | step 3 (`nativele-typescript`) |
 | `ts-dom doctor` warns `formatter-whitespace` | Prettier is set up, and no script or generated file uses `collapse` | step 4 (`nativele-formatting`) |
