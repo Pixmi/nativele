@@ -351,6 +351,22 @@ class OrderStats extends Component(tpl, {
   derive: { count: (v) => v.orders.length },
 }) {}`,
   },
+  "callback-without-super": {
+    why: "A component does its own work in the Custom Elements callbacks: connectedCallback and disconnectedCallback start and stop it (its first render, bind, on, onCleanup, connected() and disconnected()), and attributeChangedCallback reads a prop from its attribute, for the attributes the static observedAttributes lists. A subclass that overrides one of them without calling super, or replaces observedAttributes without super.observedAttributes, turns that off without an error: a prop written as an attribute in HTML keeps its default. Read is a method of that name in the class body without super.<name>( in it, and a static observedAttributes getter or field without super.observedAttributes.",
+    bad: `// dialog.ts
+static observedAttributes = ["class"];
+attributeChangedCallback(name: string) {
+  if (name === "class") this.sync();
+}`,
+    good: `// dialog.ts
+static get observedAttributes() {
+  return [...super.observedAttributes, "class"];
+}
+override attributeChangedCallback(name: string, old: string | null, value: string | null) {
+  super.attributeChangedCallback(name, old, value);
+  if (name === "class") this.sync();
+}`,
+  },
   "unchecked-custom-elements": {
     why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). The child's define() is read from the scanned folders and from the Nativele component packages the template's package depends on (those that list @nativele/ts-dom, read from the modules their exports name). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders or such a package and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, a component outside the scanned folders, or one of a package the template's package does not list), a tag declared only in TypeScript (a customElements.define() call or an HTMLElementTagNameMap entry, which names the tag but none of its attributes, events or slots), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) (a plain custom element), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests or two component packages of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned

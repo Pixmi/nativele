@@ -241,6 +241,12 @@ describe("data-flow checks", () => {
     expect(at(`state: { children: [] as HTMLElement[] }`)[0]?.message).toMatch(/^The state "children" holds HTMLElement values\..*Fix: keep the data the nodes show in state/);
     for (const options of [`state: { orders: [] as readonly Order[] }`, `props: { columns: [] as readonly Column[], customer: null as CustomerTotal | null }`, `state: { nodeCount: 0 }`, `derive: { el: (v) => v.x as Element }`, `props: { anchor: null as Element | null }`, `props: { icon: null as SVGElement | null }`, `state: { names: [] as string[] }`, `props: { cell: null as (() => Node | readonly Node[]) | null }`]) expect(at(options), options).toEqual([]);
   });
+  it("callback-without-super: a Custom Elements callback or observedAttributes overridden without super", () => {
+    const at = (members: string) => flow(`class P extends Component(t) { ${members} }`).filter((d) => d.rule === "callback-without-super");
+    for (const members of [`static observedAttributes = ["class"];`, `static get observedAttributes() { return ["class"]; }`, `attributeChangedCallback(n, o, v) { this.sync(n); }`, `override connectedCallback(): void { this.go(); }`, `disconnectedCallback() { this.stop(); }`]) expect(at(members), members).toHaveLength(1);
+    expect(at(`static observedAttributes = ["class"];`)[0]?.message).toMatch(/^The class replaces observedAttributes without super\.observedAttributes\..*Fix: static get observedAttributes\(\)/);
+    for (const members of [`static get observedAttributes() { return [...super.observedAttributes, "class"]; }`, `static observedAttributes = [...super.observedAttributes, "class"];`, `attributeChangedCallback(n, o, v) { super.attributeChangedCallback(n, o, v); this.sync(n); }`, `override connectedCallback(): void { super.connectedCallback(); this.go(); }`, `override connected(): void { this.go(); }`]) expect(at(members), members).toEqual([]);
+  });
   it("custom-event-on-native: an event a child emits without bubbles, written on a native element", () => {
     const kid = (bubbles: string[]): ReadonlyMap<string, Contract> => new Map([["x-kid", { props: new Map(), emits: new Set(["value-change"]), bubbles: new Set(bubbles) }]]);
     const found = dataFlow(`<div data-on-value-change="x"><x-kid></x-kid></div>`, [], kid([])).filter((d) => d.rule === "custom-event-on-native");

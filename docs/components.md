@@ -89,7 +89,7 @@ Provided members:
 
 `this.on()` types the listener's parameter like a `data-on-*` handler's. On an element, an unannotated parameter gets the type `HTMLElementEventMap` lists for the name. A parameter typed narrower than `Event` must accept the event the target declares: its `emits`, its `on<name>` property, then `HTMLElementEventMap`. A name the target does not declare is not checked: type the parameter as the event it is, such as `(e: CustomEvent<{ id: number }>)` or `EmitEvent<Child, "x">`.
 
-The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`, which the component type declares. Override `connected()` and `disconnected()`; an override of the callbacks themselves must call `super`.
+The lifecycle is the Custom Elements `connectedCallback` / `disconnectedCallback`, which the component type declares. Override `connected()` and `disconnected()`; an override of the callbacks themselves, or of `attributeChangedCallback`, must call `super`, and a `static observedAttributes` of your own must extend `super.observedAttributes`, or the component stops starting or stops reading props from attributes (lint: `callback-without-super`).
 
 Children a framework or your code adds after the element is connected are placed in their slot in a microtask (a `MutationObserver` in Light mode, native `slotchange` in Shadow mode). Read `assignedNodes`, or assert in a test, after `await Promise.resolve()`.
 
@@ -467,6 +467,7 @@ The same `data-flow` group checks the parent's HTML against each child's `props`
 - a constructor that changes the element itself (`constructor-host-change`), which makes a browser create an unknown element instead
 - an element the class builds with `document.createElement` and gives fixed text or a fixed attribute (`static-markup-in-code`), structure the template can hold
 - state or a prop that holds a collection of DOM nodes (`dom-node-in-state`), a copy of what the DOM holds
+- a Custom Elements callback or `observedAttributes` overridden without `super` (`callback-without-super`)
 
 `npx ts-dom rules` lists every rule, and `npx ts-dom rules --explain=<id>` explains one with an example. The tables in [Lint](tooling.md#lint-optional) cover what each rule reads.
 

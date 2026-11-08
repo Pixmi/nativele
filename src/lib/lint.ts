@@ -176,6 +176,7 @@ export const DATA_FLOW_RULES = {
   "unguarded-input-value": "render() writes a form control's value without comparing it first, which moves the caret while the user types",
   "static-markup-in-code": "the class creates an element with document.createElement and gives it fixed text or a fixed attribute, structure the template can hold",
   "dom-node-in-state": "state or a prop holds a collection of DOM nodes, a second copy of what the DOM holds",
+  "callback-without-super": "the class overrides a Custom Elements callback or observedAttributes without calling or extending super, which turns off what the component does there",
   "unchecked-custom-elements": "custom element tags in the templates that lint has no single definition for, so their props, events and click-semantics are not checked",
 } as const;
 
@@ -644,6 +645,20 @@ export function constructorHostChange(body: string): string | undefined {
   return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
 }
 
+const CALLBACKS = ["connectedCallback", "disconnectedCallback", "attributeChangedCallback"] as const;
+
+export function callbackWithoutSuper(body: string): string | undefined {
+  for (const name of CALLBACKS) {
+    const fn = methodBody(body, name);
+    if (fn && !new RegExp(`\\bsuper\\.${name}\\s*\\(`).test(fn)) return name;
+  }
+  const getter = /\bstatic\s+get\s+observedAttributes\s*\(/.exec(body) ? methodBody(body, "observedAttributes") : null;
+  const field = /\bstatic\s+(?:readonly\s+)?observedAttributes\s*(?::[^=]+)?=([^;]*)/.exec(body)?.[1];
+  const declared = getter ?? field;
+  if (declared != null && !/\bsuper\.observedAttributes\b/.test(declared)) return "observedAttributes";
+  return undefined;
+}
+
 const DOM_NODE = /(?<![\w$.])((?:HTML|SVG|MathML)\w*Element|Element|Node|Text|DocumentFragment|NodeList|HTMLCollection)\b/;
 
 /** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy, and a function that returns nodes holds none. */
@@ -891,6 +906,19 @@ export function dataFlow(
       report(
         "static-markup-in-code",
         `The class creates <${fixed.tag}> with document.createElement and gives it a fixed value (${fixed.write}). Structure built in TypeScript is hidden from codegen, tsc and lint, and fixed text and attributes are markup. Fix: write the element in the template; for one per item, put it in a <template data-each> and fill it with this.lists.<name>.replace(...), with holes for what changes. Structure lives in the template: https://github.com/Pixmi/nativele/blob/main/docs/design.md#html-describes-typescript-decides`,
+      );
+  }
+
+  for (const { body } of classes) {
+    const missing = callbackWithoutSuper(body);
+    if (missing)
+      report(
+        "callback-without-super",
+        missing === "observedAttributes"
+          ? `The class replaces observedAttributes without super.observedAttributes. The component observes the attributes of its props there, so a prop written as an attribute in HTML (<x-dialog bare>) is never read and keeps its default. Fix: static get observedAttributes() { return [...super.observedAttributes, "class"]; }`
+          : missing === "attributeChangedCallback"
+            ? `The class overrides attributeChangedCallback() without calling super.attributeChangedCallback(...). The component reads its props from their attributes there, so a prop written as an attribute is never updated. Fix: call super.attributeChangedCallback(name, oldValue, newValue) first in it.`
+            : `The class overrides ${missing}() without calling super.${missing}(). The component starts or stops there (render, bind, on, onCleanup and ${missing === "connectedCallback" ? "connected()" : "disconnected()"} run from it), which then never happens. Fix: override ${missing === "connectedCallback" ? "connected()" : "disconnected()"} instead, or call super.${missing}() in it.`,
       );
   }
 

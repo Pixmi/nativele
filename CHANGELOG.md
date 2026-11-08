@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## 0.7.9 (not published)
 
+### Added
+
+- Lint rule `callback-without-super` (data-flow, warning): a component class that overrides `connectedCallback`, `disconnectedCallback` or `attributeChangedCallback` without calling `super`, or replaces `static observedAttributes` without `super.observedAttributes`; a prop written as an attribute then keeps its default, or the component does not start, with no error.
+
 ### Changed
 
 - **Breaking**: on every connection, the components inside a component run `connected()` before it, in Light DOM and Shadow DOM. Before, a component moved out and back in ran `connected()` before the ones inside it, the reverse of its first start, and a Shadow DOM component ran it before the components of its shadow tree even the first time; a parent that changed a child's elements in `connected()` was then undone by the child's own `connected()`. happy-dom ran them in yet another order.
