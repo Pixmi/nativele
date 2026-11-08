@@ -13,10 +13,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## 0.7.10 (not published)
 
+### Fixes
+
+- `constructor-host-change` reads a field initializer that a formatter wraps onto the next line (`readonly mark =` and then `this.classList.add("x")`) and one inside an object literal: a class member now ends where its statement ends, not at every line break.
+
 ### Docs
 
 - `npx ts-dom rules --explain=prop-forwarding` no longer describes one application's plugin interface as a case the rule does not fit.
-- README: the Quick Start and the short version use `ts-dom check`, which generates, type-checks and lints in one pass; the counter example, which showed what the first example already does, is left to `llms.txt`.
+- README: the Quick Start and the short version use `ts-dom check`, which generates, type-checks and lints in one pass; the counter example, which showed what the first example already does, is removed; `llms.txt` sets up with `ts-dom check` too.
 
 ## 0.7.9
 

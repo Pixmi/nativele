@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { MyCounter } from "../examples/readme/counter.ts";
 import { OrderLine } from "../examples/readme/order-line.ts";
 import { TodoList } from "../examples/readme/todo-list.ts";
 
@@ -11,21 +10,7 @@ const mount = <T extends HTMLElement>(tag: string): T => {
 const buttons = (el: HTMLElement) => [...el.querySelectorAll("button")];
 const byText = (el: HTMLElement, label: string) => buttons(el).find((b) => b.textContent === label) as HTMLButtonElement;
 
-// These tests keep the examples shown in README.md and llms.txt honest.
-describe("README example: counter (state, derive, events, data-if)", () => {
-  it("counts, shows the derived value and reveals the message at 10", () => {
-    const c = mount<MyCounter>("my-counter");
-    expect(c.querySelector("p")?.textContent).toBe("Count: 0 (double: 0)");
-    expect(c.querySelector("p:nth-of-type(2)")).toBeNull();
-    for (let i = 0; i < 10; i++) byText(c, "+1").click();
-    expect(c.querySelector("p")?.textContent).toBe("Count: 10 (double: 20)");
-    expect(c.textContent).toContain("That is a lot of clicks!");
-    byText(c, "Reset").click();
-    expect(c.querySelector("p")?.textContent).toBe("Count: 0 (double: 0)");
-    expect(c.textContent).not.toContain("That is a lot");
-  });
-});
-
+// These tests keep the examples in examples/readme/, shown in README.md and the guides, honest.
 describe("README example: todo list (list, event delegation with hit.key, derive)", () => {
   const add = (t: TodoList, title: string) => {
     t.refs.input.value = title;

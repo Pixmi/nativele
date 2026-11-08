@@ -99,12 +99,12 @@ The compiler rejects these, and each error names the template (`template: "card.
 ## Setup
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
-npx ts-dom gen && npx tsc          # tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict true (doctor warns when it is false, or left out on TypeScript 5)
+npx ts-dom check && npx tsc        # check generates, type-checks and lints; tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict true (doctor warns when it is false, or left out on TypeScript 5)
 ```
 In a browser without a bundler map the bare name once: `<script type="importmap">{"imports":{"@nativele/ts-dom":"/node_modules/@nativele/ts-dom/dist/index.mjs"}}</script>`; relative imports in your own code need `.js` extensions. With Vite, `@nativele/ts-dom/vite` is optional: [setup](docs/tooling.md#installation-and-setup).
 
 ## Pitfalls
-- Import templates with `./x.html.js`, not `./x.html`, and run `ts-dom gen` before `tsc`: [setup](docs/tooling.md#installation-and-setup).
+- Import templates with `./x.html.js`, not `./x.html`, and run `ts-dom check` (or `ts-dom gen`) before `tsc`: [setup](docs/tooling.md#installation-and-setup).
 - Never edit `x.html.ts` or `ts-dom-tags.ts`; most projects git-ignore them: [generated files](docs/tooling.md#generated-files).
 - `export class` a component to get typed `refs.child` in parent templates: [composition](docs/components.md#composition-using-multiple-components-together).
 - `package.json` needs `"type": "module"` (with `tsc` emitting NodeNext, and with Vite): [setup](docs/tooling.md#installation-and-setup).

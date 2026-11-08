@@ -25,7 +25,7 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 ```ts
 import { Component, define } from "@nativele/ts-dom";
-import tpl from "./user-card.html.js"; // 由 ts-dom gen 產生，含型別
+import tpl from "./user-card.html.js"; // 由 ts-dom check（或 ts-dom gen）產生，含型別
 
 class UserCard extends Component(tpl, {
   state: { name: "Ada", admin: true }, // 資料只在這裡；{{ name }}、data-if="admin" 自動對應同名欄位
@@ -42,7 +42,7 @@ define("user-card", UserCard);
 六件事涵蓋大多數元件：
 
 1. **HTML 只放名稱**：`{{ name }}`（文字）、`data-ref="x"`（需要用到的元素）、`data-if="x"`（顯示與否）、`<template data-each="x">`（清單）、`data-on-click="method"`（事件）、`<slot>`。沒有表達式，需要計算就在 TypeScript 做。
-2. **改了 `.html` 或元件就跑 `npx ts-dom check`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`，再跑 `tsc` 與 lint，並把每個錯誤指回範本。
+2. **改了 `.html` 或元件就跑 `npx ts-dom check`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`，再跑 `tsc` 與 lint，並把每個錯誤指回範本；在產生之前 `tsc` 只會說找不到模組。
 3. **資料放在類別裡**：`state`（自己的）、`props`（父元件給的）、`derive`（算出來的）。state 只用 `this.set()` 改；同名的 `{{ }}` 與 `data-if` 會自己更新。
 4. **其他都寫在 `render(view, changed)`**：清單、屬性、焦點。元件組成的清單只要一次指派，`if (changed.has("todos")) this.lists.todos.items = view.todos`，並在 `<template data-each>` 上寫 `data-key` 與 `data-prop`。
 5. **props 往下、事件往上**：父元件設定 props；子元件呼叫 `this.emit("name", detail)`，父元件在子元件的標籤上用 `data-on-name` 處理。
@@ -67,12 +67,12 @@ Skill 清單、等級與貢獻方式見 [Skills 指南](https://github.com/Pixmi
 ## 快速開始
 
 ```sh
-npm i -D typescript && npm i @nativele/ts-dom
+npm i -D typescript && npm i @nativele/ts-dom   # 另需 tsconfig.json：module NodeNext、lib 含 DOM、strict（見設定指南）
 npx ts-dom check    # 為每個 x.html 產生 x.html.ts（含型別），再做型別檢查與 lint；每次改動後都要跑
 npx tsc             # 編譯；不需要 Vite 或其他 bundler
 ```
 
-下面的範例是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
+`tsconfig.json` 與 `package.json` 的設定見[設定指南](https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup)。下面的範例是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
 
 ### 範例：元件組成的清單（`items =`、props 往下、事件往上）
 
