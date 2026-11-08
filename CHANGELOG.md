@@ -4,11 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## Versioning policy
 
-- Version `0.x`: the API is still evolving. **A minor version (0.Y.0) may contain breaking changes**; a patch version (0.Y.Z) only fixes bugs and documentation.
+- Version `0.x`: the API is still evolving. **Any version, a patch version (0.Y.Z) included, may contain breaking changes.** Each one is marked **Breaking** in its version's section.
 - From `1.0.0` on, [SemVer](https://semver.org/) applies: breaking changes only in major versions.
 - Public API: the exports of `ts-dom`, `@nativele/ts-dom/vite` and `@nativele/ts-dom/oxlint`; the commands and flags of the `ts-dom` CLI; the `data-*` and `{{ }}` syntax of templates; rule ids (`ts-dom/unused-markup`, `ts-dom/a11y`, `ts-dom/data-flow` and their `ignore` ids).
-- Adding a lint rule is a minor change; lint rules are warnings or opt-in and do not count as breaking.
-- Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, chosen from the whole set by this policy (a minor version when any iteration has a breaking change or a new feature), its iterations are folded into one section for that version.
+- Adding a lint rule does not count as breaking: lint rules are warnings or opt-in.
+- Between releases, each merged iteration is recorded under its own `0.N.M (not published)` heading, and `package.json` keeps the published version. When the next version is published, its iterations are folded into one section for that version.
 - Before every release run `npm run verify:pack` (`publint` and `attw`), `tsc`, the unit tests, the browser tests, `npm run smoke` and `npm run smoke:no-bundler`; all of them run in `.github/workflows/ci.yml`.
 
 ## 0.7.4 (not published)
