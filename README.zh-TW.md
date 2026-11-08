@@ -37,14 +37,12 @@ class UserCard extends Component(tpl, {
 define("user-card", UserCard);
 ```
 
-HTML 用了 `state` 沒有的名稱、`data-on-click` 指向不存在的方法，`tsc` 都會報錯。
-
 ## 精簡版
 
 六件事涵蓋大多數元件：
 
 1. **HTML 只放名稱**：`{{ name }}`（文字）、`data-ref="x"`（需要用到的元素）、`data-if="x"`（顯示與否）、`<template data-each="x">`（清單）、`data-on-click="method"`（事件）、`<slot>`。沒有表達式，需要計算就在 TypeScript 做。
-2. **`.html` 有改動就先跑 `npx ts-dom gen` 再跑 `tsc`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`；在那之前 `tsc` 只會告訴你找不到模組。
+2. **改了 `.html` 或元件就跑 `npx ts-dom check`**：它會產生 `import tpl from "./x.html.js"` 需要的型別檔 `x.html.ts`，再跑 `tsc` 與 lint，並把每個錯誤指回範本。
 3. **資料放在類別裡**：`state`（自己的）、`props`（父元件給的）、`derive`（算出來的）。state 只用 `this.set()` 改；同名的 `{{ }}` 與 `data-if` 會自己更新。
 4. **其他都寫在 `render(view, changed)`**：清單、屬性、焦點。元件組成的清單只要一次指派，`if (changed.has("todos")) this.lists.todos.items = view.todos`，並在 `<template data-each>` 上寫 `data-key` 與 `data-prop`。
 5. **props 往下、事件往上**：父元件設定 props；子元件呼叫 `this.emit("name", detail)`，父元件在子元件的標籤上用 `data-on-name` 處理。
@@ -70,42 +68,13 @@ Skill 清單、等級與貢獻方式見 [Skills 指南](https://github.com/Pixmi
 
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
-npx ts-dom gen      # 為每個 x.html 產生 x.html.ts（含型別）；每次改了 .html 都要再跑一次
-npx tsc             # 型別檢查並編譯；不需要 Vite 或其他 bundler
+npx ts-dom check    # 為每個 x.html 產生 x.html.ts（含型別），再做型別檢查與 lint；每次改動後都要跑
+npx tsc             # 編譯；不需要 Vite 或其他 bundler
 ```
 
-下面兩個範例都是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
+下面的範例是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
 
-### 範例 1：計數器（state、衍生值、事件、data-if）
-
-```html
-<p>Count: {{ count }} (double: {{ double }})</p>
-<button type="button" data-on-click="inc">+1</button>
-<button type="button" data-on-click="reset">Reset</button>
-<p data-if="big">That is a lot of clicks!</p>
-```
-
-TypeScript 擁有資料與行為。`{{ count }}`、`{{ double }}`、`data-if="big"` 自動對應同名的 state 或衍生值，資料只用 `this.set()` 修改：
-
-```ts
-import { Component, define } from "@nativele/ts-dom";
-import tpl from "./counter.html.js";
-
-export class MyCounter extends Component(tpl, {
-  state: { count: 0 },
-  derive: { double: (s) => s.count * 2, big: (s) => s.count >= 10 },
-}) {
-  inc(): void {
-    this.set((s) => ({ count: s.count + 1 }));
-  }
-  reset(): void {
-    this.set({ count: 0 });
-  }
-}
-define("my-counter", MyCounter);
-```
-
-### 範例 2：元件組成的清單（`items =`、props 往下、事件往上）
+### 範例：元件組成的清單（`items =`、props 往下、事件往上）
 
 項目有自己的東西（狀態、事件、內層清單）時，就把它做成元件，整份清單用一次指派填入。項目元件以 prop 接收自己的 task，用事件把變更往上送：
 

@@ -11,7 +11,7 @@ const mount = <T extends HTMLElement>(tag: string): T => {
 const buttons = (el: HTMLElement) => [...el.querySelectorAll("button")];
 const byText = (el: HTMLElement, label: string) => buttons(el).find((b) => b.textContent === label) as HTMLButtonElement;
 
-// These tests keep the examples shown in README.md honest.
+// These tests keep the examples shown in README.md and llms.txt honest.
 describe("README example: counter (state, derive, events, data-if)", () => {
   it("counts, shows the derived value and reveals the message at 10", () => {
     const c = mount<MyCounter>("my-counter");
