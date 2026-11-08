@@ -1,43 +1,16 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { A11Y_RULES, checkA11y } from "../src/lib/a11y.ts";
 import { childrenAt, contractsFor } from "../src/lib/lint.ts";
+import oxlintPlugin from "../src/lib/oxlint-plugin.ts";
+import { tsDom } from "../src/lib/vite-plugin.ts";
+import { runCli, writeTree } from "./helpers.ts";
 
 const rules = (html: string, ignore: string[] = []) => checkA11y(html, ignore).map((d) => d.rule);
 const component = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
 
-describe("a11y should warn", () => {
-  it("img without alt", () => expect(rules(`<img src="a.png">`)).toEqual(["img-alt"]));
-  it("button / a without a name", () => {
-    expect(rules(`<button></button>`)).toEqual(["control-name"]);
-    expect(rules(`<a href="/x"><i></i></a>`)).toEqual(["control-name"]);
-  });
-  it("form controls without a label", () => {
-    expect(rules(`<input type="text">`)).toEqual(["form-label"]);
-    expect(rules(`<select></select><textarea></textarea>`)).toEqual(["form-label", "form-label"]);
-  });
-  it("iframe, dialog, empty heading", () => {
-    expect(rules(`<iframe src="x"></iframe>`)).toEqual(["iframe-title"]);
-    expect(rules(`<dialog></dialog>`)).toEqual(["dialog-name"]);
-    expect(rules(`<h2> </h2>`)).toEqual(["heading-empty"]);
-  });
-  it("invalid role and aria-*", () => {
-    expect(rules(`<div role="buton"></div>`)).toEqual(["aria-role"]);
-    expect(rules(`<div aria-labeledby="x"></div>`)).toEqual(["aria-attr"]);
-  });
-  it("interactive role without tabindex; tabindex greater than 0; aria-hidden focusable element", () => {
-    expect(rules(`<div role="button">go</div>`)).toEqual(["role-tabindex"]);
-    expect(rules(`<div tabindex="3"></div>`)).toEqual(["tabindex-positive"]);
-    expect(rules(`<button aria-hidden="true">x</button>`)).toEqual(["hidden-focusable"]);
-  });
-  it("label for with a missing id, duplicate id, id inside a list", () => {
-    expect(rules(`<label for="nope">x</label><input id="a" aria-label="a">`)).toEqual(["label-for"]);
-    expect(rules(`<i id="a"></i><b id="a"></b>`)).toEqual(["duplicate-id", "duplicate-id"]);
-    expect(rules(`<template data-each="l"><li id="x">{{ a }}</li></template>`)).toEqual(["id-in-list"]);
-  });
+describe("a11y diagnostics", () => {
   it("carries line, column and rule id", () => {
     const d = checkA11y(`<p></p>\n<img src="a">`)[0];
     expect(d?.line).toBe(2);
@@ -118,12 +91,11 @@ describe("click-semantics", () => {
   });
 
   function scanned(files: Record<string, string>, page: string) {
-    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    for (const [name, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(root, name)), { recursive: true });
-      writeFileSync(join(root, name), text);
-    }
-    return { root, check: (html: string) => checkA11y(html, [], childrenAt(contractsFor([root]), join(root, page))) };
+    const root = writeTree(files);
+    return {
+      root,
+      check: (html: string) => checkA11y(html, [], childrenAt(contractsFor([root]), join(root, page))),
+    };
   }
   const children = scanned(
     {
@@ -248,17 +220,20 @@ describe("rule coverage and messages", () => {
   it("every A11Y_RULES key is produced by at least one input", () => {
     for (const rule of Object.keys(A11Y_RULES)) {
       expect(INPUTS[rule], `no input for ${rule}`).toBeTypeOf("string");
-      expect(rules(INPUTS[rule] as string), rule).toContain(rule);
+      expect([...new Set(rules(INPUTS[rule] as string))], rule).toEqual([rule]);
     }
     for (const rule of Object.keys(INPUTS)) expect(A11Y_RULES, rule).toHaveProperty(rule);
   });
   it("every rule has a short description, without the Fix: hint that each message carries", () => {
     for (const [rule, description] of Object.entries(A11Y_RULES)) expect(description, rule).not.toMatch(/Fix:|\.$/);
   });
-  it("ts-dom rules and the oxlint rules describe each rule with its A11Y_RULES text", async () => {
-    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
-    const described = plugin.rules as Record<string, { meta: { docs: { description: string } } }>;
-    const listed = (JSON.parse(execFileSync(process.execPath, ["src/cli.ts", "rules", "--json"], { encoding: "utf8" })) as { rules: { id: string; group: string; description: string }[] }).rules;
+  it("ts-dom rules and the oxlint rules describe each rule with its A11Y_RULES text", () => {
+    const described = oxlintPlugin.rules as Record<string, { meta: { docs: { description: string } } }>;
+    const listed = (
+      JSON.parse(runCli(["rules", "--json"]).stdout) as {
+        rules: { id: string; group: string; description: string }[];
+      }
+    ).rules;
     for (const [rule, description] of Object.entries(A11Y_RULES)) {
       expect(described[rule]?.meta.docs.description, rule).toBe(description);
       expect(listed.find((r) => r.group === "lint: a11y" && r.id === rule)?.description, rule).toBe(description);
@@ -294,43 +269,30 @@ describe("rule coverage and messages", () => {
   });
 });
 
-describe("ignore", () => {
-  it("individual rules can be turned off", () => {
-    expect(rules(`<img src="a"><button></button>`, ["img-alt"])).toEqual(["control-name"]);
-  });
-});
-
 describe("Vite plugin", () => {
-  const setup = async (files: Record<string, string>, opts: Record<string, unknown> = {}) => {
-    const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { tsDom } = await import("../src/lib/vite-plugin.ts");
-    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    mkdirSync(join(dir, "src"));
-    for (const [n, c] of Object.entries(files)) writeFileSync(join(dir, "src", n), c);
+  const setup = (files: Record<string, string>, opts: Record<string, unknown> = {}) => {
+    const dir = writeTree(Object.fromEntries(Object.entries(files).map(([n, c]) => [`src/${n}`, c])));
     const warns: string[] = [];
     const ctx = { warn: (m: string) => warns.push(m), error: (m: string): never => { throw new Error(m); } };
     return { dir, warns, ctx, plugin: tsDom({ dirs: [join(dir, "src")], ...opts }) };
   };
-  it("buildStart generates .html.ts; a11y does not warn by default", async () => {
-    const { existsSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<img src="a"><button></button>` });
+  it("buildStart generates .html.ts; a11y does not warn by default", () => {
+    const t = setup({ "x.html": `<img src="a"><button></button>` });
     t.plugin.buildStart.call(t.ctx);
     expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(true);
     expect(t.warns).toEqual([]);
   });
-  it("a11y: true warns; ignore turns individual checks off", async () => {
-    const t = await setup({ "x.html": `<img src="a"><button></button>` }, { a11y: true });
+  it("a11y: true warns; ignore turns individual checks off", () => {
+    const t = setup({ "x.html": `<img src="a"><button></button>` }, { a11y: true });
     t.plugin.buildStart.call(t.ctx);
     expect(t.warns.length).toBe(2);
-    const u = await setup({ "x.html": `<img src="a"><button></button>` }, { a11y: { ignore: ["img-alt"] } });
+    const u = setup({ "x.html": `<img src="a"><button></button>` }, { a11y: { ignore: ["img-alt"] } });
     u.plugin.buildStart.call(u.ctx);
     expect(u.warns.length).toBe(1);
     expect(u.warns[0]).toMatch(/control-name/);
   });
-  it("a11y checks data-on-click on a scanned component against its template, as lint does", async () => {
-    const t = await setup(
+  it("a11y checks data-on-click on a scanned component against its template, as lint does", () => {
+    const t = setup(
       {
         "x-card.ts": component("Card", "x-card"),
         "x-card.html": `<div class="card"><span>{{ title }}</span></div>`,
@@ -344,11 +306,12 @@ describe("Vite plugin", () => {
     expect(t.warns).toHaveLength(1);
     expect(t.warns[0]).toMatch(/page\.html:1:1 warning \[click-semantics\] data-on-click is on <x-card>, and its template/);
   });
-  it("a template error aborts the build; full-page documents are skipped", async () => {
-    const bad = await setup({ "x.html": `<a data-ref="d"></a><b data-ref="d"></b>` });
+  it("a template error aborts the build; full-page documents are skipped", () => {
+    const bad = setup({ "x.html": `<a data-ref="d"></a><b data-ref="d"></b>` });
     expect(() => bad.plugin.buildStart.call(bad.ctx)).toThrow(/duplicate-ref.*more than once/);
-    const { existsSync } = await import("node:fs");
-    const page = await setup({ "index.html": `<!doctype html><html><body><script></script></body></html>` });
+    const page = setup({
+      "index.html": `<!doctype html><html><body><script></script></body></html>`,
+    });
     page.plugin.buildStart.call(page.ctx);
     expect(existsSync(`${page.dir}/src/index.html.ts`)).toBe(false);
   });
@@ -359,36 +322,31 @@ describe("Vite plugin", () => {
     const server = { config: { logger: { error: () => {}, warn: () => {} } }, moduleGraph: { getModulesByFile: (f: string) => new Set([f]), invalidateModule: () => {} }, ws: { send: (p: unknown) => sent.push(p) } };
     return { handlers, sent, server };
   };
-  it("dev: dirs are relative to Vite's root, not to the working directory", async () => {
-    const { existsSync } = await import("node:fs");
-    const { tsDom } = await import("../src/lib/vite-plugin.ts");
-    const t = await setup({ "x.html": `<p></p>` });
+  it("dev: dirs are relative to Vite's root, not to the working directory", () => {
+    const t = setup({ "x.html": `<p></p>` });
     const plugin = tsDom({ dirs: ["src"] });
     plugin.configResolved({ root: t.dir });
     plugin.buildStart.call(t.ctx);
     expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(true);
   });
-  it("a dirs entry that does not exist under Vite's root is reported when the build or dev server starts", async () => {
-    const { tsDom } = await import("../src/lib/vite-plugin.ts");
-    const t = await setup({ "x.html": `<p></p>` });
+  it("a dirs entry that does not exist under Vite's root is reported when the build or dev server starts", () => {
+    const t = setup({ "x.html": `<p></p>` });
     const plugin = tsDom({ dirs: ["src", "web/src"] });
     plugin.configResolved({ root: t.dir });
     plugin.buildStart.call(t.ctx);
     expect(t.warns).toHaveLength(1);
     expect(t.warns[0]).toMatch(/web\/src:1:1 warning \[dir-not-found\] .* Fix: dirs are resolved against Vite's root/);
   });
-  it("dev: a save that does not change the generated module does not reload the page", async () => {
-    const { writeFileSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+  it("dev: a save that does not change the generated module does not reload the page", () => {
+    const t = setup({ "x.html": `<p>{{ a }}</p>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
     writeFileSync(`${t.dir}/src/x.html`, `<p>{{ a }}</p>`);
     expect(t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server })).toEqual([]);
     expect(d.sent).toEqual([]);
   });
-  it("dev: each generated content reloads the page once; a rewrite with new content goes through Vite", async () => {
-    const { readFileSync, writeFileSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+  it("dev: each generated content reloads the page once; a rewrite with new content goes through Vite", () => {
+    const t = setup({ "x.html": `<p>{{ a }}</p>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
     const generated = `${t.dir}/src/x.html.ts`;
@@ -402,18 +360,16 @@ describe("Vite plugin", () => {
     expect(t.plugin.handleHotUpdate({ file: generated, server: d.server })).toEqual([]);
     expect(d.sent).toHaveLength(1);
   });
-  it("dev: deleting a template removes its generated module", async () => {
-    const { existsSync, unlinkSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<p></p>` });
+  it("dev: deleting a template removes its generated module", () => {
+    const t = setup({ "x.html": `<p></p>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
     unlinkSync(`${t.dir}/src/x.html`);
     d.handlers.unlink?.(`${t.dir}/src/x.html`);
     expect(existsSync(`${t.dir}/src/x.html.ts`)).toBe(false);
   });
-  it("dev: adding or removing a define() regenerates the tag map and the templates' child imports", async () => {
-    const { existsSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<x-kid></x-kid>` });
+  it("dev: adding or removing a define() regenerates the tag map and the templates' child imports", () => {
+    const t = setup({ "x.html": `<x-kid></x-kid>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
     expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
@@ -431,9 +387,8 @@ describe("Vite plugin", () => {
     d.handlers.unlink?.(`${t.dir}/src/kid.ts`);
     expect(existsSync(`${t.dir}/src/ts-dom-tags.ts`)).toBe(false);
   });
-  it("dev: a template save sees the define() calls as they are on disk", async () => {
-    const { readFileSync, writeFileSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<x-kid></x-kid>` });
+  it("dev: a template save sees the define() calls as they are on disk", () => {
+    const t = setup({ "x.html": `<x-kid></x-kid>` });
     t.plugin.buildStart.call(t.ctx);
     const d = devServer(t);
     t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
@@ -442,9 +397,8 @@ describe("Vite plugin", () => {
     t.plugin.handleHotUpdate({ file: `${t.dir}/src/x.html`, server: d.server });
     expect(readFileSync(`${t.dir}/src/x.html.ts`, "utf8")).toContain(`import "./kid.js";`);
   });
-  it("dev: errors go to the logger of the server that saw the change", async () => {
-    const { writeFileSync } = await import("node:fs");
-    const t = await setup({ "x.html": `<p></p>` });
+  it("dev: errors go to the logger of the server that saw the change", () => {
+    const t = setup({ "x.html": `<p></p>` });
     t.plugin.buildStart.call(t.ctx);
     const a: string[] = [];
     const b: string[] = [];
@@ -457,10 +411,8 @@ describe("Vite plugin", () => {
     expect(a.join("\n")).toContain("invalid-hole");
     expect(b).toEqual([]);
   });
-  it("dev: a changed .html is regenerated, the old module forgotten and the page reloaded once, even when the path is relative", async () => {
-    const { readFileSync, writeFileSync } = await import("node:fs");
-    const { relative } = await import("node:path");
-    const t = await setup({ "x.html": `<p>{{ a }}</p>` });
+  it("dev: a changed .html is regenerated, the old module forgotten and the page reloaded once, even when the path is relative", () => {
+    const t = setup({ "x.html": `<p>{{ a }}</p>` });
     t.plugin.buildStart.call(t.ctx);
     t.plugin.configureServer({
       watcher: { add: () => {}, on: () => {} },

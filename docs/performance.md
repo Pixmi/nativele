@@ -2,8 +2,6 @@
 
 Part of the [Nativele](../README.md) documentation.
 
-## Performance
-
 `npm run bench` runs a large list benchmark in real Chrome and prints this table. Each item shows one text; the times are the median of 5 runs and count script execution only (no layout or paint). They were measured on one machine (Chrome on WSL), so read them as proportions, not absolute numbers. "Direct DOM" is a hand-written keyed list with plain DOM calls, the floor any library adds to.
 
 | Approach | Items | Create | Update 10% | Reverse | Remove half | Append 1,000 |

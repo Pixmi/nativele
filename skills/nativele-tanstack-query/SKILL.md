@@ -53,7 +53,9 @@ Starting from a Vite app with Nativele already set up (`npx ts-dom skills native
    }
    ```
 
-   The app owns the client; components import it and never create their own. One client is one cache, so two components that ask for the same key share one request. Without `mount()`, the client does not refetch when the window regains focus or the network comes back (limitation 5). `retry: false` is a choice for this example, not a requirement (limitation 6).
+   - The app owns the client; components import it and never create their own. One client is one cache, so two components that ask for the same key share one request.
+   - Without `mount()`, the client does not refetch when the window regains focus or the network comes back (limitation 5).
+   - `retry: false` is a choice for this example, not a requirement (limitation 6).
 
 3. In each component that shows a query, create the observer as a private field, `bind` it in `connected()`, and copy what the template shows into `state` (Example). How `bind` calls back and unsubscribes: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
 4. When the query depends on a prop, build the options from the prop in a function and call `setOptions` in `render` when the prop changed (the `user-detail` component in Example).
@@ -237,20 +239,25 @@ export class AppShell extends Component(tpl, { state: { userId: 1, showDetail: t
 define("app-shell", AppShell);
 ```
 
-`src/main.ts` imports `./nv/app-shell.ts`, and `index.html` has `<app-shell></app-shell>`. What the example does, as verified:
-
-- On load, each component shows its loading block, then the data; the list is filled with `replace()`. One request per query.
-- A refetch (invalidation, focus, a remount of stale data) keeps the data on screen and shows the `refetching` block until it ends.
-- Changing `userId` switches the query: a key never loaded shows the loading block, not the previous user's data; a key already in the cache shows its data at once and refetches it.
-- A failed request shows the error block (`Could not load user 99: HTTP 404`).
-- Clicking Add shows `Saving...`, then the list is refetched once and shows the new user; a failed save shows its error, keeps the input and refetches nothing.
+`src/main.ts` imports `./nv/app-shell.ts`, and `index.html` has `<app-shell></app-shell>`.
 
 ## Known limitations
 
-1. **One observer per component instance; one client per app.** Create the observer as a field and `bind` it in `connected()`, not in the constructor (https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state). A module-level observer shared by several components also works (each `bind` adds a listener; when the last one is removed the observer stops, and it starts again when one comes back), but only when its options do not depend on any one component: `setOptions` from one component would switch the query for all of them. Two components with their own observers on the same key share one request through the client's cache.
-2. **Removing the element stops everything for it.** After the element leaves the page, invalidation and window focus do not refetch its query, and a request that finishes later does not reach the element. Pass `signal` from the query function's context to `fetch`: then removing the last component that observes a query while it is fetching aborts the request. Without `signal`, the request runs to the end and fills the cache, but the removed element still gets no update. Putting the element back (the same element, as `data-if` does) shows the cached data at once and refetches it (with the default `staleTime` of 0, cached data is always stale).
-3. **Keys from props go through `setOptions` in `render`.** Guard it with `changed.has("userId")`. A prop change while the element is removed sends no request. When a parent shows the element again with `data-if` and gives it a new prop in the same update, the element connects first, with its old prop, and fetches that key before `render` switches to the new one; so when hiding it, also reset the prop to a value whose query is disabled (`productId: 0` with `enabled: id > 0`), and only the new key is fetched. Use `enabled` for values that must not be fetched (here `id > 0`); a disabled query stays `status: "pending"`, so the loading block shows until a real id arrives. Show it differently if that matters (for example derive `loading` from `userId > 0` as well).
-4. **Map `status` and `isFetching`, not `isLoading`.** Before the first subscription the result is `status: "pending"` with `fetchStatus: "idle"` (`isLoading` is `false`), and `bind` calls the callback with that result first; subscribing starts the fetch and calls it again at once with `fetchStatus: "fetching"`. Deriving `loading` from `status === "pending"` shows the loading block from the first render on. Copy only what the template shows into state.
+1. **One observer per component instance; one client per app.** Create the observer as a field and `bind` it in `connected()`, not in the constructor: https://github.com/Pixmi/nativele/blob/main/docs/components.md#state-store-when-not-using-state
+   - Two components with their own observers on the same key share one request through the client's cache.
+   - A module-level observer shared by several components also works, but only when its options do not depend on any one component: `setOptions` from one component would switch the query for all of them.
+   - Each `bind` adds a listener to a shared observer. When the last one is removed the observer stops, and it starts again when one comes back.
+2. **Removing the element stops everything for it.** Pass `signal` from the query function's context to `fetch`, so that removing the last component that observes a query while it is fetching aborts the request.
+   - After the element leaves the page, invalidation and window focus do not refetch its query, and a request that finishes later does not reach the element.
+   - Without `signal`, the request runs to the end and fills the cache, but the removed element still gets no update.
+   - Putting the same element back, as `data-if` does, shows the cached data at once and refetches it. With the default `staleTime` of 0, cached data is always stale.
+3. **Keys from props go through `setOptions` in `render`.** Guard it with `changed.has("userId")`. A prop change while the element is removed sends no request.
+   - When a parent shows the element again with `data-if` and gives it a new prop in the same update, the element connects first, with its old prop, and fetches that key before `render` switches to the new one.
+   - So when hiding it, also reset the prop to a value whose query is disabled (`userId: 0` with `enabled: id > 0`); then only the new key is fetched.
+   - Use `enabled` for values that must not be fetched (here `id > 0`). A disabled query stays `status: "pending"`, so the loading block shows until a real id arrives. If that matters, derive `loading` from `userId > 0` as well.
+4. **Map `status` and `isFetching`, not `isLoading`.** Derive `loading` from `status === "pending"`, which shows the loading block from the first render on, and copy only what the template shows into state.
+   - Before the first subscription the result is `status: "pending"` with `fetchStatus: "idle"`, so `isLoading` is `false`. `bind` calls the callback with that result first.
+   - Subscribing starts the fetch and calls the callback again at once with `fetchStatus: "fetching"`.
 5. **Call `queryClient.mount()` once.** Without it, a `visibilitychange` on the window (focus) does not refetch active stale queries; with it, it does.
 6. **Errors wait for retries by default.** With the default `retry`, a failing query showed its error after about 7 seconds (`failureCount` 4: the first attempt and three retries), and the loading block stays until then. Set `retry` in the client's `defaultOptions` or per query to what the app needs; tests that check error states need it low or off.
 7. **Handle the promise of `mutate`.** `mutate()` returns a promise that rejects when the mutation fails; without a rejection handler the page reports an uncaught `Error: HTTP 500`. The `MutationObserver` result (bound above) already carries the error for the view, so the handler can be empty.
@@ -263,18 +270,25 @@ Run in the project:
 
 ```sh
 npx ts-dom check src/nv      # expect: ts-dom check: no issues
-npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
+npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right
 npm run build                # expect: ts-dom check: no issues, then ✓ built
 ```
 
-Then check in a browser against the dev server, without external network: point the queries at a local mock API (for example a Vite plugin with `configureServer` middleware, or the app's own backend in development), and make the states deterministic by holding requests in the test instead of adding delays. With Playwright, `page.route("**/api/**", ...)` can record every request, keep a matching one waiting until the test releases it with `route.continue()`, or answer it with `route.fulfill({ status: 500 })`. Check:
+Then check in a browser against the dev server, without external network.
+
+- Point the queries at a local mock API, for example a Vite plugin with `configureServer` middleware, or the app's own backend in development.
+- Make the states deterministic by holding requests in the test instead of adding delays. With Playwright, `page.route("**/api/**", ...)` can record every request, keep a matching one waiting until the test releases it with `route.continue()`, or answer it with `route.fulfill({ status: 500 })`.
+
+Check:
 
 - while a request is held, the loading block shows; after release, the data and the list items show, with one request per query;
 - with data on screen, invalidating holds a refetch: the `refetching` block shows and the data stays;
-- changing the prop sends a request for the new key and shows its loading block, not the previous data;
-- after the component is removed, invalidation and a `visibilitychange` event on `window` send no request for its query, and a held request released after removal does not change the removed element (keep a reference to it); with `signal` passed to `fetch`, a request held when the component is removed fails with `requestfailed`, as long as no other component still observes the same key (another observer keeps the query, and its request, alive);
+- changing the prop sends a request for the new key and shows its loading block, not the previous data; a key already in the cache shows its data at once and refetches it;
+- a failed query shows its error block (`Could not load user 99: HTTP 404`);
+- after the component is removed, invalidation and a `visibilitychange` event on `window` send no request for its query, and a held request released after removal does not change the removed element (keep a reference to it);
+- with `signal` passed to `fetch`, a request held when the component is removed fails with `requestfailed`, unless another component still observes the same key and keeps the request alive;
 - after putting the element back, it shows the cached data and its query refetches;
-- a held mutation shows its pending block; after release the list is refetched once and shows the new item; a failed mutation shows its error;
+- a held mutation shows its pending block; after release the list is refetched once and shows the new item; a failed mutation shows its error, keeps the input and refetches nothing;
 - no console errors or warnings, apart from the browser's `Failed to load resource` line for a status you return on purpose.
 
 ## Troubleshooting

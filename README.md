@@ -6,9 +6,13 @@
 
 Nativele publishes this library as `@nativele/ts-dom` (import it from `@nativele/ts-dom`); its command line tool is `ts-dom`.
 
-A lightweight library for building web components: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. It is built for type safety and for working with AI agents: `tsc` checks every name the HTML uses, and every diagnostic says how to fix it. Complex UI is built by composing native custom elements.
+A lightweight library for building web components: HTML describes the structure and where data goes, TypeScript owns behavior and state, and the native DOM renders it, with no virtual DOM and no template expressions. Complex UI is built by composing native custom elements.
 
-**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape. There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens. Every diagnostic from `ts-dom gen` and `ts-dom lint` names its rule and ends with a `Fix:` hint the agent can apply, [`llms.txt`](llms.txt) describes the whole API on one page, and [Nativele Skills](#nativele-skills) give agents verified procedures for building components and for using them with other tools.
+**Nativele is made for AI coding agents.** An agent writes a template and a class, runs `ts-dom check`, and corrects its own mistakes from the type errors: a name the HTML uses that the class does not have, an event handler that does not exist, list items of the wrong shape.
+
+There is no template language to learn and no hidden reactivity to reason about, so what the agent reads in the HTML and the class is all that happens.
+
+Every diagnostic names its rule and ends with a `Fix:` hint the agent can apply. [`llms.txt`](llms.txt) describes the whole API on one page, and [Nativele Skills](#nativele-skills) give agents verified procedures for building components and for using them with other tools.
 
 English | [繁體中文](README.zh-TW.md)
 
@@ -56,33 +60,9 @@ npx ts-dom skills nativele-core        # print one
 npx ts-dom skills add nativele-core    # copy it into .claude/skills/ (when the project has .claude) or .agents/skills/
 ```
 
-`npx ts-dom doctor` reads your `package.json` and suggests the Skills that match it, for example `nativele-react` when React is a dependency.
+`npx ts-dom skills` also shows which Skills cover your project's dependencies, for example `nativele-react` when React is one.
 
-| Skill | Covers |
-|---|---|
-| `nativele-core` | building components: the `ts-dom check` loop, templates, state, lists, data flow |
-| `nativele-react` | Nativele components in React 19: props, events, children and slots, lifecycle, TSX types |
-| `nativele-vue` | Nativele components in Vue 3: props, events, `v-model`, slots, `<KeepAlive>`, template types |
-| `nativele-svelte` | Nativele components in Svelte 5: props, events, slots, template types |
-| `nativele-angular` | Nativele components in Angular: bindings, change detection, the build, content projection |
-| `nativele-architecture` | app layout: feature folders, shared components and stores, pages mounted by a router, lazy pages, the test split |
-| `nativele-vite` | Nativele in a Vite app: the plugin and `root`, multi-page builds, hot updates |
-| `nativele-integration` | Nativele components in a framework without its own Skill (Preact, Solid, ...): properties, events, slots, lifecycle, template types |
-| `nativele-state-management` | where state lives; `createStore`, and Zustand, Redux Toolkit or nanostores through `bind` |
-| `nativele-testing` | component tests with Vitest, real-browser tests |
-| `nativele-tanstack-query` | data fetching with `@tanstack/query-core` |
-| `nativele-zod` | form validation with Zod or Valibot |
-| `nativele-tailwind` | Tailwind CSS in templates and Shadow DOM |
-| `nativele-web-awesome` | Web Awesome components in templates: typed events, forms, Light and Shadow DOM |
-| `nativele-typescript` | the tsconfig: what Nativele needs, stricter options, the generated files in the type check |
-| `nativele-linting` | the Nativele lint rules in oxlint, Vite+ or ESLint: rules, severities, ignore lists |
-| `nativele-formatting` | oxfmt, Prettier or `vp fmt` with templates: the whitespace mode, keeping the formatter off the generated files |
-| `nativele-ci` | the Nativele steps in CI: generating first, committed or ignored generated files, exit codes |
-| `nativele-monorepo` | Nativele across the packages of a workspace: a shared component package, build order |
-
-Tiers: Official Skills are verified through agent trials and maintained by the maintainers; Community Skills are contributed and show their author and last verified versions; Experimental Skills are not fully verified yet. `ts-dom skills` marks a Skill as stale when its verification is more than six months old or does not cover the installed version.
-
-Nativele stays a light UI layer and grows its integrations through Skills: a new Skill changes no runtime code and adds no dependency. The planned Skills and how to contribute one are in [the Skills guide](https://github.com/Pixmi/nativele/blob/main/skills/README.md).
+The list of Skills, their tiers and how to contribute one are in [the Skills guide](https://github.com/Pixmi/nativele/blob/main/skills/README.md).
 
 If your agent does not load Skills, add this line to its instructions (`AGENTS.md`, `CLAUDE.md` or similar): "Before working on Nativele components, run `npx ts-dom skills nativele-core` and follow it."
 
@@ -97,8 +77,6 @@ npx tsc             # type-check and compile; no Vite or other bundler needed
 The two examples below are real, runnable files in `examples/readme/` (type-checked, linted, and tested).
 
 ### Example 1: Counter (state, derived values, events, data-if)
-
-The HTML only describes the structure, where data goes, and which method handles an event:
 
 ```html
 <p>Count: {{ count }} (double: {{ double }})</p>
@@ -126,8 +104,6 @@ export class MyCounter extends Component(tpl, {
 }
 define("my-counter", MyCounter);
 ```
-
-If the HTML uses a name that neither `state` nor `derive` has, or `data-on-click` points to a method that does not exist, `tsc` reports an error.
 
 ### Example 2: A list of components (`items =`, props down, events up)
 

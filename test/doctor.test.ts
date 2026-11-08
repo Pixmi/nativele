@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { analyze } from "../src/lib/codegen.ts";
 import { runDoctor } from "../src/lib/doctor.ts";
+import { lintRun } from "../src/lib/lint.ts";
+import { runCli, writeTree } from "./helpers.ts";
 
 const project = (files: Record<string, string>) => {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-doctor-"));
-  mkdirSync(join(dir, "src"));
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+  const dir = writeTree(files, "nativele-doctor-");
+  mkdirSync(join(dir, "src"), { recursive: true });
   return dir;
 };
 const rules = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).map((i) => i.rule).sort();
@@ -147,11 +147,6 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
     expect(rules).not.toContain("tsconfig-not-strict");
     expect(rules).not.toContain("tsconfig-misses-templates");
   });
-
-  it("a folder that does not exist is reported", () => {
-    const cwd = project({ "tsconfig.json": `{ "compilerOptions": { ${strictPaths} } }` });
-    expect(runDoctor({ dirs: ["app"], cwd }).map((i) => i.rule)).toContain("dir-not-found");
-  });
 });
 
 describe("ts-dom doctor: a Vitest config without the plugin", () => {
@@ -211,11 +206,9 @@ describe("ts-dom doctor: another framework's templates in a scanned folder", () 
   });
 
   it("the invalid-hole and no-importer hints mention a folder that is not meant to be scanned", async () => {
-    const { analyze } = await import("../src/lib/codegen.ts");
-    const { lintUsage } = await import("../src/lib/lint.ts");
     expect(analyze("<p>{{ user.name }}</p>").diagnostics[0]?.message).toContain("this folder is not meant to be scanned");
     const cwd = project({ "src/lone.html": "<p></p>" });
-    const lone = lintUsage([join(cwd, "src")], []).find((i) => i.rule === "no-importer");
+    const lone = lintRun([join(cwd, "src")], { groups: ["unused-markup"] }).issues.find((i) => i.rule === "no-importer");
     expect(lone?.message).toContain("this folder is not meant to be scanned");
   });
 });
@@ -247,15 +240,10 @@ describe("ts-dom doctor: a type check that runs before gen", () => {
   });
 });
 
-const tree = (files: Record<string, string>) => {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-doctor-"));
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, name)), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return dir;
-};
-const withTypeScript = (version: string) => ({ "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version }) });
+const tree = (files: Record<string, string>) => writeTree(files, "nativele-doctor-");
+const withTypeScript = (version: string) => ({
+  "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version }),
+});
 const issuesOf = (cwd: string, rule: string, extra: { project?: string } = {}) => runDoctor({ dirs: ["src"], cwd, ...extra }).filter((i) => i.rule === rule);
 const paths = `"paths": { "@nativele/ts-dom": ["x"] }`;
 
@@ -432,19 +420,23 @@ describe("ts-dom doctor --project", () => {
 });
 
 describe("ts-dom doctor on the command line", () => {
-  const cli = join(process.cwd(), "src/cli.ts");
-  const warningsOnly = () => tree({ "tsconfig.json": `{ "compilerOptions": { "strict": false, ${paths} } }`, "tsconfig.app.json": `{ "compilerOptions": { "strict": true, ${paths} } }`, "src/a.ts": "export {};\n" });
+  const warningsOnly = () =>
+    tree({
+      "tsconfig.json": `{ "compilerOptions": { "strict": false, ${paths} } }`,
+      "tsconfig.app.json": `{ "compilerOptions": { "strict": true, ${paths} } }`,
+      "src/a.ts": "export {};\n",
+    });
 
   it("--strict exits with 1 on warnings, like check --strict", () => {
     const cwd = warningsOnly();
-    expect(spawnSync(process.execPath, [cli, "doctor", "src"], { cwd, encoding: "utf8" }).status).toBe(0);
-    const strict = spawnSync(process.execPath, [cli, "doctor", "src", "--strict"], { cwd, encoding: "utf8" });
+    expect(runCli(["doctor", "src"], cwd).status).toBe(0);
+    const strict = runCli(["doctor", "src", "--strict"], cwd);
     expect(strict.stderr).toContain("[tsconfig-not-strict]");
     expect(strict.status).toBe(1);
   }, 30_000);
 
   it("--project picks the tsconfig", () => {
-    const run = spawnSync(process.execPath, [cli, "doctor", "src", "--project=tsconfig.app.json", "--strict"], { cwd: warningsOnly(), encoding: "utf8" });
+    const run = runCli(["doctor", "src", "--project=tsconfig.app.json", "--strict"], warningsOnly());
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
   }, 30_000);

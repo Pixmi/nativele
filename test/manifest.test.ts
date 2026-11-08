@@ -1,23 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { checkA11y } from "../src/lib/a11y.ts";
 import { Memo, Workspace } from "../src/lib/components.ts";
 import { runDoctor } from "../src/lib/doctor.ts";
 import { childrenAt, contractsFor, lintRun } from "../src/lib/lint.ts";
+import { cliJson, writeTree } from "./helpers.ts";
 import { attrType, manifestsAt, parseManifest } from "../src/lib/manifest.ts";
 import type { ManifestElement } from "../src/lib/manifest.ts";
-
-const write = (root: string, files: Record<string, string>): string => {
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(root, name)), { recursive: true });
-    writeFileSync(join(root, name), text);
-  }
-  return root;
-};
-const tmp = () => mkdtempSync(join(tmpdir(), "ts-dom-cem-"));
 
 /** A manifest shaped like Web Awesome's: module paths relative to the manifest's folder, a base class outside the manifest whose members it copies (inheritedFrom), a tag only on the export, a missing events array. */
 const MANIFEST = {
@@ -89,7 +79,6 @@ define("x-kid", Kid);
 
 /** A project whose package depends on fake-wc, which declares MANIFEST; `templates` are page templates with a class that uses each. */
 function fakeProject(templates: Record<string, string>, extra: Record<string, string> = {}, manifest: unknown = MANIFEST): string {
-  const root = tmp();
   const files: Record<string, string> = {
     "package.json": JSON.stringify({ name: "app", dependencies: { "fake-wc": "^1.0.0", "not-installed": "^1.0.0" } }),
     "node_modules/fake-wc/package.json": JSON.stringify({ name: "fake-wc", customElements: "dist/custom-elements.json" }),
@@ -102,7 +91,7 @@ function fakeProject(templates: Record<string, string>, extra: Record<string, st
     files[`src/${name}.html`] = html;
     files[`src/${name}.ts`] = `import { Component } from "@nativele/ts-dom";\nimport tpl from "./${name}.html.js";\nexport class P extends Component(tpl) {\n  go(): void {}\n}\n`;
   }
-  return write(root, files);
+  return writeTree(files);
 }
 
 const lint = (root: string, a11y = false, ws = new Workspace()) => lintRun([join(root, "src")], { cwd: root, a11y, ws }).issues;
@@ -201,16 +190,25 @@ describe("finding the manifests of a package", () => {
     [`${name}/custom-elements.json`]: JSON.stringify({ schemaVersion: "1.0.0", modules: [{ path: "x.js", declarations: [{ name: "X", customElement: true, tagName: tag }] }] }),
   });
   it("reads the package's own manifest and those of its installed dependencies; a dependency that is not installed or declares none is skipped", () => {
-    const root = write(tmp(), {
-      "package.json": JSON.stringify({ name: "app", customElements: "own.json", dependencies: { a: "1", missing: "1" }, devDependencies: { plain: "1" }, peerDependencies: { "@s/b": "1" } }),
-      "own.json": JSON.stringify({ schemaVersion: "1.0.0", modules: [{ path: "o.js", declarations: [{ name: "O", customElement: true, tagName: "app-own" }] }] }),
+    const root = writeTree({
+      "package.json": JSON.stringify({
+        name: "app",
+        customElements: "own.json",
+        dependencies: { a: "1", missing: "1" },
+        devDependencies: { plain: "1" },
+        peerDependencies: { "@s/b": "1" },
+      }),
+      "own.json": JSON.stringify({
+        schemaVersion: "1.0.0",
+        modules: [{ path: "o.js", declarations: [{ name: "O", customElement: true, tagName: "app-own" }] }],
+      }),
       "node_modules/plain/package.json": JSON.stringify({ name: "plain" }),
       ...Object.fromEntries(Object.entries({ ...lib("a", "a-x"), ...lib("@s/b", "b-x") }).map(([k, v]) => [`node_modules/${k}`, v])),
     });
     expect(pkgs(root)).toEqual([["app", "app-own"], ["a", "a-x"], ["@s/b", "b-x"]]);
   });
   it("finds a dependency hoisted to the workspace root, and one linked as pnpm does, by its real path", () => {
-    const root = write(tmp(), {
+    const root = writeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["apps/*"] }),
       "apps/one/package.json": JSON.stringify({ dependencies: { a: "1", b: "1" } }),
       ...Object.fromEntries(Object.entries(lib("a", "a-x")).map(([k, v]) => [`node_modules/${k}`, v])),
@@ -223,11 +221,18 @@ describe("finding the manifests of a package", () => {
     expect(found[1]?.file).toBe(join(root, "node_modules/.pnpm/b@1/node_modules/b/custom-elements.json"));
   });
   it("does not look above the package when there is no workspace root", () => {
-    const root = write(tmp(), { "package.json": JSON.stringify({ name: "outer" }), "inner/package.json": JSON.stringify({ dependencies: { a: "1" } }), ...Object.fromEntries(Object.entries(lib("a", "a-x")).map(([k, v]) => [`node_modules/${k}`, v])) });
+    const root = writeTree({
+      "package.json": JSON.stringify({ name: "outer" }),
+      "inner/package.json": JSON.stringify({ dependencies: { a: "1" } }),
+      ...Object.fromEntries(Object.entries(lib("a", "a-x")).map(([k, v]) => [`node_modules/${k}`, v])),
+    });
     expect(pkgs(root, join(root, "inner"))).toEqual([]);
   });
   it("names a missing manifest file", () => {
-    const root = write(tmp(), { "package.json": JSON.stringify({ dependencies: { a: "1" } }), "node_modules/a/package.json": JSON.stringify({ customElements: "gone.json" }) });
+    const root = writeTree({
+      "package.json": JSON.stringify({ dependencies: { a: "1" } }),
+      "node_modules/a/package.json": JSON.stringify({ customElements: "gone.json" }),
+    });
     expect(pkgs(root)).toEqual([["a", "does not exist"]]);
   });
   it("parses a manifest once while its text is the same, and again when it changes", () => {
@@ -320,8 +325,22 @@ describe("lint with a dependency's custom elements manifest", () => {
     expect(issues[0]?.message).toContain("<fk-button> (fake-wc, fake-wc2): defined in several packages");
   });
   it("each package reads the manifest of its own dependency, also for the same tag", () => {
-    const v2 = { ...MANIFEST, modules: [{ ...MANIFEST.modules[0], declarations: [{ ...MANIFEST.modules[0]?.declarations[0], superclass: { name: "HTMLElement" }, attributes: [{ name: "tone", type: { text: "'loud'" } }] }] }] };
-    const root = write(tmp(), {
+    const v2 = {
+      ...MANIFEST,
+      modules: [
+        {
+          ...MANIFEST.modules[0],
+          declarations: [
+            {
+              ...MANIFEST.modules[0]?.declarations[0],
+              superclass: { name: "HTMLElement" },
+              attributes: [{ name: "tone", type: { text: "'loud'" } }],
+            },
+          ],
+        },
+      ],
+    };
+    const root = writeTree({
       "pnpm-workspace.yaml": "packages: [a, b]\n",
       "a/package.json": JSON.stringify({ dependencies: { "fake-wc": "1" } }),
       "a/node_modules/fake-wc/package.json": JSON.stringify({ customElements: "cem.json" }),
@@ -374,7 +393,7 @@ describe("ts-dom doctor: custom-elements-manifest", () => {
     ["{", "is not valid JSON"],
     [`{ "schemaVersion": "9.0.0" }`, `has schemaVersion "9.0.0"`],
   ])("reports a dependency's manifest that %s", (text, reason) => {
-    const root = write(tmp(), {
+    const root = writeTree({
       "package.json": JSON.stringify({ dependencies: { "fake-wc": "1" } }),
       "node_modules/fake-wc/package.json": JSON.stringify({ customElements: "dist/cem.json" }),
       ...(text === undefined ? {} : { "node_modules/fake-wc/dist/cem.json": text }),
@@ -435,7 +454,7 @@ describe("unknown-custom-element ignored", () => {
     const issues = lintRun([join(root, "src")], { cwd: root, ignore: ["unknown-custom-element"] }).issues.filter((i) => i.rule !== "unknown-custom-element");
     expect(rulesOf(issues)).toEqual(["unchecked-custom-elements"]);
     expect(issues[0]?.message).toContain("<fk-buton>");
-    const cli = (cmd: string) => (JSON.parse(execFileSync(process.execPath, [join(process.cwd(), "src/cli.ts"), cmd, "src", "--ignore=unknown-custom-element", "--json"], { cwd: root, encoding: "utf8" })) as { issues: { rule: string; message: string }[] }).issues.filter((i) => i.rule === "unchecked-custom-elements");
+    const cli = (cmd: string) => cliJson([cmd, "src", "--ignore=unknown-custom-element", "--json"], root).issues.filter((i) => i.rule === "unchecked-custom-elements");
     expect(cli("lint")[0]?.message).toContain("<fk-buton>");
   });
 });
@@ -486,7 +505,7 @@ describe("unknown-native-event", () => {
     const root = fakeProject({ page: `<div data-on-clicked="go"><x-kid></x-kid></div>\n<div data-on-selectd="go"></div>\n` });
     const memo = new Memo();
     expect(found(root, new Workspace(memo))).toEqual(["1:6 unknown-native-event", "2:6 unknown-native-event"]);
-    write(root, { "src/kid.ts": kidEmitting(true) });
+    writeFileSync(join(root, "src/kid.ts"), kidEmitting(true));
     expect(found(root, new Workspace(memo))).toEqual(["2:6 unknown-native-event"]);
   });
   it("an event native to another element is not a misspelling", () => {
@@ -507,8 +526,18 @@ describe("lint --json", () => {
     `<x-emitter data-on-kid-done="relay"></x-emitter>`,
   ].join("\n");
   const code = `import { Component, event } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class P extends Component(tpl, { props: { label: "" }, emits: { "kid-done": event() } }) {\n  go(): void { this.label = "x"; }\n  relay(e: Event): void { this.emit("kid-done", e); }\n  override render(v: { label: string }): void {\n    this.refs.name.value = v.label;\n    this.refs.kid.label = this.props.label;\n  }\n}\n`;
-  const root = () => fakeProject({}, { "src/emitter.html": `<p></p>\n`, "src/emitter.ts": emitter, "src/page.html": `${page}\n`, "src/page.ts": code, "src/orphan.html": `<p></p>\n` });
-  const issues = (dir: string) => (JSON.parse(spawnSync(process.execPath, [join(process.cwd(), "src/cli.ts"), "lint", "src", "--a11y", "--json"], { cwd: dir, encoding: "utf8" }).stdout) as { issues: Record<string, unknown>[] }).issues;
+  const root = () =>
+    fakeProject(
+      {},
+      {
+        "src/emitter.html": `<p></p>\n`,
+        "src/emitter.ts": emitter,
+        "src/page.html": `${page}\n`,
+        "src/page.ts": code,
+        "src/orphan.html": `<p></p>\n`,
+      },
+    );
+  const issues = (dir: string) => cliJson<{ issues: Record<string, unknown>[] }>(["lint", "src", "--a11y", "--json"], dir).issues;
 
   it("prints every issue with exactly the documented keys: file, line, col, severity, rule, message", () => {
     const found = issues(root());

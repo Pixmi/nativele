@@ -1,19 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { mkdirSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
+import { writeFiles, writeTree } from "./helpers.ts";
 import { scanDefines, Workspace } from "../src/lib/components.ts";
 import { lintRun } from "../src/lib/lint.ts";
 import { componentPackagesAt } from "../src/lib/manifest.ts";
 
-const write = (root: string, files: Record<string, string>): string => {
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(root, name)), { recursive: true });
-    writeFileSync(join(root, name), text);
-  }
-  return root;
-};
-const tmp = () => mkdtempSync(join(tmpdir(), "ts-dom-pkg-"));
 const json = (v: unknown) => JSON.stringify(v);
 
 const BUTTON_TS = `import { Component, define } from "@nativele/ts-dom";
@@ -35,7 +27,7 @@ const BUTTON_HTML = `<button data-on-click="press"><slot></slot></button>\n`;
 
 /** A workspace with an app (apps/web) that depends on the component package @acme/ui, linked into node_modules as npm and pnpm do. */
 function workspace(ui: Record<string, string>, app = `<ui-button size="2" data-on-press="go">Go</ui-button>\n`, appDeps: Record<string, string> = { "@acme/ui": "*" }): string {
-  const root = write(tmp(), {
+  const root = writeTree({
     "package.json": json({ private: true, workspaces: ["packages/*", "apps/*"] }),
     "apps/web/package.json": json({ name: "web", dependencies: { ...appDeps, "@nativele/ts-dom": "^0.7.0" } }),
     "apps/web/src/app-view.html": app,
@@ -89,14 +81,22 @@ describe("components of a Nativele component package among the dependencies", ()
       `<ui-button data-on-pres="go"></ui-button>\n`,
     );
     expect(rules(root)).toEqual(["unknown-event"]);
-    const a11y = lint(write(root, { "apps/web/src/app-view.html": `<a href="/x"><ui-button data-on-press="go"></ui-button></a>\n` }), true);
+    const a11y = lint(
+      writeFiles(root, {
+        "apps/web/src/app-view.html": `<a href="/x"><ui-button data-on-press="go"></ui-button></a>\n`,
+      }),
+      true,
+    );
     expect(a11y.map((i) => i.rule)).toEqual(["unchecked-content"]);
     expect(a11y[0]?.message).toContain("a component of a package that ships its modules without their .html templates");
   });
 
   it("a published package installed in node_modules (not a link) is read the same way", () => {
-    const root = write(tmp(), {
-      "package.json": json({ name: "app", dependencies: { "@acme/ui": "1", "@nativele/ts-dom": "^0.7.0" } }),
+    const root = writeTree({
+      "package.json": json({
+        name: "app",
+        dependencies: { "@acme/ui": "1", "@nativele/ts-dom": "^0.7.0" },
+      }),
       "src/app-view.html": `<ui-button data-on-pres="go">Go</ui-button>\n`,
       "src/app-view.ts": `import "@acme/ui";\nimport { Component, define } from "@nativele/ts-dom";\nimport view from "./app-view.html.js";\nexport class AppView extends Component(view) { go() {} }\ndefine("app-view", AppView);\n`,
       ...Object.fromEntries(Object.entries({ ...SOURCE, "package.json": json({ name: "@acme/ui", main: "./src/index.ts", dependencies: { "@nativele/ts-dom": "^0.7.0" } }) }).map(([k, v]) => [`node_modules/@acme/ui/${k}`, v])),
@@ -116,7 +116,7 @@ describe("components of a Nativele component package among the dependencies", ()
 
   it("a define() in the scanned folders wins over a component package that defines the same tag", () => {
     const root = workspace(SOURCE, `<ui-button data-on-tap="go">Go</ui-button>\n`);
-    write(root, {
+    writeFiles(root, {
       "apps/web/src/ui-button.html": `<button data-on-click="tap">x</button>\n`,
       "apps/web/src/ui-button.ts": `import { Component, define } from "@nativele/ts-dom";\nimport view from "./ui-button.html.js";\nexport class Local extends Component(view, { emits: { tap: null } }) { tap() { this.emit("tap"); } }\ndefine("ui-button", Local);\n`,
     });
@@ -125,7 +125,19 @@ describe("components of a Nativele component package among the dependencies", ()
 
   it("a tag that two component packages of the package define is ambiguous", () => {
     const root = workspace(SOURCE, undefined, { "@acme/ui": "*", "@acme/other": "*" });
-    write(root, Object.fromEntries(Object.entries({ ...SOURCE, "package.json": json({ name: "@acme/other", exports: { ".": "./src/index.ts" }, peerDependencies: { "@nativele/ts-dom": "^0.7.0" } }) }).map(([k, v]) => [`packages/other/${k}`, v])));
+    writeFiles(
+      root,
+      Object.fromEntries(
+        Object.entries({
+          ...SOURCE,
+          "package.json": json({
+            name: "@acme/other",
+            exports: { ".": "./src/index.ts" },
+            peerDependencies: { "@nativele/ts-dom": "^0.7.0" },
+          }),
+        }).map(([k, v]) => [`packages/other/${k}`, v]),
+      ),
+    );
     symlinkSync(join(root, "packages/other"), join(root, "node_modules/@acme/other"));
     const issues = lint(root);
     expect(issues.map((i) => i.rule)).toEqual(["unchecked-custom-elements"]);

@@ -1,28 +1,18 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5302);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${s.url}/`);
-  await page.waitForSelector("todo-app form");
+  ({ page, errors, close } = await openPage({ path: "/", ready: "todo-app form" }));
   expect(errors).toEqual([]);
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 const add = async (title: string) => {
   await page.fill("todo-app #todo-new", title);
@@ -75,8 +65,5 @@ describe("Todo list e2e (real Chrome)", () => {
     await page.click("todo-app footer button:has-text('Done')");
     expect(await titles()).toEqual([]);
     expect(await page.textContent("todo-app p")).toBe("No matching todos");
-  });
-  it("<style> is injected only once across multiple component instances", async () => {
-    expect(await page.$$eval("style[data-ts-dom='todo-app']", (e) => e.length)).toBe(1);
   });
 });

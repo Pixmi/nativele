@@ -4,7 +4,7 @@ import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
 import { analyze, HTML_NS, isEl, kids, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
-import { componentIndex, literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
+import { literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
 import type { ComponentIndex, ComponentRef } from "./components.ts";
 import { componentPackagesAt, manifestsAt, packageOf } from "./manifest.ts";
@@ -146,11 +146,6 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
     }
   }
   return out;
-}
-
-export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const ws = new Workspace();
-  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
 }
 
 const noImporter = (file: string, html: string): LintIssue => ({
@@ -838,11 +833,6 @@ export function dataFlow(
   return out;
 }
 
-export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const ws = new Workspace();
-  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
-}
-
 export type Group = "unused-markup" | "data-flow" | "a11y";
 
 /** What lint finds in one template; a group that was not run has no findings. */
@@ -972,8 +962,6 @@ export interface LintOptions {
   ws?: Workspace;
   /** The groups to run instead of those `a11y` selects. */
   groups?: readonly Group[];
-  index?: ComponentIndex;
-  contracts?: Contracts;
   /** The rule ids whose warnings the caller leaves out: unchecked-custom-elements then lists the tags unknown-custom-element would report, which are otherwise left to it. */
   ignore?: readonly string[];
 }
@@ -982,9 +970,8 @@ export interface LintOptions {
  * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
  * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
-export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
-  const index = given.index ?? ws.index(dirs);
-  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, index);
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [] }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
+  const p = lintProject(ws, dirs, cwd);
   const usage: LintIssue[] = [];
   const flow: LintIssue[] = [];
   const checks: LintIssue[] = [];

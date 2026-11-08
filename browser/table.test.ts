@@ -1,26 +1,30 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5314);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  // The cells are built with DOM calls, so the recipe also runs where Trusted Types is enforced.
-  await page.route("**/browser/fixtures/page.html", async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": "require-trusted-types-for 'script'" } });
-  });
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForFunction(() => customElements.get("user-table") && customElements.get("status-badge"));
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/page.html",
+    ready: () => customElements.get("user-table") && customElements.get("status-badge"),
+    before: async (page) => {
+      // The cells are built with DOM calls, so the recipe also runs where Trusted Types is enforced.
+      await page.route("**/browser/fixtures/page.html", async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({
+          response,
+          headers: {
+            ...response.headers(),
+            "content-security-policy": "require-trusted-types-for 'script'",
+          },
+        });
+      });
+    },
+  }));
   // A string, so that vitest does not rewrite the dynamic imports that run in the page
   await page.evaluate(`Promise.all([import("/browser/fixtures/users.ts"), import("/browser/fixtures/user-columns.ts")]).then(([{ users }, { userColumns }]) => {
     const table = document.createElement("user-table");
@@ -34,10 +38,7 @@ beforeAll(async () => {
   })`);
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 const headers = () => page.$$eval("user-table th", (ths) => ths.map((th) => (th as HTMLElement).innerText.trim()));
 const cells = () => page.$$eval("user-table tbody tr", (trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent?.trim())));

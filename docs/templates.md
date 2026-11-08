@@ -19,14 +19,16 @@ Rules for holes:
 
 - A hole must be a single identifier. `{{ data.name }}` and `{{ a + 1 }}` cause an error at codegen time.
 - Holes are only for text nodes; they are not supported inside attributes (`title="{{ x }}"` is an error). When needed, get the element with `data-ref` and set it in TS.
-- Content inside `<style>` and `<script>` is not treated as holes.
+- Content inside `<style>` is not treated as holes.
 - A value of `null`, `undefined`, or `false` is displayed as an empty string.
 
 A hidden `data-if` block is kept in memory, not destroyed: `refs` and holes inside it stay usable while it is hidden, so you can fill a form before showing it, and showing it again puts back the same elements with their state.
 
 ## How Types Are Generated
 
-Next to each `x.html`, an `x.html.ts` is generated (a `ts-dom-tags.ts` is generated as well, see [Composition](components.md#composition-using-multiple-components-together)) and neither is committed (see [Setup](tooling.md#installation-and-setup)). It is a real TS module that contains both the parsed markup of this template (as data that the runtime turns into DOM nodes with DOM calls, so no HTML string is parsed in the browser) and its schema, so `tsc` can compile and check it directly.
+Next to each `x.html`, an `x.html.ts` is generated, and a `ts-dom-tags.ts` for the scanned folder ([Composition](components.md#composition-using-multiple-components-together)). Do not edit them by hand; most projects do not commit them ([Setup](tooling.md#installation-and-setup)).
+
+It is a real TS module that holds the template's schema and its parsed markup, so `tsc` can compile and check it directly. The runtime turns the markup data into DOM nodes with DOM calls, so no HTML string is parsed in the browser.
 
 ```ts
 // user-card.html.ts (auto-generated)
@@ -41,7 +43,11 @@ export default template<{
 }>([["h2", {}, ["Hello, {{ name }}!"]], /* ... */]);
 ```
 
-Whole-page documents are page entry points, not templates, and are not processed. A file is a page when its content starts with `<!doctype html>` or `<html>` (comments before it are fine); the file name does not matter, so `index.html`, `main.html` and `login.html` all work. A template is a fragment of a component, so `<html>`, `<head>` and `<body>` are rejected in it (rule `document-tag`): the browser would drop them from the fragment and whatever you put on them would have no effect. To keep a file out of generation in another way, use `--exclude`.
+Whole-page documents are page entry points, not templates, and are not processed. A file is a page when its content starts with `<!doctype html>` or `<html>`, after any comments; the file name does not matter.
+
+A template is a fragment of a component, so `<html>`, `<head>` and `<body>` are rejected in it (`document-tag`). The browser would drop them from the fragment, and whatever you put on them would have no effect.
+
+To keep a file out of generation in another way, use `--exclude`.
 
 ## Templates Without a Component
 

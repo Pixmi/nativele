@@ -32,10 +32,13 @@ Verified on 2026-11-08 by agent trials: fresh agents built real components with 
 
 1. `npm i @nativele/ts-dom` and `npm i -D typescript`.
 2. Put the components under `src/`, the folder every `ts-dom` command scans by default; for another folder, pass it to each command (`npx ts-dom check web/ui`).
-3. The tsconfig must cover the folders with templates and meet Nativele's few requirements (`strict`, `DOM`, a resolution that finds packages, and `"type": "module"` when `tsc` emits): check and adjust it with the TypeScript Skill (`npx ts-dom skills nativele-typescript`). A complete one for the no-bundler case is in the setup guide: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup
-4. With Vite, add `tsDom()` from `@nativele/ts-dom/vite` to `plugins`, and set up the rest with the Vite Skill (`npx ts-dom skills nativele-vite`): `tsDom()` generates for the dev server and `vite build`, not for a `tsc` that runs before them, so Vite's template script `tsc && vite build` fails on a clean checkout until it generates first. Without a bundler, `ts-dom gen` plus `tsc` compiles the code, and the page needs an import map for `@nativele/ts-dom` plus a `<script type="module">` for the compiled entry, a module that imports the top-level components: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#running-in-the-browser-no-bundler
+3. Check and adjust the tsconfig with the TypeScript Skill (`npx ts-dom skills nativele-typescript`). It must cover the folders with templates and meet Nativele's few requirements: `strict`, `DOM`, a resolution that finds packages, and `"type": "module"` when `tsc` emits.
+   - A complete one for the no-bundler case is in the setup guide: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#installation-and-setup
+4. Set up the build.
+   - With Vite, add `tsDom()` from `@nativele/ts-dom/vite` to `plugins`, and set up the rest, including the build script, with the Vite Skill (`npx ts-dom skills nativele-vite`).
+   - Without a bundler, `ts-dom gen` plus `tsc` compiles the code. The page needs an import map for `@nativele/ts-dom` and a `<script type="module">` for the compiled entry, a module that imports the top-level components: https://github.com/Pixmi/nativele/blob/main/docs/tooling.md#running-in-the-browser-no-bundler
 5. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`: they are generated.
-6. Run `npx ts-dom doctor` once; fix every error and warning it reports. Its `info` lines name the other Skills that fit the project.
+6. Run `npx ts-dom doctor` once, and fix every error and warning it reports. `npx ts-dom skills` shows which Skills cover the project's dependencies.
 
 ## Example
 
@@ -136,8 +139,10 @@ define("todo-app", TodoApp);
 - State, props and the view are deeply read-only: replace objects (`{ ...todo, done: true }`), never change them in place: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - A `data-each` list is never nested: the inner list belongs to its own item component: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
 - A list of plain elements has no `data-key` or `data-prop` and is filled with `this.lists.x.replace(items, (item) => item.id, (item, { text, refs, show, el }) => { ... })` in `render`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
-- A list of components has `data-key` and `data-prop` on the `<template data-each>`, `role="listitem"` on the item inside `<ul>` or `<ol>`, `this.lists.x.items = ...` in `render`, and `hit: EventHit<Item, "id">` in item handlers; extra data per row that the parent owns (selected, leading) is a separate prop of the item component, set on each row through `const row = this.lists.x.get(id); if (row) row.el.selected = ...` (typed by the item component), never by mapping the items to new objects, which re-renders every row: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#per-row-state-selected-rank
-- Set-up a row needs when it is created (a listener or another library's behavior on an `<input>` in it) goes in an item component's `connected()`, registered with `this.on(...)` or `this.onCleanup(...)`; a list has no callback for a created item, and `replace()`'s `update` runs for every item on every call: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
+- A list of components has `data-key` and `data-prop` on the `<template data-each>`, `role="listitem"` on the item inside `<ul>` or `<ol>`, and `this.lists.x.items = ...` in `render`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-components-items--
+- Extra data per row that the parent owns (selected, leading) is a separate prop of the item component, set on each row with `const row = this.lists.x.get(id); if (row) row.el.selected = ...`. Never map the items to new objects for it, which re-renders every row: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#per-row-state-selected-rank
+- Set-up a row needs when it is created (a listener or another library's behavior on an `<input>` in it) goes in an item component's `connected()`, registered with `this.on(...)` or `this.onCleanup(...)`: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#moving-items-connecting-and-subscriptions
+  - A list has no callback for a created item, and `replace()`'s `update` runs for every item on every call.
 - A template has no place for the element's own class, role or attributes; add them in `connected()` (`this.classList.add("card")`), never in the constructor: https://github.com/Pixmi/nativele/blob/main/docs/components.md#components
 - Do not name a handler or prop like a DOM or Nativele member (`remove`, `click`, `title`, `text`, `refs`, `state`, `render`, ...), or an emitted event like a native event (`click`, `change`, `input`, ...); `ts-dom check` reports both: https://github.com/Pixmi/nativele/blob/main/docs/components.md#safeguards-in-types-and-at-runtime
 
@@ -154,7 +159,7 @@ define("todo-app", TodoApp);
 
 ```sh
 npx ts-dom check --strict    # expect: ts-dom check: no issues
-npx ts-dom doctor            # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
+npx ts-dom doctor            # expect: ts-dom doctor: the set-up looks right
 npx tsc --noEmit             # after check, which generated the files: expect no errors
 ```
 

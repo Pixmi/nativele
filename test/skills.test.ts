@@ -43,10 +43,10 @@ describe("Skills shipped with the package", () => {
   });
 });
 
-/** The `| \`name\` | ... |` rows of the Skill table in a README, with whether the row carries the Experimental marker. */
-function readmeSkillRows(text: string, marker: string): Map<string, boolean> {
-  const rows = new Map<string, boolean>();
-  for (const m of text.matchAll(/^\| `([\w-]+)` \|(.*)\|$/gm)) rows.set(m[1]!, m[2]!.includes(marker));
+/** The tier column of each `| \`name\` | Tier | ... |` row of the Skill table in skills/README.md, lowercased. */
+function skillTableTiers(text: string): Map<string, string> {
+  const rows = new Map<string, string>();
+  for (const m of text.matchAll(/^\| `([\w-]+)` \| ([^|]+?) \|/gm)) rows.set(m[1]!, m[2]!.toLowerCase());
   return rows;
 }
 
@@ -94,18 +94,10 @@ describe("README Skill tables and links", () => {
   const repo = resolve(".");
   const skills = listSkills(skillsRoot());
 
-  it.each([
-    ["README.md", "(Experimental)"],
-    ["README.zh-TW.md", "（Experimental）"],
-  ])("%s lists every Skill, marked Experimental exactly when its tier is", (readme, marker) => {
-    const rows = readmeSkillRows(readFileSync(readme, "utf8"), marker);
+  it("skills/README.md lists every Skill with the tier its metadata gives", () => {
+    const rows = skillTableTiers(readFileSync("skills/README.md", "utf8"));
     expect([...rows.keys()].sort()).toEqual(skills.map((s) => s.name).sort());
-    for (const s of skills) expect(rows.get(s.name), `${readme}: ${s.name} is ${s.tier}`).toBe(s.tier === "experimental");
-  });
-
-  it("finds a missing or wrong Experimental marker", () => {
-    const rows = readmeSkillRows("| Skill | Covers |\n|---|---|\n| `nativele-a` | a (Experimental) |\n| `nativele-b` | b |", "(Experimental)");
-    expect([...rows]).toEqual([["nativele-a", true], ["nativele-b", false]]);
+    for (const s of skills) expect(rows.get(s.name), s.name).toBe(s.tier);
   });
 
   it("every link in the READMEs, llms.txt, the guides and the Skills resolves", () => {

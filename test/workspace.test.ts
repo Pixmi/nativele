@@ -1,13 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { generateDirs, watchAll } from "../src/lib/codegen.ts";
-import { componentIndex, Memo, Workspace } from "../src/lib/components.ts";
+import { generateDirs, listHtml, watchAll } from "../src/lib/codegen.ts";
+import { componentIndex, listTs, Memo, Workspace } from "../src/lib/components.ts";
 import { lintProject, lintRun, lintTemplate } from "../src/lib/lint.ts";
 import type { Group } from "../src/lib/lint.ts";
 import plugin from "../src/lib/oxlint-plugin.ts";
 import { tsDom } from "../src/lib/vite-plugin.ts";
+import { writeTree } from "./helpers.ts";
 
 const parses = vi.hoisted(() => ({ n: 0 }));
 vi.mock("parse5", async (importOriginal) => {
@@ -35,14 +36,6 @@ const turn = () => new Promise((resolve) => setImmediate(resolve));
 
 const H = `import { Component, define, event } from "@nativele/ts-dom";\n`;
 const component = (cls: string, tag: string, options = "") => `${H}import tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl${options}) {}\ndefine("${tag}", ${cls});\n`;
-const project = (files: Record<string, string>): string => {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-ws-"));
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, name)), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return dir;
-};
 
 /** Count the templates parsed while `fn` runs. */
 function parsed(fn: () => void): number {
@@ -71,7 +64,7 @@ function oxlint(dir: string, name: string, rules: readonly ("a11y" | "data-flow"
 
 describe("a long-lived oxlint plugin (the language server)", () => {
   it("reports a parent template's findings again when its child template or child class changes", async () => {
-    const dir = project({
+    const dir = writeTree({
       "x-card.html": `<button type="button">Open</button>\n`,
       "x-card.ts": component("Card", "x-card", `, { emits: { "card-open": event() } }`),
       "page.html": `<x-card data-on-click="go" data-on-card-open="go"></x-card>\n`,
@@ -90,7 +83,7 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(await lint()).toEqual(["unknown-event"]);
   });
   it("lints the file as oxlint gives it, which can be an unsaved buffer", async () => {
-    const dir = project({
+    const dir = writeTree({
       "x-a.html": `<p data-ref="note">A</p>\n`,
       "x-a.ts": component("A", "x-a"),
     });
@@ -101,7 +94,7 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(oxlint(dir, "x-a.ts", ["unused-markup"])).toEqual(["unused-ref"]);
   });
   it("reads an unsaved buffer only in the lint of its file: the other lints of the same turn read the disk", async () => {
-    const dir = project({
+    const dir = writeTree({
       "x-card.html": `<div><span>{{ title }}</span></div>\n`,
       "a.ts": component("Card", "x-card"),
       "page.html": `<x-card data-on-click="go"></x-card>\n`,
@@ -115,7 +108,7 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(oxlint(dir, "page.ts", ["a11y", "data-flow"])).toEqual(fromDisk);
   });
   it("computes only the groups of the rules that are on", async () => {
-    const dir = project({
+    const dir = writeTree({
       "x-kid.html": `<button type="button">Kid</button>\n`,
       "x-kid.ts": component("Kid", "x-kid"),
       "page.html": `<x-kid data-on-click="go"></x-kid>\n`,
@@ -127,7 +120,7 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(parsed(() => oxlint(dir, "page.ts", ["data-flow", "unused-markup"]))).toBe(1);
   });
   it("keeps the findings of a file while the editor lints another one", async () => {
-    const dir = project({
+    const dir = writeTree({
       "x-a.html": `<p data-ref="note">A</p>\n`,
       "x-a.ts": component("A", "x-a"),
       "x-b.html": `<p data-ref="note">B</p>\n`,
@@ -141,7 +134,10 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(parsed(() => expect(oxlint(dir, "x-a.ts", ["unused-markup", "a11y"])).toEqual(["unused-ref"]))).toBe(0);
   });
   it("keeps the findings of an unsaved buffer while the editor also lints the file as it is on disk", async () => {
-    const dir = project({ "x-a.html": `<p data-ref="note">A</p>\n`, "x-a.ts": component("A", "x-a") });
+    const dir = writeTree({
+      "x-a.html": `<p data-ref="note">A</p>\n`,
+      "x-a.ts": component("A", "x-a"),
+    });
     const buffer = component("A", "x-a").replace(" {}", " {\n  override connectedCallback(): void {\n    this.refs.note.hidden = true;\n  }\n}");
     await turn();
     oxlint(dir, "x-a.ts", ["unused-markup", "a11y"], buffer);
@@ -151,7 +147,11 @@ describe("a long-lived oxlint plugin (the language server)", () => {
     expect(parsed(() => expect(oxlint(dir, "x-a.ts", ["unused-markup", "a11y"], buffer)).toEqual([]))).toBe(0);
   });
   it("lists the folders once in a run that also lints an unsaved buffer", async () => {
-    const dir = project({ "x-a.html": `<p data-ref="note">A</p>\n`, "x-a.ts": component("A", "x-a"), "sub/x-b.ts": component("B", "x-b") });
+    const dir = writeTree({
+      "x-a.html": `<p data-ref="note">A</p>\n`,
+      "x-a.ts": component("A", "x-a"),
+      "sub/x-b.ts": component("B", "x-b"),
+    });
     await turn();
     const before = listings.n;
     oxlint(dir, "sub/x-b.ts", ["unused-markup"]);
@@ -170,7 +170,7 @@ describe("a long-lived Vite plugin (the dev server)", () => {
     }
     files["src/page.html"] = `${Array.from({ length: used }, (_, i) => `<x-c${i} data-on-click="go"></x-c${i}>`).join("\n")}\n`;
     files["src/page.ts"] = `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\ndefine("x-page", Page);\n`;
-    const dir = project(files);
+    const dir = writeTree(files);
     const p = tsDom({ dirs: ["src"], a11y: true });
     p.configResolved({ root: dir });
     const warned: string[] = [];
@@ -266,7 +266,10 @@ describe("the runs of a host", () => {
     utimesSync(file, 1_000_000, 1_000_000);
   };
   it("sees a rewrite of the same size within one modification time tick on the next run", () => {
-    const dir = project({ "src/a.html": `<p data-ref="a">A</p>\n`, "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js") });
+    const dir = writeTree({
+      "src/a.html": `<p data-ref="a">A</p>\n`,
+      "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js"),
+    });
     const src = join(dir, "src");
     const html = join(src, "a.html");
     const ts = join(src, "a.ts");
@@ -282,7 +285,7 @@ describe("the runs of a host", () => {
     expect([...new Workspace(memo).index([src]).byTag.keys()]).toEqual(["x-b"]);
   });
   it("gives one run one content of each file, read once", () => {
-    const dir = project({ "src/a.ts": component("A", "x-a") });
+    const dir = writeTree({ "src/a.ts": component("A", "x-a") });
     const src = join(dir, "src");
     const ts = join(src, "a.ts");
     const ws = new Workspace();
@@ -298,7 +301,7 @@ describe("the runs of a host", () => {
       files[`src/c${i}.html`] = `<button type="button" data-ref="b">C${i}</button>\n`;
       files[`src/c${i}.ts`] = component(`C${i}`, `x-c${i}`).replace(`./x-c${i}.html.js`, `./c${i}.html.js`);
     }
-    const dir = project(files);
+    const dir = writeTree(files);
     const src = join(dir, "src");
     const memo = new Memo();
     const run = () => lintRun([src], { ws: new Workspace(memo), a11y: true, cwd: dir }).issues.map((i) => `${i.file} ${i.rule}`);
@@ -306,7 +309,10 @@ describe("the runs of a host", () => {
     expect(parsed(() => expect(run()).toEqual(first))).toBe(0);
   });
   it("keeps one findings entry for a set of groups, whatever their order", () => {
-    const dir = project({ "src/a.html": `<p data-ref="a">A</p>\n`, "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js") });
+    const dir = writeTree({
+      "src/a.html": `<p data-ref="a">A</p>\n`,
+      "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js"),
+    });
     const src = join(dir, "src");
     const memo = new Memo();
     const findings = (groups: Group[]) => lintTemplate(lintProject(new Workspace(memo), [src], dir), join(src, "a.html"), groups);
@@ -314,7 +320,7 @@ describe("the runs of a host", () => {
     expect(parsed(() => expect(findings(["data-flow", "a11y"])).toEqual(first))).toBe(0);
   });
   it("sees a deleted or renamed module on the next run", () => {
-    const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
+    const dir = writeTree({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
     const src = join(dir, "src");
     const memo = new Memo();
     const tags = () => [...new Workspace(memo).index([src]).byTag.keys()].sort();
@@ -327,7 +333,7 @@ describe("the runs of a host", () => {
     expect(index.byTag.get("x-a")?.map((d) => d.file)).toEqual([join(src, "sub/a.ts")]);
   });
   it("checks a child tag against the child template once that template is created", () => {
-    const dir = project({
+    const dir = writeTree({
       "src/kid.ts": component("Kid", "x-kid"),
       "src/page.html": `<x-kid data-on-click="go"></x-kid>\n`,
       "src/page.ts": `${H}import tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
@@ -342,7 +348,7 @@ describe("the runs of a host", () => {
     expect(clicks()).toEqual([]);
   });
   it("finds the package of a tag defined in several again once a package.json is added or removed", () => {
-    const dir = project({
+    const dir = writeTree({
       "src/a/kid.ts": component("Kid", "x-kid"),
       "src/b/kid.ts": component("Kid", "x-kid"),
       "src/a/page.html": `<x-kid foo="1"></x-kid>\n`,
@@ -360,7 +366,7 @@ describe("the runs of a host", () => {
     expect(rules()).toEqual(["unknown-prop"]);
   });
   it("finds the package of a template again once a package.json between it and its package is removed", () => {
-    const dir = project({
+    const dir = writeTree({
       "src/a/package.json": "{}",
       "src/b/package.json": "{}",
       "src/a/kid.ts": component("Kid", "x-kid"),
@@ -380,7 +386,7 @@ describe("the runs of a host", () => {
     expect(rules()).toEqual(["unknown-prop"]);
   });
   it("reads a child template once for all the uses of the child in a parent template", () => {
-    const dir = project({
+    const dir = writeTree({
       "src/x-kid.html": `<span>Kid</span>\n`,
       "src/x-kid.ts": component("Kid", "x-kid"),
       "src/page.html": `${Array.from({ length: 10 }, () => `<button type="button"><x-kid></x-kid></button>\n<x-kid data-on-click="go"></x-kid>`).join("\n")}\n`,
@@ -390,7 +396,11 @@ describe("the runs of a host", () => {
     expect(readsDuring(() => lintRun([src], { a11y: true, cwd: dir })).get(join(src, "x-kid.html"))).toBe(1);
   });
   it("ts-dom gen --watch regenerates on a define() save only the tag map and the templates that use a changed tag", async () => {
-    const dir = project({ "src/page.html": `<x-b></x-b>\n`, "src/other.html": `<p></p>\n`, "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./other.html.js") });
+    const dir = writeTree({
+      "src/page.html": `<x-b></x-b>\n`,
+      "src/other.html": `<p></p>\n`,
+      "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./other.html.js"),
+    });
     const src = join(dir, "src");
     generateDirs([src]);
     const generated: string[] = [];
@@ -402,7 +412,12 @@ describe("the runs of a host", () => {
     expect(readFileSync(join(src, "page.html.ts"), "utf8")).not.toContain("b.js");
   }, 10_000);
   it("ts-dom gen --watch parses only the saved template", async () => {
-    const dir = project({ "src/a.html": `<p>{{ a }}</p>\n`, "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js"), "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./b.html.js"), "src/b.html": `<p></p>\n` });
+    const dir = writeTree({
+      "src/a.html": `<p>{{ a }}</p>\n`,
+      "src/a.ts": component("A", "x-a").replace("./x-a.html.js", "./a.html.js"),
+      "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./b.html.js"),
+      "src/b.html": `<p></p>\n`,
+    });
     const src = join(dir, "src");
     const before = parses.n;
     const generated = new Promise<string>((resolve) => {
@@ -413,7 +428,7 @@ describe("the runs of a host", () => {
     expect(parses.n - before).toBe(1);
   }, 10_000);
   it("ts-dom gen --watch prints only the templates whose generated module it rewrote", async () => {
-    const dir = project({ "src/a.html": `<p>{{ a }}</p>\n`, "src/b.html": `<p></p>\n` });
+    const dir = writeTree({ "src/a.html": `<p>{{ a }}</p>\n`, "src/b.html": `<p></p>\n` });
     const src = join(dir, "src");
     generateDirs([src]);
     const generated: string[] = [];
@@ -427,7 +442,11 @@ describe("the runs of a host", () => {
     expect(generated).toEqual([join(src, "b.html.ts")]);
   }, 10_000);
   it("ts-dom gen --watch prints the files a define() save rewrote also when it reports an error", async () => {
-    const dir = project({ "src/page.html": `<x-b></x-b>\n`, "src/other.html": `<p></p>\n`, "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./other.html.js") });
+    const dir = writeTree({
+      "src/page.html": `<x-b></x-b>\n`,
+      "src/other.html": `<p></p>\n`,
+      "src/b.ts": component("B", "x-b").replace("./x-b.html.js", "./other.html.js"),
+    });
     const src = join(dir, "src");
     generateDirs([src]);
     const generated: string[] = [];
@@ -447,7 +466,10 @@ describe("the runs of a host", () => {
 describe("the memo a host keeps between runs", () => {
   it("keeps the declarations of every component of a file, however many it defines", () => {
     const body = ["A", "B", "C"].map((n) => `export class ${n} extends Component(tpl, { props: { ${n.toLowerCase()}: Number } }) {}\ndefine("x-${n.toLowerCase()}", ${n});\n`).join("");
-    const dir = project({ "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`, "src/m.html": `<p></p>\n` });
+    const dir = writeTree({
+      "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`,
+      "src/m.html": `<p></p>\n`,
+    });
     const src = join(dir, "src");
     const memo = new Memo();
     const parsed = () => {
@@ -462,7 +484,10 @@ describe("the memo a host keeps between runs", () => {
   });
   it("reuses the declarations of a component after an edit above it moves it, one kind per component", () => {
     const body = ["A", "B", "C"].map((n) => `export class ${n} extends Component(tpl, { props: { ${n.toLowerCase()}: Number } }) {}\ndefine("x-${n.toLowerCase()}", ${n});\n`).join("");
-    const dir = project({ "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`, "src/m.html": `<p></p>\n` });
+    const dir = writeTree({
+      "src/m.ts": `${H}import tpl from "./m.html.js";\n${body}`,
+      "src/m.html": `<p></p>\n`,
+    });
     const src = join(dir, "src");
     const memo = new Memo();
     const file = join(src, "m.ts");
@@ -495,7 +520,7 @@ describe("the memo a host keeps between runs", () => {
     expect([memo.get("/p/a.ts", "k", ["a"]), memo.get("/p/a.ts", "k", ["b"]), memo.get("/p/a.ts", "k", ["c"])]).toEqual([undefined, 3, 4]);
   });
   it("drops, when a run starts, the values of the files that no run has seen since the last run that built an index", () => {
-    const dir = project({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
+    const dir = writeTree({ "src/a.ts": component("A", "x-a"), "src/b.ts": component("B", "x-b") });
     const src = join(dir, "src");
     const memo = new Memo();
     new Workspace(memo).index([src]);
@@ -508,7 +533,7 @@ describe("the memo a host keeps between runs", () => {
     expect(memo.get(join(src, "a.ts"), "facts", [component("A", "x-a")])).not.toBeUndefined();
   });
   it("drops the values of a file followed through an import outside the folders, and of a folder no longer scanned, once no run reads them", () => {
-    const dir = project({
+    const dir = writeTree({
       "src/a.ts": `${H}import { U } from "../lib/u.js";\ndefine("x-u", U);\n`,
       "lib/u.tsx": `export class U extends HTMLElement {}\n`,
       "other/o.ts": component("O", "x-o"),
@@ -527,15 +552,9 @@ describe("the memo a host keeps between runs", () => {
 });
 
 describe("a folder that vanishes during a run", () => {
-  it("is listed as empty by lint and codegen", async () => {
-    const { symlinkSync } = await import("node:fs");
-    const { listTs } = await import("../src/lib/components.ts");
-    const { listHtml } = await import("../src/lib/codegen.ts");
-    const root = mkdtempSync(join(tmpdir(), "nativele-vanish-"));
+  it("is listed as empty by lint and codegen", () => {
+    const root = writeTree({ "kept/a.ts": "export {};\n", "kept/a.html": "<p></p>\n" });
     mkdirSync(join(root, "gone"));
-    mkdirSync(join(root, "kept"));
-    writeFileSync(join(root, "kept/a.ts"), "export {};\n");
-    writeFileSync(join(root, "kept/a.html"), "<p></p>\n");
     symlinkSync(join(root, "nowhere"), join(root, "dangling"));
     for (const list of [listTs, listHtml]) {
       const ws = new Workspace();
@@ -544,20 +563,15 @@ describe("a folder that vanishes during a run", () => {
       expect(list(root, ws).map((f) => f.slice(root.length + 1))).toEqual([list === listTs ? "kept/a.ts" : "kept/a.html"]);
       mkdirSync(join(root, "gone"));
     }
-    rmSync(root, { recursive: true });
   });
 });
 
 describe("a link to nothing", () => {
-  it("is absent: not listed, so codegen does not read it", async () => {
-    const { symlinkSync } = await import("node:fs");
-    const { listHtml } = await import("../src/lib/codegen.ts");
-    const root = mkdtempSync(join(tmpdir(), "nativele-dangling-"));
-    writeFileSync(join(root, "a.html"), "<p></p>\n");
+  it("is absent: not listed, so codegen does not read it", () => {
+    const root = writeTree({ "a.html": "<p></p>\n" });
     symlinkSync(join(root, "nowhere.html"), join(root, "card.html"));
     expect(listHtml(root).map((f) => f.slice(root.length + 1))).toEqual(["a.html"]);
     expect(generateDirs([root]).map((f) => f.slice(root.length + 1))).toContain("a.html.ts");
-    rmSync(root, { recursive: true });
   });
 });
 

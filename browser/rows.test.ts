@@ -1,27 +1,20 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5308);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForSelector("light-card");
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/page.html",
+    ready: "light-card",
+  }));
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 describe("List items assignment in real Chrome", () => {
   it("shows, reorders without disconnecting, removes, and reports events with the key", async () => {

@@ -30,7 +30,8 @@ These are deliberate trade-offs, not missing features:
 
 - **`{{ }}` is only a single identifier**: paths and expressions would give the HTML a second data shape and slide toward a template language. If you need computation, do it in TS and fill a named hole.
 - **No attribute binding**: get the element with `data-ref`, then set the attribute in TS.
-- **`<slot>` cannot be placed inside a `data-each` item**: items repeat, but user-provided content exists only once, and the semantics of native Shadow DOM are also that only the first slot of a given name gets the content. To give each item its own content, you would need a mechanism like a Vue scoped slot that "passes the item data to the slot", which would require expressions. Fill it in with TS in the `update` callback instead, or make the item content another component.
+- **`<slot>` cannot be placed inside a `data-each` item**: items repeat, but user-provided content exists only once, and in native Shadow DOM only the first slot of a given name gets the content. Fill the item in with TS in the `update` callback instead, or make the item content another component.
+- **No scoped slots**: giving each item its own slot content would need a mechanism like a Vue scoped slot that passes the item data to the slot, which requires expressions.
 - **The data flow goes in only one direction**: state is changed by itself, props are changed by the parent, events go up; `emit` does not bubble by default, and to cross layers you handle it explicitly or use a shared store; there is no implicit cross-layer passing.
 - **One entry point for data, one place for the view** (`set` and `render`): "how data becomes the view" is concentrated in `render`, and to trace data changes you only need to look at the calls to `set`.
 - **Synchronous rendering, no implicit asynchronous batching**: reading the DOM right after `set` always gives the new state, and tests need no waiting; to combine updates, use `batch` explicitly.
@@ -41,15 +42,9 @@ These are deliberate trade-offs, not missing features:
 ## Limitations
 
 - When running directly in the browser (no bundler), you must provide an import map for `@nativele/ts-dom` yourself, and relative imports must use the `.js` extension (the NodeNext convention).
-- Event names for `data-on-*` must be lowercase; non-bubbling events handle only the target itself.
-- Automatic import and tag types of child components scan only the directories given to `gen`; third-party components or those outside the directories must be imported by you, and you must declare `HTMLElementTagNameMap` yourself. A class passed to `define` without `export` gets no tag type.
-- A handler's event type is derived only from the tag and event name in the HTML, and from what declares that name for the tag: the component's `emits`, the element's `on<event>` property, then `HTMLElementEventMap`. An event that bubbles up from a child and is caught on a wrapper element, or an event of a component outside the scanned directories that its package does not add to `HTMLElementEventMap`, is declared by none of them, so the handler's parameter is not checked: it names the type it expects.
-- `props` can be passed through HTML attributes only when the default value is a string / number / boolean.
-- Automatic binding covers only text holes and `data-if`; lists and attributes must be written in `render`.
 - Version 0.x, and the API may still change; see [CHANGELOG.md](../CHANGELOG.md) for the versioning policy.
 - No SSR or hydration.
-- No attribute binding (deliberately; use `refs`).
 - The unused-markup lint compares against the class body text, and is looser for names inside list items (it only looks at identifiers).
 - `<style scoped>` falls back to CSS nesting in browsers that do not support `@scope`, which requires browser support for nesting (mainstream since 2023).
-- ARIA checks cover only common items in static HTML (see the list above) and are not a complete accessibility audit.
+- ARIA checks cover only common items in static HTML and are not a complete accessibility audit.
 - Browser tests are based on Chromium; Firefox 157 passed manual verification, and WebKit (Safari) is not verified.

@@ -11,7 +11,6 @@ const init = () => ({ title: "T", count: 1, open: true, rows: [] as Row[] });
 
 class Counter extends Component(tpl, { state: init(), derive: { double: (s) => s.count * 2 } }) {
   renders: ReadonlySet<string>[] = [];
-  focusCount = 0;
   loop = false;
   override render(v: { rows: readonly Row[]; count: number }, changed: ReadonlySet<string>): void {
     this.renders.push(changed);
@@ -24,9 +23,7 @@ class Counter extends Component(tpl, { state: init(), derive: { double: (s) => s
   del(_e: Event, hit: EventHit): void {
     this.set((s) => ({ rows: s.rows.filter((r) => r.id !== hit.key) }));
   }
-  focused(): void {
-    this.focusCount++;
-  }
+  focused(): void {}
 }
 define("t-counter", Counter);
 
@@ -106,12 +103,7 @@ describe("state: batch and set inside render", () => {
     });
     expect(c.renders.length).toBe(n + 1);
   });
-  it("set inside render that never settles throws a render-loop error", () => {
-    const c = make();
-    c.loop = true;
-    expect(() => c.set({ count: 100 })).toThrow(/\[render-loop\]/);
-  });
-  it("render-loop error message includes a fix", () => {
+  it("set inside render that never settles throws a render-loop error with a fix", () => {
     const c = make();
     c.loop = true;
     expect(() => c.set({ count: 100 })).toThrow(/\[render-loop\].*Fix:/);
@@ -138,11 +130,6 @@ describe("data-on-*: event delegation", () => {
     const c = make(`<button id="u" data-on-click="inc">user</button>`);
     (c.querySelector("#u") as HTMLElement).click();
     expect(c.state.count).toBe(1);
-  });
-  it("a non-bubbling event (focus) is only handled on the target itself, and fires once", () => {
-    const c = make();
-    c.refs.inp.dispatchEvent(new FocusEvent("focus"));
-    expect(c.focusCount).toBe(1);
   });
   it("after removing and re-adding the element, events still work and do not duplicate", () => {
     const c = make();

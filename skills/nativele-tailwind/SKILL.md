@@ -30,7 +30,9 @@ metadata:
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-07 in Google Chrome 157, by reading computed styles with Playwright both against `vite` (dev) and against `vite build` served by `vite preview`, in an app made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository. With a different major version of Tailwind, treat every step as unverified.
+Verified on 2026-11-07 in Google Chrome 157, by reading computed styles with Playwright against `vite` (dev) and against `vite build` served by `vite preview`. The app was made with `npm create vite@latest -- --template vanilla-ts`, given Tailwind by Tailwind's Vite guide, then Nativele by `nativele-vite`, in a git repository.
+
+With a different major version of Tailwind, treat every step as unverified.
 
 ## Set-up
 
@@ -46,8 +48,13 @@ The starting point: `src/style.css` is `@import "tailwindcss";`, `src/main.ts` i
    export default defineConfig({ plugins: [tsDom({ dirs: ["src/nv"] }), tailwindcss()] });
    ```
 
-2. Keep `import "./style.css"` in the entry module. For Light DOM components (the default) nothing else is needed: Tailwind's automatic source detection reads the `.html` templates and the component `.ts` files, so a class written only in a template, only on a tag in `index.html`, or only as a full string in TypeScript (`classList.toggle("tracking-[0.3em]", on)` in `render`) is generated, in `vite dev` and in `vite build`. No `@source` is needed while the components are inside the project folder.
-3. The generated `*.html.ts` files do not need to be scanned. Tailwind skips every file matched by `.gitignore` (also outside a git repository), and with the generated files not ignored the built CSS was byte for byte the same. The Skills that `ts-dom skills add` copies into `.agents/` (or `.claude/`) are scanned, though, and their example classes end up in the build; exclude that folder under the import, relative to the CSS file: `@source not "../.agents";`.
+2. Keep `import "./style.css"` in the entry module. For Light DOM components (the default) nothing else is needed.
+   - Tailwind's automatic source detection reads the `.html` templates and the component `.ts` files, in `vite dev` and in `vite build`.
+   - A class written only in a template, only on a tag in `index.html`, or only as a full string in TypeScript (`classList.toggle("tracking-[0.3em]", on)` in `render`) is generated.
+   - No `@source` is needed while the components are inside the project folder.
+3. Exclude the folder that `ts-dom skills add` copies Skills into, under the import and relative to the CSS file: `@source not "../.agents";`, or `"../.claude"` when the Skills are in `.claude/`.
+   - Tailwind scans that folder, so the Skills' example classes end up in the build.
+   - The generated `*.html.ts` files need no such line. Tailwind skips every file matched by `.gitignore` (also outside a git repository), and with the generated files not ignored the built CSS was byte for byte the same.
 4. Only when templates live outside the project folder (for example a sibling package of a workspace), add a `@source` line, with the path relative to the CSS file:
 
    ```css
@@ -56,7 +63,7 @@ The starting point: `src/style.css` is `@import "tailwindcss";`, `src/main.ts` i
    @source "../../shared-nv";
    ```
 
-   For Nativele, a package of the workspace generates and checks its own components and the app imports it, as `npx ts-dom skills nativele-monorepo` sets up. A plain folder outside the project that the app scans itself goes into `tsDom({ dirs })`, the arguments of `ts-dom check` and `ts-dom doctor`, and the tsconfig (`nativele-typescript`); keep each component's `.ts` next to its template there (a template whose class is in a folder that is not scanned is reported as `no-importer`), and the folder must resolve `@nativele/ts-dom` itself, or `tsc` reports `TS2307` for its generated `.html.ts`.
+   How the app gets that package's components is in `nativele-monorepo` (`npx ts-dom skills nativele-monorepo`).
 
 5. Only for `shadow: true` components: add one module that turns the same CSS into a constructable stylesheet, and adopt it in each Shadow component's constructor (limitation 3 explains why and what it costs):
 
@@ -157,13 +164,22 @@ import "./nv/badge-box.ts";
 
    | Way | Result |
    |---|---|
-   | `adoptedStyleSheets` with `./style.css?inline` (step 5) | styled on the first frame, in dev and build; a class added to a Shadow template during `vite dev` applies after the reload. Costs: the whole Tailwind CSS is in the JavaScript a second time (in the verified app the CSS file was 8.0 kB, and the JavaScript grew by 8.4 kB minified, 2.4 kB gzip), and it is parsed once more; one shared `CSSStyleSheet` serves every instance |
-   | A `<link rel="stylesheet">` with `href` from `./style.css?url`, prepended to the shadow root in the constructor | works, and in the build `?url` points at the same CSS file the page already links (no second copy); but the component is unstyled until the stylesheet loads (a flash of unstyled content) |
+   | `adoptedStyleSheets` with `./style.css?inline` (step 5) | styled on the first frame, in dev and build; costs below |
+   | A `<link rel="stylesheet">` with `href` from `./style.css?url`, prepended to the shadow root in the constructor | unstyled until the stylesheet loads (a flash of unstyled content) |
    | A `<style>` in the template | cannot hold Tailwind output: it is not processed (limitation 2) |
 
-   Use `adoptedStyleSheets`. Keep `import "./style.css"` in the entry anyway: Tailwind declares its internal variables with `@property`, which the browser registers only from the document. With the sheet adopted only in a shadow root and none in the document, plain utilities (`bg-violet-300`) worked but `shadow-lg` and `translate-x-[5px]` computed to `none`. When components do not need Shadow DOM's isolation, prefer Light DOM: it needs none of this.
-4. **Template styles beat utilities, whatever the specificity.** Tailwind puts utilities in `@layer utilities`, and the `<style>` Nativele injects is not in a layer, so a rule in `<style scoped>` overrides a utility on the same element (`.scoped-red` beat `text-sky-600`). To let utilities override a template's defaults, wrap those rules in `@layer components { }` inside the `<style scoped>` (as in the example); for a single element, the important modifier (`text-sky-600!`) also wins.
-5. **A `dark` class on `<html>` does not reach a shadow root.** With the class-based variant (`@custom-variant dark (&:where(.dark, .dark *));`), `dark:` utilities inside a `shadow: true` component match only an ancestor inside the same shadow root. Copy the class onto the component's inner wrapper (a `data-ref="wrapper"` element around everything that uses `dark:`), once at connect and on every change; the `sync()` at connect also covers a component created after dark mode was turned on:
+   Use `adoptedStyleSheets`. When components do not need Shadow DOM's isolation, prefer Light DOM: it needs none of this.
+
+   - The whole Tailwind CSS is in the JavaScript a second time, and is parsed once more. In the verified app the CSS file was 8.0 kB, and the JavaScript grew by 8.4 kB minified (2.4 kB gzip).
+   - One shared `CSSStyleSheet` serves every instance.
+   - A class added to a Shadow template during `vite dev` applies after the reload.
+   - The `<link>` way adds no second copy: in the build `?url` points at the CSS file the page already links.
+
+   Keep `import "./style.css"` in the entry anyway. Tailwind declares its internal variables with `@property`, which the browser registers only from the document. With the sheet adopted only in a shadow root, plain utilities (`bg-violet-300`) worked but `shadow-lg` and `translate-x-[5px]` computed to `none`.
+4. **Template styles beat utilities, whatever the specificity.** Tailwind puts utilities in `@layer utilities`, and the `<style>` Nativele injects is not in a layer, so a rule in `<style scoped>` overrides a utility on the same element (`.scoped-red` beat `text-sky-600`).
+   - To let utilities override a template's defaults, wrap those rules in `@layer components { }` inside the `<style scoped>`, as in the example.
+   - For a single element, the important modifier (`text-sky-600!`) also wins.
+5. **A `dark` class on `<html>` does not reach a shadow root.** With the class-based variant (`@custom-variant dark (&:where(.dark, .dark *));`), `dark:` utilities inside a `shadow: true` component match only an ancestor inside the same shadow root. Copy the class onto the component's inner wrapper, once at connect and on every change:
 
    ```ts
    override connected(): void {
@@ -177,7 +193,16 @@ import "./nv/badge-box.ts";
      sync();
    }
    ```
-6. Not verified: Tailwind v3, `@tailwindcss/postcss` and the Tailwind CLI; Vite's `root` in a sub-folder; `dark:` from the `prefers-color-scheme` default inside a shadow root; Nativele components shipped as a package in `node_modules`; a template `<style>` inside a `shadow: true` component together with Tailwind; the CSS nesting fallback of `<style scoped>` in browsers without `@scope`; Tailwind's `prefix()` option and the `dark:` variant inside a shadow root.
+
+   `wrapper` is a `data-ref` element around everything that uses `dark:`. The `sync()` at connect also covers a component created after dark mode was turned on.
+6. Not verified:
+   - Tailwind v3, `@tailwindcss/postcss` and the Tailwind CLI;
+   - Vite's `root` in a sub-folder;
+   - `dark:` from the `prefers-color-scheme` default inside a shadow root;
+   - Nativele components shipped as a package in `node_modules`;
+   - a template `<style>` inside a `shadow: true` component together with Tailwind;
+   - the CSS nesting fallback of `<style scoped>` in browsers without `@scope`;
+   - Tailwind's `prefix()` option and the `dark:` variant inside a shadow root.
 
 ## Verify
 

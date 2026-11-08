@@ -1,6 +1,10 @@
 # Recipes
 
-Patterns for common screens, built only from the library's own pieces. Every snippet is code that `npm run check` type-checks and a real Chrome test drives. The contacts screen comes from [examples/recipes](../examples/recipes) ([browser/recipes.test.ts](../browser/recipes.test.ts)); the request cancellation, the table, the form control and the language switch come from [browser/fixtures](../browser/fixtures) ([abort](../browser/abort.test.ts), [table](../browser/table.test.ts), [form control](../browser/form-control.test.ts), [locale](../browser/locale.test.ts)).
+Patterns for common screens, built only from the library's own pieces. Every snippet is code that `npm run check` type-checks and a real Chrome test drives.
+
+The contacts screen comes from [examples/recipes](../examples/recipes) ([browser/recipes.test.ts](../browser/recipes.test.ts)). The request cancellation, the table, the form control and the language switch come from [browser/fixtures](../browser/fixtures).
+
+Their tests: [abort](../browser/abort.test.ts), [table](../browser/table.test.ts), [form control](../browser/form-control.test.ts), [locale](../browser/locale.test.ts).
 
 ## Loading and error states
 
@@ -336,7 +340,9 @@ The page gives the table its columns (`table.columns = userColumns`) and fills t
 - A cell can hold a component: create it with `document.createElement`, set its props, and return it. Import its module yourself, because `ts-dom gen` imports only the tags written in a template ([composition](components.md#composition-using-multiple-components-together)).
 - A `data-on-*` attribute on an element created in code does nothing, because only elements of the component's own template are wired ([events](components.md#events-data-on-)). The table listens on its `<tbody>` instead, and `closest("user-row")` is typed as `UserRow`, so `.user` is the row's data.
 
-What it costs: sorting and removing move or drop rows without rebuilding any cell, but a column change gives every row new `columns` and rebuilds all of its cells. When the columns are fixed, a plain list is simpler: write the cells in the item template (`<template data-each="rows"><tr><td>{{ name }}</td><td>{{ email }}</td></tr></template>`) and fill it with `replace()` ([plain items](lists.md#items-as-plain-elements-replace)), so codegen knows every cell and no row component is needed.
+What it costs: sorting and removing move or drop rows without rebuilding any cell, but a column change gives every row new `columns` and rebuilds all of its cells.
+
+When the columns are fixed, a plain list is simpler: write the cells in the item template (`<template data-each="rows"><tr><td>{{ name }}</td><td>{{ email }}</td></tr></template>`) and fill it with `replace()` ([plain items](lists.md#items-as-plain-elements-replace)), so codegen knows every cell and no row component is needed.
 
 ## A modal dialog
 
@@ -390,7 +396,9 @@ addRow(e: EmitEvent<ContactForm, "contact-add">): void {
 
 ## Form validation
 
-Keep each message in state, show it with `data-if`, and clear the messages as the user types. `novalidate` leaves validation to this code, and `role="alert"` announces the messages. The fields sit in the `<form data-ref="form">` of the dialog above, so `this.refs.form.elements.name` reads each one by its `name`, typed by its tag (`HTMLInputElement` here; a `<select>` is an `HTMLSelectElement` with `selectedOptions`, a radio group a `RadioNodeList` whose `value` is the checked one, a checkbox is read with `.checked`), and no field needs a `data-ref` of its own. Which controls are typed is in [Reading a form](components.md#reading-a-form).
+Keep each message in state, show it with `data-if`, and clear the messages as the user types. `novalidate` leaves validation to this code, and `role="alert"` announces the messages.
+
+The fields sit in the `<form data-ref="form">` of the dialog above, so `this.refs.form.elements.name` reads each one by its `name`, typed by its tag, and no field needs a `data-ref` of its own ([Reading a form](components.md#reading-a-form)).
 
 ```html
 <label>Name <input name="name" data-on-input="clearErrors" /></label>
@@ -417,7 +425,12 @@ submit(e: Event): void {
 }
 ```
 
-For larger forms, a schema library can produce the messages; the component still keeps them in state and shows them the same way. The `nativele-zod` Skill (`npx ts-dom skills nativele-zod`) does it with Zod or Valibot, including nested and array fields. Two details hold for any form: `aria-invalid` must be `"true"` (an empty `aria-invalid=""` counts as not invalid), and validating on blur needs `data-on-focusout` on the form, because `blur` does not bubble.
+For larger forms, a schema library can produce the messages; the component still keeps them in state and shows them the same way. The `nativele-zod` Skill (`npx ts-dom skills nativele-zod`) does it with Zod or Valibot, including nested and array fields.
+
+Two details hold for any form:
+
+- `aria-invalid` must be `"true"`; an empty `aria-invalid=""` counts as not invalid.
+- Validating on blur needs `data-on-focusout` on the form, because `blur` does not bubble.
 
 ## A form control of your own
 

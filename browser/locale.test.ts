@@ -1,21 +1,17 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5316);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForFunction(() => customElements.get("locale-greeting") && customElements.get("locale-cart"));
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/page.html",
+    ready: () => customElements.get("locale-greeting") && customElements.get("locale-cart"),
+  }));
   await page.evaluate(() => {
     const cart = document.createElement("locale-cart");
     cart.count = 3;
@@ -23,10 +19,7 @@ beforeAll(async () => {
   });
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 // A string, so that vitest does not rewrite the dynamic import that runs in the page
 const setLocale = (l: string) => page.evaluate(`import("/browser/fixtures/locale.ts").then((m) => m.setLocale(${JSON.stringify(l)}))`);

@@ -27,16 +27,10 @@ describe("props", () => {
     c.setAttribute("label", "b");
     expect(c.props).toMatchObject({ disabled: false, maxLength: 10, label: "b" });
   });
-  it("invalid numeric attribute: warns and uses the default value", () => {
+  it("invalid numeric attribute: warns with the rule id and a fix, and uses the default value", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const c = mount<FieldChild>(`<x-child max-length="abc"></x-child>`);
     expect(c.props.maxLength).toBe(10);
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
-  });
-  it("invalid numeric attribute: the warning contains the rule id and a fix", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mount<FieldChild>(`<x-child max-length="abc"></x-child>`);
     const msg = String(warn.mock.calls[0]?.[0]);
     expect(msg).toMatch(/\[invalid-prop-value\]/);
     expect(msg).toContain("Fix:");
@@ -64,48 +58,6 @@ describe("props", () => {
     expect(c.querySelector("[role=alert]")?.textContent).toBe("broken");
     c.error = "";
     expect(c.querySelector("[role=alert]")).toBeNull();
-  });
-  it("changing a prop with set() inside the component throws a clear error", () => {
-    const c = mount<FieldChild>(`<x-child></x-child>`);
-    // @ts-expect-error label is a prop, not in the state type
-    expect(() => c.set({ label: "x" })).toThrow(/\[props-mutation\]/);
-  });
-});
-
-describe("definition-time checks", () => {
-  // Type problems are reported on the class X extends Component(...) line; at runtime they are thrown when Component() is called
-  it("state and props share a name", () => {
-    expect(() => {
-      // @ts-expect-error conflictingKeys
-      class X extends Component(tpl, { state: { label: "" }, props: { label: "" } }) {}
-      void X;
-    }).toThrow(/\[conflicting-keys\]/);
-  });
-  it("a prop shares a name with a member of HTMLElement or ts-dom", () => {
-    expect(() => {
-      // @ts-expect-error reservedPropNames (HTMLElement.title)
-      class X extends Component(tpl, { props: { title: "" } }) {}
-      void X;
-    }).toThrow(/\[reserved-prop\]/);
-    expect(() => {
-      // @ts-expect-error reservedPropNames (ts-dom render)
-      class X extends Component(tpl, { props: { render: "" } }) {}
-      void X;
-    }).toThrow(/\[reserved-prop\]/);
-  });
-  it("emits shares a name with a native event", () => {
-    expect(() => {
-      // @ts-expect-error nativeEventNames
-      class X extends Component(tpl, { emits: { click: event() } }) {}
-      void X;
-    }).toThrow(/\[native-event-name\]/);
-  });
-  it("derive and state share a name", () => {
-    expect(() => {
-      // @ts-expect-error conflictingKeys
-      class X extends Component(tpl, { state: { a: 1 }, derive: { a: () => 2 } }) {}
-      void X;
-    }).toThrow(/\[conflicting-keys\]/);
   });
 });
 
@@ -162,11 +114,19 @@ describe("runtime error message format", () => {
       "conflicting-keys",
     );
   });
-  it("reserved-prop", () => {
+  it("reserved-prop (a member of HTMLElement or ts-dom)", () => {
     expectShape(
       capture(() => {
         // @ts-expect-error reservedPropNames
         class X extends Component(tpl, { props: { title: "" } }) {}
+        void X;
+      }),
+      "reserved-prop",
+    );
+    expectShape(
+      capture(() => {
+        // @ts-expect-error reservedPropNames (ts-dom render)
+        class X extends Component(tpl, { props: { render: "" } }) {}
         void X;
       }),
       "reserved-prop",

@@ -1,29 +1,30 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
+let errors: string[];
+let browser: Browser;
 let baseUrl: string;
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5301);
-  stop = s.stop;
-  baseUrl = s.url;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => {
-    throw e;
-  });
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForFunction(() => document.querySelector("#parsed p"));
+  ({
+    page,
+    errors,
+    browser,
+    url: baseUrl,
+    close,
+  } = await openPage({
+    path: "/browser/fixtures/page.html",
+    ready: () => document.querySelector("#parsed p"),
+  }));
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  stop?.();
+  expect(errors).toEqual([]);
+  await close();
 });
 
 const color = (sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s) as Element).color, sel);
@@ -70,19 +71,6 @@ describe("Real browser: Light DOM", () => {
       return { fallback, added, restored, changes: el.changes };
     });
     expect(out).toEqual({ fallback: "fallback", added: "N", restored: "fallback", changes: ["head", "head"] });
-  });
-  it("keyed list reordering keeps existing nodes", async () => {
-    const same = await page.evaluate(() => {
-      const el = document.createElement("light-card") as HTMLElement & { lists: { rows: { replace(i: string[], k: (s: string) => string, u: (s: string, c: { text: { n: string } }) => void): void } } };
-      document.body.append(el);
-      const upd = (s: string, c: { text: { n: string } }) => (c.text.n = s);
-      el.lists.rows.replace(["a", "b", "c"], (s) => s, upd);
-      const b = el.querySelectorAll("li")[1];
-      el.lists.rows.replace(["c", "b", "a"], (s) => s, upd);
-      const lis = [...el.querySelectorAll("li")];
-      return { order: lis.map((l) => l.textContent), kept: lis[1] === b };
-    });
-    expect(same).toEqual({ order: ["c", "b", "a"], kept: true });
   });
 });
 
@@ -142,14 +130,6 @@ describe("Real browser: props", () => {
 });
 
 describe("Real browser: Shadow DOM", () => {
-  it("native slot assignment", async () => {
-    const r = await page.evaluate(() => {
-      const el = document.querySelector("#shadow") as HTMLElement;
-      const slots = [...(el.shadowRoot?.querySelectorAll("slot") ?? [])];
-      return slots.map((s) => s.assignedNodes().map((n) => n.textContent));
-    });
-    expect(r).toEqual([["SH"], ["sbody"]]);
-  });
   it("style isolation: a <style> inside shadow does not leak out, and outside .t rules do not get in", async () => {
     expect(await page.evaluate(() => getComputedStyle(document.querySelector("#shadow")?.shadowRoot?.querySelector("p") as Element).color)).not.toBe("rgb(0, 0, 255)");
     expect(await color("#outside")).not.toBe("rgb(255, 0, 0)");

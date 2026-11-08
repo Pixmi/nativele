@@ -96,7 +96,43 @@ render(view, changed) {
 toggle(_e: Event, hit: EventHit<Todo, "id">) { /* hit.key is the item's id, typed Todo["id"]; hit.item is the Todo */ }
 ```
 
-Assigning `items` keeps the element of each key that stays (moved with `moveBefore` where the browser has it, so focus and state survive), creates one for a new key, removes the ones that are gone, and sets `todo` on each element whose item is not the same object as last time. Use immutable updates: changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, for example `{ ...todo, done: true }`. Each item component receives its whole item through that one property; state that belongs to the parent's view of a row (whether it is selected, its rank) is a separate prop, set per row through `get(key).el` (see [Per-row state](#per-row-state-selected-rank)). The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned. `tsc` checks the assignment: each item must have the type of the `todo` property that `<todo-row>` declares and a `data-key` field (`id`), and the item component must declare the `data-prop` property; a list without `data-key` and `data-prop` takes no items. This relies on the component being registered in `ts-dom-tags.ts` (an exported `define("todo-row", TodoRow)` in a scanned directory). When the component is defined in a scanned directory but its class is not exported, or `ts-dom-tags.ts` does not list it yet, the assignment is a type error that says so (`itemComponentClassNotExported`, `itemComponentMissingFromTagMap`); a component from outside the scanned directories has no item type to check against, so the list accepts an object literal or a type alias with the `id` field, but rejects items typed by an interface (`Index signature for type 'string' is missing in type 'Tag'`): map them to new objects (`items.map((t) => ({ ...t }))`), or bring the component's tag map into the program (a component package exports it from its entry). At runtime, assigning throws when the value is not an array of objects, when an item has no string or number `id`, when two items share one, or when the template has no `data-key` and `data-prop`.
+Assigning `items` reconciles the list by key:
+
+- It keeps the element of each key that stays, moved with `moveBefore` where the browser has it, so focus and state survive.
+- It creates an element for a new key and removes the ones that are gone.
+- It sets `todo` on each element whose item is not the same object as last time.
+
+Use immutable updates. Changing a field of an object you already assigned and assigning the same object again does not update the item component, because props are compared by reference; assign a new object instead, such as `{ ...todo, done: true }`.
+
+The item component declares `todo` in its `props`, shows it however it likes, and tells the parent with `emit`; the parent reads `hit.key` in the handler. Reading `items` returns what was last assigned.
+
+Each item component receives its whole item through that one property. State that belongs to the parent's view of a row, such as whether it is selected, is a separate prop set per row through `get(key).el` ([Per-row state](#per-row-state-selected-rank)).
+
+#### Type checks and runtime errors
+
+`tsc` checks the assignment:
+
+- Each item must have the type of the `todo` property that `<todo-row>` declares, and a `data-key` field (`id`).
+- The item component must declare the `data-prop` property.
+- A list without `data-key` and `data-prop` takes no items.
+
+These checks rely on the component being registered in `ts-dom-tags.ts`, through an exported `define("todo-row", TodoRow)` in a scanned directory.
+
+| Case | Result |
+|---|---|
+| The class is defined in a scanned directory but not exported | Type error `itemComponentClassNotExported` |
+| `ts-dom-tags.ts` does not list the component yet | Type error `itemComponentMissingFromTagMap` |
+| The component is outside the scanned directories | No item type: an object literal or a type alias with the `id` field passes, items typed by an interface fail |
+
+Items typed by an interface fail there with `Index signature for type 'string' is missing in type 'Tag'`. Map them to new objects (`items.map((t) => ({ ...t }))`), or bring the component's tag map into the program; a component package exports it from its entry.
+
+At runtime, assigning throws when:
+
+- the value is not an array of objects (`invalid-items`, `invalid-item`)
+- an item has no string or number `id` (`missing-key`)
+- two items share one `id` (`duplicate-key`)
+- the template has no `data-key` and `data-prop` (`list-not-bound`)
+- the item component has no `todo` property (`item-prop-missing`)
 
 `this.lists.todos.get(key)` returns the item's context, whose `el` is the item component itself, typed as its class: its props are checked by tsc like any other component's.
 
@@ -124,7 +160,9 @@ render(view, changed) {
 }
 ```
 
-A prop setter does nothing when the new value is the same as the current one (`Object.is`), so when the selection moves only the row that loses it and the row that gains it render again. Do not map the items to new objects that carry the extra field (`items.map((v) => ({ ...v, selected: v.id === selectedId }))`): every object is new, so every row receives a new `variant` and renders again on each change of the selection.
+A prop setter does nothing when the new value is the same as the current one (`Object.is`), so when the selection moves only the row that loses it and the row that gains it render again.
+
+Do not map the items to new objects that carry the extra field (`items.map((v) => ({ ...v, selected: v.id === selectedId }))`). Every object is then new, so every row receives a new `variant` and renders again on each change of the selection.
 
 Inside a `<ul>` or `<ol>` the item component needs `role="listitem"`, because a custom element is not an `<li>`; the accessibility check (`list-structure`) asks for it.
 
@@ -175,8 +213,12 @@ Notes:
 - Without it (older browsers, and DOM implementations for tests such as happy-dom and jsdom), a moved item is removed and inserted again: `disconnected()` runs and releases everything registered with `bind`, `on` and `onCleanup`, then `connected()` runs again, and a focused input in it loses focus. Its element, props and state stay the same.
 - So subscribe in `connected()` (`this.bind(store, ...)`, `this.on(...)`, `this.onCleanup(...)`), as [Stores](components.md#state-store-when-not-using-state) requires, not in the constructor or a field initializer: then the subscription is made again after a move in every browser. A subscription made in the constructor is released by the first move and never comes back.
 - Data that every item needs (a theme, the current user, a registry) belongs in a `createStore` that the item component binds in `connected()`, not copied into every item object.
-- Set-up that a row needs when it is created, such as a listener or another library's behavior attached to an `<input>` in it, also belongs in an item component's `connected()`: a list has no callback for a created item, and `replace()`'s `update` runs for every item on every call, not only for new ones. Register it with `this.on(...)` or release it with `this.onCleanup(...)`, so that it is released when the row goes and made again after a move. An event that only has to reach the list's owner needs no set-up per row: write `data-on-*` in the item template and read `hit.key` in the handler ([Example](#example-todo-list-lists-event-delegation-hitkey)).
+- Set-up that a row needs when it is created, such as a listener or another library's behavior attached to an `<input>` in it, also belongs in an item component's `connected()`. A list has no callback for a created item, and `replace()`'s `update` runs for every item on every call, not only for new ones.
+- Register that set-up with `this.on(...)` or release it with `this.onCleanup(...)`, so that it is released when the row goes and made again after a move.
+- An event that only has to reach the list's owner needs no set-up per row: write `data-on-*` in the item template and read `hit.key` in the handler ([Example](#example-todo-list-lists-event-delegation-hitkey)).
 
 ### Order of list updates
 
-Assigning `items` sets the `data-prop` property of a new item before its element goes into the document, so the item component is connected with its item already set and its first render shows it. `replace()` and `upsert()` put a new item's element into the document first and then call `update`, so a child component placed in such an item is connected before the parent has set its properties; there, build per-item state when the child first receives data (for example in a property setter), and guard a render in `connected()` with the data it needs.
+Assigning `items` sets the `data-prop` property of a new item before its element goes into the document, so the item component is connected with its item already set and its first render shows it.
+
+`replace()` and `upsert()` put a new item's element into the document first and then call `update`. So a child component placed in such an item is connected before the parent has set its properties. There, build per-item state when the child first receives data, for example in a property setter, and guard a render in `connected()` with the data it needs.
