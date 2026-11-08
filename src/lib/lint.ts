@@ -2,14 +2,14 @@ import { basename, dirname, relative, resolve } from "node:path";
 import type { DefaultTreeAdapterMap } from "parse5";
 import { checkA11y } from "./a11y.ts";
 import type { A11yChild, A11yChildren } from "./a11y.ts";
-import { analyze, listHtml } from "./codegen.ts";
+import { analyze, HTML_NS, isEl, kids, listHtml } from "./codegen.ts";
 import type { Analysis, Diagnostic } from "./codegen.ts";
-import { componentIndex, literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
+import { literalKeys, matchClose, skipNonCode, Workspace } from "./components.ts";
 import { ELEMENT_EVENT_NAMES } from "./events.ts";
-import type { ComponentIndex } from "./components.ts";
-import { manifestsAt, packageOf } from "./manifest.ts";
+import type { ComponentIndex, ComponentRef } from "./components.ts";
+import { componentPackagesAt, manifestsAt, packageOf } from "./manifest.ts";
 import type { ManifestElement } from "./manifest.ts";
-import { NOT_DEFINED, UNREAD, and, detailOf, unreadFixes } from "./unread.ts";
+import { DECLARED, NOT_DEFINED, UNREAD, and, detailOf, unreadFixes } from "./unread.ts";
 import type { Unread } from "./unread.ts";
 
 export type { Diagnostic };
@@ -148,11 +148,6 @@ export function unusedMarkup(html: string, code: string, a: Analysis = analyze(h
   return out;
 }
 
-export function lintUsage(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const ws = new Workspace();
-  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), groups: ["unused-markup"] }).issues;
-}
-
 const noImporter = (file: string, html: string): LintIssue => ({
   file,
   rule: "no-importer",
@@ -170,6 +165,7 @@ export const DATA_FLOW_RULES = {
   "prop-forwarding": "do not pass your own prop straight through to a child component (prop drilling)",
   "emit-forwarding": "do not re-emit a child's event unchanged (emit chain)",
   "props-mutation": "do not modify props inside the component",
+  "constructor-host-change": "the constructor gives the element itself an attribute, class, style or child, which makes a browser create an unknown element instead",
   "custom-event-on-native": "a custom event belongs on the child component tag that emits it, not on a native element",
   "unknown-prop": "the attribute is not a declared prop of the child component",
   "invalid-prop-value": "the attribute value cannot be converted to the prop's type",
@@ -312,7 +308,7 @@ function kindOf(valueText: string): PropKind {
 }
 
 /** Every definition of each tag found by contractsFor, with the folder of the package that defines it; `contract` is null when define() passes a class that is not a `Component(...)` class the index can follow to. */
-export class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
+class Contracts extends Map<string, { pkg: string; contract: Contract | null; at: string }[]> {
   /** What contractsAt and childrenAt have worked out for each package. */
   readonly byPackage = new Map<string, PackageView>();
   /** The nearest folder at or above a folder that holds a package.json, or "" when there is none, as the run the contracts were read in finds it. */
@@ -321,22 +317,31 @@ export class Contracts extends Map<string, { pkg: string; contract: Contract | n
   readonly cwd: string;
   /** The custom elements manifests that apply to the templates of a package (see manifestsAt). */
   readonly manifests: (pkg: string) => ReturnType<typeof manifestsAt>;
+  /** The components the Nativele component packages among a package's dependencies define, by package (see componentPackagesAt). */
+  readonly packages: (pkg: string) => readonly PackageDefines[];
   /** Tags the scanned TypeScript names without a define(): customElements.define("tag", ...) and HTMLElementTagNameMap keys. */
   readonly declared: ReadonlySet<string>;
   /** The names of the events the scanned TypeScript dispatches with bubbles: true (see ModuleFacts.dispatched). */
   readonly dispatched: ReadonlySet<string>;
-  constructor(packageOf: (dir: string) => string, cwd: string, manifests: (pkg: string) => ReturnType<typeof manifestsAt> = () => [], declared: ReadonlySet<string> = new Set(), dispatched: ReadonlySet<string> = new Set()) {
+  constructor(packageOf: (dir: string) => string, cwd: string, manifests: (pkg: string) => ReturnType<typeof manifestsAt> = () => [], declared: ReadonlySet<string> = new Set(), dispatched: ReadonlySet<string> = new Set(), packages: (pkg: string) => readonly PackageDefines[] = () => []) {
     super();
     this.packageOf = packageOf;
     this.cwd = cwd;
     this.manifests = manifests;
+    this.packages = packages;
     this.declared = declared;
     this.dispatched = dispatched;
   }
 }
 
-/** Where a tag a template may use is known from: define() in the scanned folders, a declaration in the scanned TypeScript, or the manifest of a package. */
-type Known = { from: "folders" } | { from: "declared" } | { from: "manifest"; pkg: string };
+/** The tags one Nativele component package defines, each with its contract (null when define() passes a class that is not a `Component(...)` class the index can follow to). */
+interface PackageDefines {
+  pkg: string;
+  defines: { tag: string; contract: Contract | null; at: string }[];
+}
+
+/** Where a tag a template may use is known from: define() in the scanned folders, a declaration in the scanned TypeScript, a Nativele component package, or the manifest of a package. */
+type Known = { from: "folders" } | { from: "declared" } | { from: "package"; pkg: string } | { from: "manifest"; pkg: string };
 
 interface PackageView {
   contracts: ReadonlyMap<string, Contract>;
@@ -378,42 +383,58 @@ function declared(call: string): Declared {
   };
 }
 
+/** The contract of the component class `c`. A template that is missing is `template-missing`, or `template-unshipped` when `pkg` names the package the class comes from (a built package ships the generated module, not the .html). */
+function componentContract(c: ComponentRef, ws: Workspace, cwd: string, pkg?: string): Contract {
+  const template = c.template;
+  const declaredKind = `declared:${c.name ?? `${c.line}:${c.col}`}`;
+  const own = template ? { get file() { return relative(cwd, template); }, get html() { return ws.text(template) ?? ""; } } : undefined;
+  const unfollowed: Unread = { cause: "template-unfollowed", get at() { return `${relative(cwd, c.file)}:${c.line}`; } };
+  const contract: Contract = {
+    ...((ws.memo.get(c.file, declaredKind, [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, declaredKind, [c.call], declared(c.call))),
+    get template() {
+      return template && ws.text(template) !== null ? own : undefined;
+    },
+    get unread(): Unread | undefined {
+      if (!template) return unfollowed;
+      if (ws.text(template) !== null) return undefined;
+      return pkg ? { cause: "template-unshipped", pkg } : { cause: "template-missing", file: relative(cwd, template) };
+    },
+  };
+  // Not enumerable: the memo compares contracts by their content, which the template's text already holds.
+  Object.defineProperty(contract, "slots", {
+    get() {
+      const text = template && ws.text(template);
+      if (!template || text === null || text === undefined) return undefined;
+      return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], analyze(text).slots);
+    },
+  });
+  return contract;
+}
+
 /**
- * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`.
+ * Read the declared props, emitted events and template of every component defined (via define("tag", Class)) under `dirs`, and, for each package, of those its Nativele component packages define.
  * This is what lets the linter check the attributes and data-on-* written on a child tag in a parent template.
  */
 export function contractsFor(dirs: string[], cwd = process.cwd(), ws = new Workspace(), index: ComponentIndex = ws.index(dirs)): Contracts {
   const pkgs = new Map<string, string>();
   const pkgOf = (dir: string) => pkgs.get(dir) ?? (pkgs.set(dir, packageOf(ws, resolve(dir))).get(dir) as string);
   const modules = [...index.modules.values()];
-  const out = new Contracts(pkgOf, cwd, (pkg) => (pkg ? manifestsAt(ws, pkg) : []), new Set(modules.flatMap((m) => m.tags)), new Set(modules.flatMap((m) => m.dispatched)));
+  const read = new Map<string, PackageDefines>();
+  const packages = (pkg: string): PackageDefines[] =>
+    pkg
+      ? componentPackagesAt(ws, pkg).map(({ pkg: name, entries }) => {
+          const key = `${name}\0${entries.join("\0")}`;
+          let found = read.get(key);
+          if (!found) {
+            const defines = ws.indexFrom(entries).defines.map((d) => ({ tag: d.tag, contract: d.component ? componentContract(d.component, ws, cwd, name) : null, get at() { return `${name} (${relative(cwd, d.file)}:${d.line})`; } }));
+            read.set(key, (found = { pkg: name, defines }));
+          }
+          return found;
+        })
+      : [];
+  const out = new Contracts(pkgOf, cwd, (pkg) => (pkg ? manifestsAt(ws, pkg) : []), new Set(modules.flatMap((m) => m.tags)), new Set(modules.flatMap((m) => m.dispatched)), packages);
   for (const def of index.defines) {
-    const c = def.component;
-    let contract: Contract | null = null;
-    const template = c?.template;
-    if (c) {
-      const declaredKind = `declared:${c.name ?? `${c.line}:${c.col}`}`;
-      const own = template ? { get file() { return relative(cwd, template); }, get html() { return ws.text(template) ?? ""; } } : undefined;
-      const unfollowed: Unread = { cause: "template-unfollowed", get at() { return `${relative(cwd, c.file)}:${c.line}`; } };
-      contract = {
-        ...((ws.memo.get(c.file, declaredKind, [c.call]) as Declared | undefined) ?? ws.memo.set(c.file, declaredKind, [c.call], declared(c.call))),
-        get template() {
-          return template && ws.text(template) !== null ? own : undefined;
-        },
-        get unread(): Unread | undefined {
-          if (!template) return unfollowed;
-          return ws.text(template) === null ? { cause: "template-missing", file: relative(cwd, template) } : undefined;
-        },
-      };
-      // Not enumerable: the memo compares contracts by their content, which the template's text already holds.
-      Object.defineProperty(contract, "slots", {
-        get() {
-          const text = template && ws.text(template);
-          if (!template || text === null || text === undefined) return undefined;
-          return (ws.memo.get(template, "slots", [text]) as Set<string> | undefined) ?? ws.memo.set(template, "slots", [text], analyze(text).slots);
-        },
-      });
-    }
+    const contract = def.component ? componentContract(def.component, ws, cwd) : null;
     out.set(def.tag, [...(out.get(def.tag) ?? []), { pkg: pkgOf(dirname(def.file)), contract, get at() { return `${relative(cwd, def.file)}:${def.line}`; } }]);
   }
   return out;
@@ -446,16 +467,24 @@ function atPackage(all: Contracts, file: string): PackageView {
     const known = new Map<string, Known>();
     for (const tag of all.keys()) known.set(tag, { from: "folders" });
     for (const tag of all.declared) if (!known.has(tag)) known.set(tag, { from: "declared" });
-    for (const [tag, defs] of all) {
-      const here = defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg);
+    /** The one definition of `tag` among `here`: its contract, or why there is none; `packages` names the places of all definitions when there is not exactly one. */
+    const settle = (tag: string, here: readonly { contract: Contract | null; at: string }[], packages: () => string[]) => {
       const one = here.length === 1 ? here[0] : undefined;
       if (one?.contract) {
         contracts.set(tag, one.contract);
         children.set(tag, one.contract);
       } else if (one) children.set(tag, { unread: { cause: "not-component", at: one.at } });
-      else children.set(tag, { unread: { cause: "ambiguous", packages: defs.map((d) => relative(all.cwd, d.pkg) || ".") } });
-    }
+      else children.set(tag, { unread: { cause: "ambiguous", packages: packages() } });
+    };
+    for (const [tag, defs] of all) settle(tag, defs.length === 1 ? defs : defs.filter((d) => d.pkg === pkg), () => defs.map((d) => relative(all.cwd, d.pkg) || "."));
     const bubbling = new Set([...all.dispatched, ...[...all.values()].flatMap((defs) => defs.flatMap((d) => [...(d.contract?.bubbles ?? [])]))]);
+    const fromPackages = new Map<string, { pkg: string; contract: Contract | null; at: string }[]>();
+    for (const p of all.packages(pkg)) for (const d of p.defines) if (!all.has(d.tag)) fromPackages.set(d.tag, [...(fromPackages.get(d.tag) ?? []), { pkg: p.pkg, contract: d.contract, at: d.at }]);
+    for (const [tag, defs] of fromPackages) {
+      known.set(tag, { from: "package", pkg: (defs[0] as { pkg: string }).pkg });
+      for (const d of defs) for (const b of d.contract?.bubbles ?? []) bubbling.add(b);
+      settle(tag, defs, () => defs.map((d) => d.pkg));
+    }
     const fromManifests = new Map<string, { pkg: string; el: ManifestElement }[]>();
     const files = new Set<string>();
     for (const m of all.manifests(pkg)) {
@@ -468,7 +497,7 @@ function atPackage(all: Contracts, file: string): PackageView {
     }
     for (const [tag, found] of fromManifests) {
       if (!known.has(tag)) known.set(tag, { from: "manifest", pkg: (found[0] as { pkg: string }).pkg });
-      if (all.has(tag)) continue;
+      if (all.has(tag) || fromPackages.has(tag)) continue;
       const one = found.length === 1 ? found[0] : undefined;
       if (one) {
         const c = manifestContract(one.el, one.pkg);
@@ -476,6 +505,7 @@ function atPackage(all: Contracts, file: string): PackageView {
         children.set(tag, c);
       } else children.set(tag, { unread: { cause: "ambiguous", packages: found.map((f) => f.pkg) } });
     }
+    for (const tag of all.declared) if (!children.has(tag)) children.set(tag, { unread: DECLARED });
     all.byPackage.set(pkg, (out = { contracts, children, known, definitions: new Map(), bubbling }));
   }
   return out;
@@ -507,13 +537,10 @@ const suggest = (name: string, options: readonly string[]): string => {
   return best === undefined ? "" : ` Did you mean "${best}"?`;
 };
 const manifestOf = (pkg: string) => `the custom elements manifest of ${pkg}`;
-const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the scanned folders" : k.from === "declared" ? "a customElements.define() or HTMLElementTagNameMap entry in the scanned TypeScript" : manifestOf(k.pkg));
+const knownBy = (k: Known): string => (k.from === "folders" ? "a define() in the scanned folders" : k.from === "declared" ? "a customElements.define() or HTMLElementTagNameMap entry in the scanned TypeScript" : k.from === "package" ? k.pkg : manifestOf(k.pkg));
 
 type Node = DefaultTreeAdapterMap["node"];
 type Element = DefaultTreeAdapterMap["element"];
-const HTML_NS = "http://www.w3.org/1999/xhtml";
-const isEl = (n: Node): n is Element => "tagName" in n;
-const kids = (n: Node): Node[] => ("content" in n && n.nodeName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : "childNodes" in n ? n.childNodes : []);
 
 /** The element of `root` whose attribute `name` starts at `line`:`col`. */
 function elementAt(root: Node, name: string, line: number, col: number): Element | undefined {
@@ -559,6 +586,60 @@ function gates(line: string, ref: string, test: "differs" | "same", at?: number)
     if (test === "same" ? /^\s*\{?\s*(?:return|continue)\b/.test(rest) : at === undefined ? /^\s*\{?\s*$/.test(rest) : at > close) return true;
   }
   return false;
+}
+
+const HOST_CALL = /\bthis\s*\.\s*(setAttribute|setAttributeNS|toggleAttribute|append|appendChild|prepend|replaceChildren|insertAdjacentElement|insertAdjacentHTML|insertAdjacentText)\s*\(/;
+const HOST_MEMBER = /\bthis\s*\.\s*(classList|dataset|style)\s*\.\s*\w+/;
+const HOST_PROPERTY = /\bthis\s*\.\s*(className|id|title|hidden|tabIndex|role|lang|dir|slot|inert|draggable|textContent|innerHTML|innerText|aria[A-Z]\w*)\s*=(?!=)/;
+
+/**
+ * The first change to the element itself that the constructor of the class `body` makes when it runs (`this.setAttribute(`, `this.classList.add`, `this.id =`, ...), or undefined.
+ * Code in a function or arrow defined there runs later, so it does not count.
+ */
+export function constructorHostChange(body: string): string | undefined {
+  let head: RegExpExecArray | null = null;
+  for (const m of body.matchAll(/\bconstructor\s*\(/g)) {
+    let i = 0;
+    while (i < m.index) i = skipNonCode(body, i) > i ? skipNonCode(body, i) : i + 1;
+    if (i === m.index) {
+      head = m;
+      break;
+    }
+  }
+  if (!head) return undefined;
+  const params = matchClose(body, head.index + head[0].length - 1, "(", ")");
+  const open = params < 0 ? -1 : body.indexOf("{", params);
+  const close = open < 0 ? -1 : matchClose(body, open, "{", "}");
+  if (close < 0) return undefined;
+  const ctor = body.slice(open + 1, close);
+  let code = "";
+  for (let i = 0; i < ctor.length; i++) {
+    const end = skipNonCode(ctor, i);
+    if (end > i) {
+      code += " ".repeat(end - i);
+      i = end - 1;
+      continue;
+    }
+    const later = ctor.startsWith("=>", i) ? i + 2 : /^function\b/.test(ctor.slice(i)) && !/[\w$]/.test(ctor[i - 1] ?? "") ? ctor.indexOf("{", i) : -1;
+    if (later < 0) {
+      code += ctor[i];
+      continue;
+    }
+    let j = later;
+    while (/\s/.test(ctor[j] ?? "")) j++;
+    if (ctor[j] === "{") j = matchClose(ctor, j, "{", "}");
+    else for (let depth = 0; j < ctor.length; j++) {
+      const skip = skipNonCode(ctor, j);
+      if (skip > j) j = skip - 1;
+      else if ("([{".includes(ctor[j] as string)) depth++;
+      else if (")]}".includes(ctor[j] as string) && depth-- === 0) break;
+      else if (depth === 0 && (ctor[j] === "," || ctor[j] === ";")) break;
+    }
+    if (j < 0) j = ctor.length;
+    code += " ".repeat(j - i);
+    i = j - 1;
+  }
+  return (HOST_CALL.exec(code) ?? HOST_MEMBER.exec(code) ?? HOST_PROPERTY.exec(code))?.[0].replace(/\s+/g, "").replace(/=$/, " =");
 }
 
 /**
@@ -620,10 +701,10 @@ export function dataFlow(
       const prefix = use.tag.slice(0, use.tag.indexOf("-") + 1);
       const near = nearest(use.tag, [...known.keys()].filter((t) => t.startsWith(prefix)));
       if (near === undefined) continue;
-      const manifests = [...new Set([...known.values()].flatMap((k) => (k.from === "manifest" ? [manifestOf(k.pkg)] : [])))];
+      const manifests = [...new Set([...known.values()].flatMap((k) => (k.from === "package" ? [k.pkg] : k.from === "manifest" ? [manifestOf(k.pkg)] : [])))];
       report(
         "unknown-custom-element",
-        `<${use.tag}> is not defined in the scanned folders${manifests.length ? ` or by ${and(manifests)}` : ""}, so the browser leaves it an undefined element that shows only its children; <${near}>, defined by ${knownBy(known.get(near) as Known)}, is close to it. Did you mean "${near}"? Fix: correct the tag name; if another package defines it, import that package (it is not in this package's dependencies, or declares no custom elements manifest).`,
+        `<${use.tag}> is not defined in the scanned folders${manifests.length ? ` or by ${and(manifests)}` : ""}, so the browser leaves it an undefined element that shows only its children; <${near}>, defined by ${knownBy(known.get(near) as Known)}, is close to it. Did you mean "${near}"? Fix: correct the tag name; if another package defines it, list that package in this package's dependencies (lint reads a dependency's components when it is a Nativele component package that exports them, and another library's elements when its package declares a custom elements manifest).`,
         undefined,
         use,
       );
@@ -749,6 +830,15 @@ export function dataFlow(
     });
   }
 
+  for (const { body } of classes) {
+    const change = constructorHostChange(body);
+    if (change)
+      report(
+        "constructor-host-change",
+        `The constructor runs ${change}, which changes the element itself. When document.createElement or the HTML parser creates the element, a browser then reports NotSupportedError ("The result must not have attributes" or "children") and creates an HTMLUnknownElement instead, so the component never renders; happy-dom and jsdom accept it, so tests pass. Fix: do it in connected(), adding to what the tag already has.`,
+      );
+  }
+
   for (const { call, body } of classes) {
     const props = optionKeys(call, "props");
     for (const k of props) {
@@ -803,11 +893,6 @@ export function dataFlow(
   return out;
 }
 
-export function lintDataFlow(dirs: string[], tsFiles: string[], cwd = process.cwd()): LintIssue[] {
-  const ws = new Workspace();
-  return lintRun(dirs, { cwd, ws, index: componentIndex(tsFiles, ws), contracts: contractsFor(dirs, cwd, ws), groups: ["data-flow"] }).issues;
-}
-
 export type Group = "unused-markup" | "data-flow" | "a11y";
 
 /** What lint finds in one template; a group that was not run has no findings. */
@@ -860,9 +945,9 @@ const contents = (value: unknown): string => JSON.stringify(value, (_, v: unknow
 /**
  * The findings of one template for `groups`. They depend only on the template's text, the code of the classes and modules that use it, and the definitions of the tags they look up,
  * so the workspace's memo keeps them for the template with all of these, and they are used again while each is the same in the run that asks.
- * `parse` is how the template is analyzed when the memo does not have its findings.
+ * `parse` is how the template is analyzed when the memo does not have its findings. `ignore` holds the rule ids the caller leaves out, which unchecked-content then does not name.
  */
-export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze): TemplateFindings {
+export function lintTemplate(p: LintProject, html: string, groups: readonly Group[], parse = analyze, ignore: readonly string[] = []): TemplateFindings {
   const file = resolve(html);
   const text = p.ws.text(file) ?? "";
   const classes = (p.index.byTemplate.get(file) ?? []).map(({ call, body }) => ({ call, body }));
@@ -881,7 +966,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     }
     return d;
   };
-  const kind = `findings:${[...groups].sort().join(",")}`;
+  const kind = `findings:${[...groups].sort().join(",")}:${[...ignore].sort().join(",")}`;
   const from = [text, classes.length, ...classes.flatMap((c) => [c.call, c.body]), ...importers];
   const kept = p.ws.memo.get(file, kind, from) as { definitions: [string, string][]; value: TemplateFindings } | undefined;
   if (kept?.definitions.every(([tag, d]) => definition(tag) === d)) return kept.value;
@@ -894,7 +979,7 @@ export function lintTemplate(p: LintProject, html: string, groups: readonly Grou
     diagnostics: analysis.diagnostics,
     usage: !groups.includes("unused-markup") ? [] : classes.length || importers.length ? unusedMarkup(text, ownerCode(classes, importers), analysis) : null,
     flow: groups.includes("data-flow") ? dataFlow(text, classes, recording(contracts, tags), analysis, recording(known, knownTags), { has: (name) => (tags.add(BUBBLING), bubbling.has(name)) }) : [],
-    a11y: groups.includes("a11y") ? checkA11y(text, [], recording(children, tags), analysis.root) : [],
+    a11y: groups.includes("a11y") ? checkA11y(text, ignore, recording(children, tags), analysis.root) : [],
     uses: [...uses.values()],
   };
   const keys = [...tags, ...[...knownTags].map((tag) => `\0${tag}`)];
@@ -915,7 +1000,7 @@ function uncheckedTags(found: readonly { file: string; html: string; uses: Templ
   const all = [...unchecked];
   const head = [...all.filter(([, u]) => u.unread.cause === "undefined"), ...all.filter(([, u]) => u.unread.cause !== "undefined")][0]?.[1].first;
   if (!head) return [];
-  const groups = (["undefined", "not-component", "ambiguous"] as const).flatMap((cause) => {
+  const groups = (["undefined", "declared", "not-component", "ambiguous"] as const).flatMap((cause) => {
     const tags = all.filter(([, u]) => u.unread.cause === cause).map(([tag, u]) => (detailOf(u.unread) ? `<${tag}> (${detailOf(u.unread)})` : `<${tag}>`));
     return tags.length ? [`${tags.join(", ")}: ${UNREAD[cause].what}`] : [];
   });
@@ -937,8 +1022,6 @@ export interface LintOptions {
   ws?: Workspace;
   /** The groups to run instead of those `a11y` selects. */
   groups?: readonly Group[];
-  index?: ComponentIndex;
-  contracts?: Contracts;
   /** The rule ids whose warnings the caller leaves out: unchecked-custom-elements then lists the tags unknown-custom-element would report, which are otherwise left to it. */
   ignore?: readonly string[];
 }
@@ -947,20 +1030,19 @@ export interface LintOptions {
  * The lint of the templates under `dirs`: unused markup, data flow and, with `a11y`, the accessibility checks, and the templates' own diagnostics.
  * Each template is parsed once for all of them, and not at all when the workspace's memo has its findings.
  */
-export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [], ...given }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] } {
-  const index = given.index ?? ws.index(dirs);
-  const p: LintProject = given.contracts ? { ws, index, contracts: given.contracts, cwd } : lintProject(ws, dirs, cwd, index);
+export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws = new Workspace(), groups = ["unused-markup", "data-flow", ...(a11y ? (["a11y"] as const) : [])], ignore = [] }: LintOptions = {}): { issues: LintIssue[]; templates: { dir: string; file: string; diagnostics: Diagnostic[]; tags: string[] }[] } {
+  const p = lintProject(ws, dirs, cwd);
   const usage: LintIssue[] = [];
   const flow: LintIssue[] = [];
   const checks: LintIssue[] = [];
   const found: { file: string; html: string; uses: TemplateFindings["uses"] }[] = [];
-  const templates: { dir: string; file: string; diagnostics: Diagnostic[] }[] = [];
+  const templates: { dir: string; file: string; diagnostics: Diagnostic[]; tags: string[] }[] = [];
   const typosReported = !ignore.includes("unknown-custom-element");
   for (const dir of dirs) {
     for (const html of listHtml(dir, ws)) {
       const file = relative(cwd, html);
-      const r = lintTemplate(p, html, groups);
-      templates.push({ dir, file: html, diagnostics: r.diagnostics });
+      const r = lintTemplate(p, html, groups, analyze, ignore);
+      templates.push({ dir, file: html, diagnostics: r.diagnostics, tags: r.uses.map((u) => u.tag) });
       if (r.usage === null) usage.push(noImporter(file, html));
       else for (const d of r.usage) usage.push({ file, ...d });
       for (const d of r.flow) flow.push({ file, ...d });
@@ -975,6 +1057,4 @@ export function lintRun(dirs: string[], { a11y = false, cwd = process.cwd(), ws 
 
 export const runLint = (dirs: string[], options?: LintOptions): LintIssue[] => lintRun(dirs, options).issues;
 
-export function formatIssue(i: LintIssue): string {
-  return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
-}
+export { formatIssue } from "./codegen.ts";

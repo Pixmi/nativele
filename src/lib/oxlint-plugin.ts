@@ -94,7 +94,7 @@ function templateRule(group: Group, description: string, only?: string) {
           const ignore = context.options?.[0]?.ignore ?? [];
           const { p, templates, parse } = through(node, resolve(context.filename), context.sourceCode.text);
           for (const { html, label } of templates) {
-            for (const d of ofGroup(lintTemplate(p, html, [group], parse), group)) {
+            for (const d of ofGroup(lintTemplate(p, html, [group], parse, only ? [] : ignore), group)) {
               if (only ? d.rule !== only : ignore.includes(d.rule)) continue;
               context.report({ message: `${label}:${d.line}:${d.col} [${d.rule}] ${d.message}`, node });
             }
@@ -113,7 +113,7 @@ export default {
   meta: { name: "ts-dom" },
   rules: {
     /** The HTML declares markup that the component class never uses. Reported as errors. */
-    "unused-markup": templateRule("unused-markup", "Markup declared in the HTML (data-ref, data-if, data-each, {{ }}, data-on-*) must be used by the component class"),
+    "unused-markup": templateRule("unused-markup", "Markup declared in the HTML (data-ref, data-if, data-each, {{ }}) must be used by the component class"),
     /** ARIA and basic accessibility problems in the template. Off by default. */
     a11y: templateRule("a11y", "Check the template for ARIA and basic accessibility problems"),
     /** Data flow suggestions and child component contract checks. Off by default. */

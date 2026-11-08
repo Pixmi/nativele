@@ -167,14 +167,15 @@ export function templateImports(code: string): TemplateImport[] {
 
 const CLASS_NAME = /\bclass\b(?:\s+(?!extends\b)([A-Za-z_$][\w$]*))?\s*/g;
 const EXTENDS_COMPONENT = /\s*extends\s+Component\s*\(/y;
+const EXTENDS_CLASS = /\s*extends\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)(?![\w$.\s]*\()/y;
 
 /** Every `class X extends Component(` in `code`, also with type parameters (`class X<T>`): the class name (none for `class extends`) and the offset of the `(`. */
 export function componentClassHeads(code: string): { name?: string; open: number }[] {
   return classHeads(code, () => true).flatMap((h) => (h.open === undefined ? [] : [{ ...(h.name ? { name: h.name } : {}), open: h.open }]));
 }
 
-function classHeads(code: string, inCode: (pos: number) => boolean): { name?: string; at: number; open?: number }[] {
-  const out: { name?: string; at: number; open?: number }[] = [];
+function classHeads(code: string, inCode: (pos: number) => boolean): { name?: string; at: number; open?: number; base?: string }[] {
+  const out: { name?: string; at: number; open?: number; base?: string }[] = [];
   for (const m of code.matchAll(CLASS_NAME)) {
     if (!inCode(m.index)) continue;
     let at = m.index + m[0].length;
@@ -185,7 +186,9 @@ function classHeads(code: string, inCode: (pos: number) => boolean): { name?: st
     }
     EXTENDS_COMPONENT.lastIndex = at;
     const e = EXTENDS_COMPONENT.exec(code);
-    out.push({ ...(m[1] ? { name: m[1] } : {}), at: m.index, ...(e ? { open: at + e[0].length - 1 } : {}) });
+    EXTENDS_CLASS.lastIndex = at;
+    const base = e ? undefined : EXTENDS_CLASS.exec(code)?.[1]?.replace(/\s+/g, "");
+    out.push({ ...(m[1] ? { name: m[1] } : {}), at: m.index, ...(e ? { open: at + e[0].length - 1 } : {}), ...(base ? { base } : {}) });
   }
   return out;
 }
@@ -215,11 +218,15 @@ interface ClassDecl {
   col: number;
   /** `arg` is the identifier or the member access (`t.card`) passed to Component(). */
   component?: { arg?: string; call: string; body: string; endLine: number };
+  /** The class it extends, when that is not a `Component(...)` call: an identifier or a member access. */
+  base?: string;
 }
 export interface ModuleFacts {
   imports: Binding[];
   /** `export { a as b } from "spec"` is { local: "b", imported: "a" }; `export * from "spec"` is { local: "*", imported: "*" }. */
   reexports: Binding[];
+  /** The specifiers of `import "spec"`. */
+  sideEffects: string[];
   /** Exported name to local name; a `default` export of a class without a name has no local name. */
   exports: Map<string, string | undefined>;
   classes: ClassDecl[];
@@ -232,6 +239,7 @@ export interface ModuleFacts {
 
 const IDENT = String.raw`[A-Za-z_$][\w$]*`;
 const IMPORT = new RegExp(String.raw`\bimport\s+(?:type\s+)?((?:${IDENT}\s*,?\s*)?(?:\{[^}]*\}|\*\s*as\s+${IDENT})?)\s*from\s*(["'])([^"'\n]+)\2`, "g");
+const SIDE_EFFECT = /\bimport\s*(["'])([^"'\n]+)\1/g;
 const REEXPORT = new RegExp(String.raw`\bexport\s+(?:type\s+)?(\*(?:\s*as\s+(${IDENT}))?|\{[^}]*\})\s*from\s*(["'])([^"'\n]+)\3`, "g");
 const EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}(?!\s*from\b)/g;
 const EXPORT_CLASS = new RegExp(String.raw`\bexport\s+(default\s+)?(?:abstract\s+)?class\b(?:\s+(?!extends\b)(${IDENT}))?`, "g");
@@ -264,7 +272,7 @@ export function moduleFacts(code: string): ModuleFacts {
     }
     return { line: lo + 1, col: pos - (lineStarts[lo] as number) + 1 };
   };
-  const facts: ModuleFacts = { imports: [], reexports: [], exports: new Map(), classes: [], defines: [], tags: [], dispatched: [] };
+  const facts: ModuleFacts = { imports: [], reexports: [], sideEffects: [], exports: new Map(), classes: [], defines: [], tags: [], dispatched: [] };
   for (const m of code.matchAll(IMPORT)) {
     if (!inCode(m.index)) continue;
     const clause = m[1] as string;
@@ -276,6 +284,7 @@ export function moduleFacts(code: string): ModuleFacts {
     const braces = /\{([^}]*)\}/.exec(clause)?.[1];
     if (braces) for (const [imported, local] of listEntries(braces)) facts.imports.push({ local, imported, spec });
   }
+  for (const m of code.matchAll(SIDE_EFFECT)) if (inCode(m.index)) facts.sideEffects.push(m[2] as string);
   for (const m of code.matchAll(REEXPORT)) {
     if (!inCode(m.index)) continue;
     const what = m[1] as string;
@@ -287,7 +296,7 @@ export function moduleFacts(code: string): ModuleFacts {
   for (const m of code.matchAll(EXPORT_CLASS)) if (inCode(m.index)) facts.exports.set(m[1] ? "default" : (m[2] as string), m[2]);
   for (const m of code.matchAll(EXPORT_DEFAULT)) if (inCode(m.index)) facts.exports.set("default", m[1]);
   for (const head of classHeads(code, inCode)) {
-    const decl: ClassDecl = { ...(head.name ? { name: head.name } : {}), ...loc(head.at) };
+    const decl: ClassDecl = { ...(head.name ? { name: head.name } : {}), ...loc(head.at), ...(head.base ? { base: head.base } : {}) };
     const span = head.open === undefined ? null : classSpan(code, head.open);
     if (head.open !== undefined && span) {
       const call = code.slice(head.open, span.callEnd + 1);
@@ -333,6 +342,12 @@ function bubblesAtTop(obj: string): boolean {
 export interface Sources {
   text(file: string): string | null;
   facts?(file: string): ModuleFacts | undefined;
+}
+
+function factsIn(sources: Sources, file: string): ModuleFacts | undefined {
+  if (sources.facts) return sources.facts(file);
+  const text = sources.text(file);
+  return text === null ? undefined : moduleFacts(text);
 }
 
 function readText(file: string): string | null {
@@ -437,6 +452,16 @@ export class Workspace implements Sources {
     if (!files) lists.set(dir, (files = find(dir, this)));
     return files;
   }
+  /** The index of the modules `entries` reach (see `reachable`), such as those a package exports. */
+  indexFrom(entries: readonly string[]): ComponentIndex {
+    const key = `\u0001${entries.join("\0")}`;
+    let index = this.#indexes.get(key);
+    if (!index) {
+      this.#indexes.set(key, (index = componentIndex(reachable(entries, this), this)));
+      for (const file of index.byTemplate.keys()) this.memo.see(file);
+    }
+    return index;
+  }
   /** The index of the TypeScript files under `dirs`. */
   index(dirs: readonly string[]): ComponentIndex {
     const key = dirs.map((d) => resolve(d)).join("\0");
@@ -501,6 +526,31 @@ export interface ComponentIndex {
 type Target = { kind: "class"; file: string; name?: string } | { kind: "template"; file: string } | { kind: "namespace"; file: string };
 
 const TS_EXTENSIONS = [".ts", ".tsx", ".mts"];
+const isJs = (file: string) => /\.m?js$/.test(file);
+
+/** The files a relative import that resolves to `base` may name, in the order TypeScript tries them: its TypeScript source, then the JavaScript file itself (as a built package ships it). */
+function moduleCandidates(base: string): string[] {
+  const stem = base.replace(/\.(?:m?js|jsx)$/, "");
+  return [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`)), ...(isJs(base) ? [base] : [])];
+}
+
+/** `entries` and the modules they reach through relative imports, re-exports and `import "./x.js"`, templates left out. */
+export function reachable(entries: readonly string[], sources: Sources): string[] {
+  const out = new Set<string>();
+  const queue = [...entries];
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    if (out.has(file)) continue;
+    const m = factsIn(sources, file);
+    if (!m) continue;
+    out.add(file);
+    for (const spec of [...m.imports.map((i) => i.spec), ...m.reexports.map((r) => r.spec), ...m.sideEffects]) {
+      if (!spec.startsWith(".") || /\.html(?:\.js)?$/.test(spec)) continue;
+      const found = moduleCandidates(resolve(dirname(file), spec)).find((c) => out.has(c) || sources.text(c) !== null);
+      if (found) queue.push(found);
+    }
+  }
+  return [...out];
+}
 
 /** Build the index from the TypeScript files `files`, following relative imports into other files as needed. */
 export function componentIndex(files: readonly string[], sources: Sources = new Workspace()): ComponentIndex {
@@ -509,10 +559,7 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   for (const f of files) if (!listed.has(resolve(f))) listed.set(resolve(f), f);
   const facts = (file: string): ModuleFacts | undefined => {
     if (!modules.has(file)) {
-      const m = sources.facts ? sources.facts(file) : (() => {
-        const text = sources.text(file);
-        return text === null ? undefined : moduleFacts(text);
-      })();
+      const m = factsIn(sources, file);
       if (!m) return undefined;
       modules.set(file, m);
     }
@@ -524,9 +571,8 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     if (base.endsWith(".html")) return undefined;
     const html = /^(.*\.html)\.js$/.exec(base)?.[1];
     if (html) return html;
-    const stem = base.replace(/\.(?:m?js|jsx)$/, "");
-    const candidates = [...(/\.m?tsx?$/.test(base) ? [base] : []), ...TS_EXTENSIONS.map((e) => stem + e), ...TS_EXTENSIONS.map((e) => join(base, `index${e}`))];
-    return candidates.find((c) => listed.has(c) || modules.has(c)) ?? candidates.find((c) => !c.includes("/node_modules/") && facts(c));
+    const candidates = moduleCandidates(base);
+    return candidates.find((c) => listed.has(c) || modules.has(c)) ?? candidates.find((c) => !c.includes("/node_modules/") && !isJs(c) && facts(c));
   };
   const resolveExport = (file: string, name: string, seen: Set<string>): Target | undefined => {
     if (file.endsWith(".html")) return name === "default" ? { kind: "template", file } : undefined;
@@ -573,17 +619,18 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
   const byTemplate = new Map<string, ComponentRef[]>();
   const importers = new Map<string, { file: string; local: string }[]>();
   const defines: DefineSite[] = [];
+  function addComponent(file: string, c: ClassDecl): void {
+    if (!c.component) return;
+    const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
+    const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg.split(".")[0] } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
+    components.push(ref);
+    byFile.set(file, [...(byFile.get(file) ?? []), ref]);
+    if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
+  }
   for (const [file, path] of listed) {
     const m = facts(file);
     if (!m) continue;
-    for (const c of m.classes) {
-      if (!c.component) continue;
-      const t = c.component.arg ? resolveLocal(file, c.component.arg) : undefined;
-      const ref: ComponentRef = { file, ...(c.name ? { name: c.name } : {}), ...(c.component.arg ? { arg: c.component.arg.split(".")[0] } : {}), ...(t?.kind === "template" ? { template: t.file } : {}), call: c.component.call, body: c.component.body, line: c.line, col: c.col, endLine: c.component.endLine, defines: [] };
-      components.push(ref);
-      byFile.set(file, [...(byFile.get(file) ?? []), ref]);
-      if (ref.template) byTemplate.set(ref.template, [...(byTemplate.get(ref.template) ?? []), ref]);
-    }
+    for (const c of m.classes) addComponent(file, c);
     for (const i of m.imports) {
       const t = i.imported === "default" || i.imported === "*" ? target(file, i.spec) : undefined;
       if (t?.endsWith(".html")) importers.set(t, [...(importers.get(t) ?? []), { file, local: i.local }]);
@@ -597,8 +644,20 @@ export function componentIndex(files: readonly string[], sources: Sources = new 
     return { class: { file: t.file, ...(t.name ? { name: t.name } : {}), ...(exportName ? { exportName } : {}) } };
   }
   const byTag = new Map<string, DefineSite[]>();
+  /** The component class `cls` is, or the nearest class above it that is one, following `extends` through the index (a subclass has the contract of the Component(...) class it extends). */
+  const componentOf = (cls: { file: string; name?: string }, seen = new Set<string>()): ComponentRef | undefined => {
+    const own = byFile.get(cls.file)?.find((r) => r.name === cls.name);
+    const key = `${cls.file}\0${cls.name}`;
+    if (own || !cls.name || seen.has(key)) return own;
+    seen.add(key);
+    const base = facts(cls.file)?.classes.find((c) => c.name === cls.name)?.base;
+    const t = base ? resolveLocal(cls.file, base) : undefined;
+    if (t?.kind !== "class") return undefined;
+    if (!byFile.get(t.file)?.some((r) => r.name === t.name)) for (const c of facts(t.file)?.classes ?? []) if (c.name === t.name) addComponent(t.file, c);
+    return componentOf(t, seen);
+  };
   for (const d of defines) {
-    const c = d.class && byFile.get(d.class.file)?.find((r) => r.name === d.class?.name);
+    const c = d.class && componentOf(d.class);
     if (c) {
       d.component = c;
       c.defines.push(d);

@@ -4,7 +4,7 @@ description: "Use Nativele web components inside a React 19 app: passing props, 
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-07"
+  verified: "2026-11-08"
   tools: "react@19.3.1 react-dom@19.3.1 @types/react@19.3.0 @types/react-dom@19.3.0 vite@8.3.5 @vitejs/plugin-react@6.2.1 typescript@7.0.2"
   author: "Nativele maintainers"
   detects: "react"
@@ -24,7 +24,7 @@ Nativele components are native custom elements. React renders them like any othe
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | react, react-dom | 19.3.1 |
 | @types/react, @types/react-dom | 19.3.0 |
 | vite | 8.3.5 |
@@ -89,7 +89,9 @@ Verified on 2026-11-07 in Google Chrome 157, and by an agent trial: a fresh agen
 
    The component class must be exported and passed to `define()` in a folder that `ts-dom gen` scans, so it appears in `ts-dom-tags.ts`.
 
-The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Generate them first: `"build": "ts-dom gen src/nv && tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front). CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
+8. Put `ts-dom gen src/nv &&` in front of the build script: `"build": "ts-dom gen src/nv && tsc -b && vite build"`.
+
+   On a clean checkout the generated files do not exist yet, so `tsc -b` alone fails with `TS2307: Cannot find module './x.html.js'` (why the order matters: https://github.com/Pixmi/nativele/blob/main/skills/nativele-vite/SKILL.md#set-up).
 
 ## Example
 
@@ -162,7 +164,7 @@ define("shadow-card", ShadowCard);
 
 1. **Define before render.** Import every Nativele module before React first renders its tag (step 6). Otherwise props become attributes and object props are lost.
 2. **Event prop names.** Only `on` plus the exact event name works (`onitem-select`); `onItemSelect` and `onItem-select` never fire. Nativele events do not bubble by default, so put the handler on the element that emits. A ref with `addEventListener` in `useEffect` also works (remove it in the cleanup).
-3. **Light DOM slots and React children do not mix** (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework). When React inserts, removes or reorders the children of a Light DOM host with slots, it fails with `insertBefore`/`removeChild` errors that unmount the root, or leaves nodes outside the slot. Changing text in place and appending at the end happen to work, but do not rely on that. Use `shadow: true`, or one stable React element per slot and let React change only what is inside it:
+3. **Light DOM slots and React children do not mix.** Use `shadow: true`, or one stable React element per slot and let React change only what is inside it (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
 
    ```tsx
    <light-card>
@@ -170,8 +172,14 @@ define("shadow-card", ShadowCard);
      <div>{rows.map((r) => <p key={r.id}>{r.text}</p>)}</div>
    </light-card>
    ```
+
+   - When React inserts, removes or reorders the children of a Light DOM host with slots, it fails with `insertBefore`/`removeChild` errors that unmount the root, or leaves nodes outside the slot.
+   - Changing text in place and appending at the end happen to work, but do not rely on that.
+
 4. **New objects for changed props.** A Nativele component compares props by reference; pass a new object when the data changes (React state updates usually do).
-5. **TSX types need the declaration** in step 7; without it, every Nativele tag is `TS2339: Property 'info-card' does not exist on type 'JSX.IntrinsicElements'`. Check it with a `.tsx` that has a wrong prop under `// @ts-expect-error`, because `skipLibCheck` can hide mistakes inside the declaration itself. Keep these cases in a `.tsx` file of their own that the app never imports (the example uses `src/types-check.tsx`).
+5. **TSX types need the declaration** in step 7. Without it, every Nativele tag is `TS2339: Property 'info-card' does not exist on type 'JSX.IntrinsicElements'`.
+   - Check the declaration with a `.tsx` that has a wrong prop under `// @ts-expect-error`, because `skipLibCheck` can hide mistakes inside the declaration itself.
+   - Keep these cases in a `.tsx` file of their own that the app never imports.
 6. Not verified: server-side rendering, form controls inside Nativele components submitting with a React form, and React versions other than 19.3.
 
 React StrictMode is fine: it runs effects twice but does not insert the custom element twice, so `connected()` runs once, and `bind` subscriptions are released when React unmounts the element.
@@ -200,7 +208,6 @@ In the browser, render a component with an object prop and an event handler, and
 | The event handler never runs | the prop name is camelCased (`onItemSelect`) | use `on` plus the exact event name (`onitem-select`) |
 | `insertBefore`/`removeChild` errors, the React root disappears | React children changed inside a Light DOM component with slots | use `shadow: true`, or stable wrapper elements per slot |
 | `TS2339: Property 'x-y' does not exist on type 'JSX.IntrinsicElements'` | the declaration file is missing, or the component class is not exported | add `src/nativele-react.d.ts`, export the class, run `ts-dom gen` |
-| `ts-dom check` reports `unused-ref` | a `data-ref` the class never reads | use it in the class or remove the attribute |
 
 ## See also
 

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import oxlintPlugin from "../src/lib/oxlint-plugin.ts";
+import { writeTree } from "./helpers.ts";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 // The oxlint that Vite+ ships: the same engine the oxlint command line and the editor extension run.
@@ -14,11 +15,11 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !==
 const code = `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./panel.html.js";\nexport class Panel extends Component(tpl) {}\ndefine("x-panel", Panel);\n`;
 
 function project(rules: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-  writeFileSync(join(dir, "panel.html"), `<button type="button" data-on-click="save">Save</button>\n<p data-ref="note"></p>\n`);
-  writeFileSync(join(dir, "panel.ts"), code);
-  writeFileSync(join(dir, ".oxlintrc.json"), JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules }));
-  return dir;
+  return writeTree({
+    "panel.html": `<button type="button" data-on-click="save">Save</button>\n<p data-ref="note"></p>\n`,
+    "panel.ts": code,
+    ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules }),
+  });
 }
 
 const run = (dir: string, ...args: string[]) => {
@@ -37,25 +38,49 @@ describe("the lint plugin in oxlint", () => {
     expect(found).toEqual([["ts-dom(unused-ref)", "warning", "./panel.html.js:2:1 [unused-ref]"]]);
   }, 30_000);
 
-  it("leaves a missing data-on-* method to tsc, which reports it through define()", async () => {
-    const { default: plugin } = await import("../src/lib/oxlint-plugin.ts");
-    expect("missing-handler" in plugin.rules).toBe(false);
-    const out = JSON.parse(run(project({ "ts-dom/unused-markup": "error" }))) as { diagnostics: { message: string }[] };
+  it("leaves a missing data-on-* method to tsc, which reports it through define()", () => {
+    expect("missing-handler" in oxlintPlugin.rules).toBe(false);
+    const out = JSON.parse(run(project({ "ts-dom/unused-markup": "error" }))) as {
+      diagnostics: { message: string }[];
+    };
     expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["./panel.html.js:2:1 [unused-ref]"]);
   }, 30_000);
 
   it("does not treat ./x.html, the import of another template system, as a Nativele template", () => {
-    const dir = project({ "ts-dom/unused-markup": "error", "ts-dom/a11y": "error" });
-    writeFileSync(join(dir, "old.html"), `<p data-ref="note"></p><img src="a.png">\n`);
-    writeFileSync(join(dir, "old.ts"), `import view from "./old.html";\nexport const old = () => view;\n`);
+    const dir = writeTree({
+      "old.html": `<p data-ref="note"></p><img src="a.png">\n`,
+      "old.ts": `import view from "./old.html";\nexport const old = () => view;\n`,
+      ".oxlintrc.json": JSON.stringify({
+        jsPlugins: [{ name: "ts-dom", specifier: plugin }],
+        rules: { "ts-dom/unused-markup": "error", "ts-dom/a11y": "error" },
+      }),
+    });
     const out = JSON.parse(run(dir, "old.ts")) as { diagnostics: unknown[] };
     expect(out.diagnostics).toEqual([]);
   }, 30_000);
 
+  it("checks a tag of a Nativele component package the app depends on, run in the app's folder", () => {
+    const root = writeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["packages/*", "apps/*"] }),
+      "packages/ui/package.json": JSON.stringify({ name: "@acme/ui", exports: { ".": "./src/index.ts" }, peerDependencies: { "@nativele/ts-dom": "^0.7.0" } }),
+      "packages/ui/src/index.ts": `export * from "./ui-button.js";\n`,
+      "packages/ui/src/ui-button.html": `<button data-on-click="press">x</button>\n`,
+      "packages/ui/src/ui-button.ts": `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./ui-button.html.js";\nexport class UiButton extends Component(tpl, { emits: { press: event() } }) { press() { this.emit("press"); } }\ndefine("ui-button", UiButton);\n`,
+      "apps/web/package.json": JSON.stringify({ name: "web", dependencies: { "@acme/ui": "*" } }),
+      "apps/web/.oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-event": "warn" } }),
+      "apps/web/src/app-view.html": `<ui-button data-on-pres="go"></ui-button>\n`,
+      "apps/web/src/app-view.ts": `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./app-view.html.js";\nexport class AppView extends Component(tpl) { go() {} }\ndefine("app-view", AppView);\n`,
+    });
+    mkdirSync(join(root, "node_modules/@acme"), { recursive: true });
+    symlinkSync(join(root, "packages/ui"), join(root, "node_modules/@acme/ui"));
+    const out = JSON.parse(run(join(root, "apps/web"), "src/app-view.ts")) as { diagnostics: { message: string }[] };
+    expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["./app-view.html.js:1:1 [unknown-event]"]);
+  }, 30_000);
+
   it("checks a child tag against the definition in the linted file's package when another package defines the same tag", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-    const row = (emits: string) => `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./row.html.js";\nexport class Row extends Component(tpl, { emits: { ${emits} } }) {}\ndefine("x-row", Row);\n`;
-    const files: Record<string, string> = {
+    const row = (emits: string) =>
+      `import { Component, define, event } from "@nativele/ts-dom";\nimport tpl from "./row.html.js";\nexport class Row extends Component(tpl, { emits: { ${emits} } }) {}\ndefine("x-row", Row);\n`;
+    const dir = writeTree({
       "package.json": "{}",
       ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-event": "warn" } }),
       "app/row.html": "<li></li>\n",
@@ -65,31 +90,42 @@ describe("the lint plugin in oxlint", () => {
       "example/package.json": "{}",
       "example/row.html": "<li></li>\n",
       "example/row.ts": row(`"row-toggle": event()`),
-    };
-    for (const [name, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, name)), { recursive: true });
-      writeFileSync(join(dir, name), text);
-    }
+    });
     const out = JSON.parse(run(dir, "app/board.ts")) as { diagnostics: { message: string }[] };
     expect(out.diagnostics.map((d) => /does not emit "([^"]+)"/.exec(d.message)?.[1])).toEqual(["row-open"]);
   }, 30_000);
 
   it("checks a library element against the custom elements manifest of a dependency, with a rule per id", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-    const manifest = { schemaVersion: "1.0.0", modules: [{ path: "dialog.js", declarations: [{ name: "D", customElement: true, tagName: "fk-dialog", superclass: { name: "HTMLElement" }, attributes: [{ name: "open", type: { text: "boolean" } }], events: [{ name: "fk-hide" }], slots: [{ name: "" }, { name: "footer" }] }] }] };
-    const files: Record<string, string> = {
+    const manifest = {
+      schemaVersion: "1.0.0",
+      modules: [
+        {
+          path: "dialog.js",
+          declarations: [
+            {
+              name: "D",
+              customElement: true,
+              tagName: "fk-dialog",
+              superclass: { name: "HTMLElement" },
+              attributes: [{ name: "open", type: { text: "boolean" } }],
+              events: [{ name: "fk-hide" }],
+              slots: [{ name: "" }, { name: "footer" }],
+            },
+          ],
+        },
+      ],
+    };
+    const dir = writeTree({
       "package.json": JSON.stringify({ dependencies: { "fake-wc": "1" } }),
       "node_modules/fake-wc/package.json": JSON.stringify({ customElements: "cem.json" }),
       "node_modules/fake-wc/cem.json": JSON.stringify(manifest),
       ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unknown-slot": "warn", "ts-dom/unknown-custom-element": "error", "ts-dom/invalid-prop-value": "warn", "ts-dom/unknown-native-event": "warn" } }),
       "page.html": `<fk-dialog open="false"><p slot="foter">x</p></fk-dialog>\n<fk-dailog></fk-dailog>\n<form data-on-submt="go"></form>\n`,
       "page.ts": `import { Component } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
+    });
+    const out = JSON.parse(run(dir, "page.ts")) as {
+      diagnostics: { code: string; severity: string; message: string }[];
     };
-    for (const [name, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, name)), { recursive: true });
-      writeFileSync(join(dir, name), text);
-    }
-    const out = JSON.parse(run(dir, "page.ts")) as { diagnostics: { code: string; severity: string; message: string }[] };
     expect(out.diagnostics.map((d) => [d.code, d.severity, d.message.slice(0, d.message.indexOf("]") + 1)]).sort()).toEqual([
       ["ts-dom(invalid-prop-value)", "warning", "./page.html.js:1:1 [invalid-prop-value]"],
       ["ts-dom(unknown-custom-element)", "error", "./page.html.js:2:1 [unknown-custom-element]"],
@@ -99,18 +135,20 @@ describe("the lint plugin in oxlint", () => {
   }, 30_000);
 
   it("click-semantics checks a child component against its template and leaves other custom elements alone", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-    const child = (cls: string, tag: string) => `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
-    const files: Record<string, string> = {
-      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/click-semantics": "warn", "ts-dom/data-flow": "warn" } }),
+    const child = (cls: string, tag: string) =>
+      `import { Component, define } from "@nativele/ts-dom";\nimport tpl from "./${tag}.html.js";\nexport class ${cls} extends Component(tpl) {}\ndefine("${tag}", ${cls});\n`;
+    const dir = writeTree({
+      ".oxlintrc.json": JSON.stringify({
+        jsPlugins: [{ name: "ts-dom", specifier: plugin }],
+        rules: { "ts-dom/click-semantics": "warn", "ts-dom/data-flow": "warn" },
+      }),
       "x-action.ts": child("Action", "x-action"),
       "x-action.html": `<button type="button">{{ label }}</button>\n`,
       "x-card.ts": child("Card", "x-card"),
       "x-card.html": `<div><span>{{ title }}</span></div>\n`,
       "page.html": `<div data-on-click="go">x</div>\n<wa-button data-on-click="go">Save</wa-button>\n<x-action data-on-click="go"></x-action>\n<x-card data-on-click="go"></x-card>\n<x-card role="button" tabindex="0" data-on-click="go"></x-card>\n`,
       "page.ts": `import { Component } from "@nativele/ts-dom";\nimport tpl from "./page.html.js";\nexport class Page extends Component(tpl) {\n  go(): void {}\n}\n`,
-    };
-    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+    });
     const out = JSON.parse(run(dir, "page.ts")) as { diagnostics: { message: string }[] };
     expect(out.diagnostics.filter((d) => d.message.includes("unchecked-custom-elements"))).toEqual([]);
     expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf(",")))).toEqual([
@@ -121,34 +159,32 @@ describe("the lint plugin in oxlint", () => {
   }, 30_000);
 
   it("reports a template's findings in the file of the class that uses it, also through a barrel, and not in a module that only imports it", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-    const files: Record<string, string> = {
-      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unused-ref": "error" } }),
+    const dir = writeTree({
+      ".oxlintrc.json": JSON.stringify({
+        jsPlugins: [{ name: "ts-dom", specifier: plugin }],
+        rules: { "ts-dom/unused-ref": "error" },
+      }),
       "templates/card.html": `<p data-ref="note"></p>\n`,
       "templates/index.ts": `export { default as cardTpl } from "./card.html.js";\n`,
       "card.ts": `import { Component, define } from "@nativele/ts-dom";\nimport { cardTpl } from "./templates/index.ts";\nexport class Card extends Component(cardTpl) {}\ndefine("x-card", Card);\n`,
       "card.stories.ts": `import tpl from "./templates/card.html.js";\nconst view = tpl.instantiate();\nview.refs.note.textContent = "story";\n`,
+    });
+    const out = JSON.parse(run(dir, "card.ts", "card.stories.ts", "templates/index.ts")) as {
+      diagnostics: { filename: string; message: string }[];
     };
-    for (const [name, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, name)), { recursive: true });
-      writeFileSync(join(dir, name), text);
-    }
-    const out = JSON.parse(run(dir, "card.ts", "card.stories.ts", "templates/index.ts")) as { diagnostics: { filename: string; message: string }[] };
     expect(out.diagnostics.map((d) => [d.filename, d.message.slice(0, d.message.indexOf("]") + 1)])).toEqual([["card.ts", "./templates/card.html:1:1 [unused-ref]"]]);
   }, 30_000);
 
   it("labels a template reached through a barrel by its path from the file, with ./ only for the same folder or below", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nativele-oxlint-"));
-    const files: Record<string, string> = {
-      ".oxlintrc.json": JSON.stringify({ jsPlugins: [{ name: "ts-dom", specifier: plugin }], rules: { "ts-dom/unused-ref": "error" } }),
+    const dir = writeTree({
+      ".oxlintrc.json": JSON.stringify({
+        jsPlugins: [{ name: "ts-dom", specifier: plugin }],
+        rules: { "ts-dom/unused-ref": "error" },
+      }),
       "templates/card.html": `<p data-ref="note"></p>\n`,
       "templates/index.ts": `export { default as cardTpl } from "./card.html.js";\n`,
       "pages/card.ts": `import { Component, define } from "@nativele/ts-dom";\nimport { cardTpl } from "../templates/index.ts";\nexport class Card extends Component(cardTpl) {}\ndefine("x-card", Card);\n`,
-    };
-    for (const [name, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, name)), { recursive: true });
-      writeFileSync(join(dir, name), text);
-    }
+    });
     const out = JSON.parse(run(dir, "pages/card.ts")) as { diagnostics: { message: string }[] };
     expect(out.diagnostics.map((d) => d.message.slice(0, d.message.indexOf("]") + 1))).toEqual(["../templates/card.html:1:1 [unused-ref]"]);
   }, 30_000);

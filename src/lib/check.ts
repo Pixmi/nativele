@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { analyze, CodegenError, crossDirDuplicates, generateDirs, isSelected, renderTags, staleGenerated } from "./codegen.ts";
+import { analyze, CodegenError, duplicateDefines, generateDirs, isSelected, staleGenerated, staleIssue } from "./codegen.ts";
 import { callArguments, classSpan, componentClassHeads, indexDirs, literalKeys, scanDefines, Workspace } from "./components.ts";
 import type { ComponentIndex } from "./components.ts";
 import { projectConfigs } from "./tsconfig.ts";
@@ -22,6 +22,7 @@ export const CHECK_RULES = {
   "item-prop-missing": "the data-prop of a list is not a prop of its item component (found by tsc)",
   "item-not-in-tag-map": "the item component is defined in a scanned folder but missing from ts-dom-tags.ts (found by tsc)",
   "item-class-not-exported": "the item component class passed to define() is not exported (found by tsc)",
+  "define-class-not-exported": "define() passes a class its file does not export while a template uses the tag, so ts-dom-tags.ts leaves the tag out and its elements are typed as HTMLElement",
   tsc: "any other TypeScript error, as tsc reports it",
   "tsc-not-found": "TypeScript is not installed in the project, so types were not checked and the check fails",
   "dir-not-found": "a folder given on the command line does not exist, so nothing in it was checked",
@@ -349,21 +350,20 @@ export function runCheck(options: CheckOptions): LintIssue[] {
   const lint = lintRun(dirs, { a11y: !!options.a11y, cwd, ws, ignore: options.ignore });
   for (const t of lint.templates) if (isSelected(t.dir, t.file, generate)) for (const d of t.diagnostics) issues.push({ file: rel(t.file), ...d });
 
-  for (const dir of dirs) {
-    try {
-      renderTags(dir, ws);
-    } catch (e) {
-      if (!(e instanceof CodegenError)) throw e;
-      issues.push({ file: rel(dir), line: 1, col: 1, rule: "duplicate-define", severity: "error", message: e.message.replace(/^[^[]*\[duplicate-define\]\s*/, "") });
-    }
+  for (const d of duplicateDefines(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
+  // Only a tag a template uses gets the types the tag map gives; a class kept private, such as a test's own host, needs none.
+  const used = new Set(lint.templates.flatMap((t) => t.tags));
+  for (const d of ws.index(dirs).defines) {
+    if (!d.class || d.class.exportName !== undefined || !used.has(d.tag)) continue;
+    const name = d.class.name ?? d.id;
+    issues.push({ file: rel(d.file), line: d.line, col: d.col, rule: "define-class-not-exported", severity: "warning", message: `define("${d.tag}", ${d.id}) passes the class ${name}, which ${rel(d.class.file)} does not export, so ts-dom-tags.ts leaves <${d.tag}> out: a ref or a list item of it in the templates that use it is typed as HTMLElement, and its props are not checked. Fix: export the class (export class ${name} ...).` });
   }
-  for (const d of crossDirDuplicates(dirs, ws)) issues.push({ ...d, file: rel(d.file) });
 
   if (options.write === false) {
     const defs = scanDefines(dirs, ws);
     for (const dir of dirs) {
       for (const s of staleGenerated(dir, generate, defs, dirs, ws)) {
-        issues.push({ file: rel(s.file), line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${s.reason}, so the type errors below may not match the templates. Fix: run ts-dom gen (or ts-dom check without --no-write).` });
+        issues.push(staleIssue(rel(s.file), s.reason));
       }
     }
   } else {

@@ -104,17 +104,59 @@ describe("light slot dynamic changes", () => {
     expect(el.querySelector("header")?.textContent).toBe("fallback");
     expect(el.changes).toEqual(["head", "head"]);
   });
-  it("the default slot receives nodes without a slot name; nodes with no matching slot are not rendered", async () => {
+  it("the default slot receives nodes without a slot name; a node with no matching slot is removed from the element, with one warning per slot name", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const el = document.createElement("t-dyn") as Dyn;
+    const early = document.createElement("s");
+    early.slot = "nope";
+    el.append(early);
     document.body.append(el);
+    expect(early.parentNode).toBeNull();
     await tick();
     el.append(document.createElement("i"));
     const lost = document.createElement("u");
     lost.slot = "nope";
-    el.append(lost);
+    const other = document.createElement("q");
+    other.slot = "other";
+    el.append(lost, other);
     await tick();
     expect(el.querySelector("main i")).not.toBeNull();
-    expect(el.querySelector("u")).toBeNull();
+    expect([lost.parentNode, other.parentNode]).toEqual([null, null]);
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+      `<t-dyn>: [unslotted-node] a child node with slot="nope" has no matching slot in the template, so it was removed from the element. Fix: add <slot name="nope"> to the template, or give the node the slot attribute of a slot the template has.`,
+      expect.stringContaining(`slot="other"`),
+    ]);
+    warn.mockRestore();
+  });
+});
+
+describe("children no slot takes", () => {
+  it("a comment stays where it is, as natively, and is neither assigned nor warned about", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const el = document.createElement("t-dyn") as Dyn;
+    const note = document.createComment("anchor");
+    el.append(note);
+    document.body.append(el);
+    const later = document.createComment("later");
+    el.append(later);
+    await tick();
+    expect([note.parentNode, later.parentNode]).toEqual([el, el]);
+    expect(el.assignedNodes("")).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+  it("unslotted-node is logged once per tag and slot name on the page, not once per element", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement("t-dyn") as Dyn;
+      document.body.append(el);
+      const lost = document.createElement("u");
+      lost.slot = "elsewhere";
+      el.append(lost);
+    }
+    await tick();
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes(`slot="elsewhere"`))).toHaveLength(1);
+    warn.mockRestore();
   });
 });
 

@@ -1,25 +1,16 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5306);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForSelector("light-card");
+  ({ page, close } = await openPage({ path: "/browser/fixtures/page.html", ready: "light-card" }));
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 describe("Atomic moves (real Chrome)", () => {
   it("reordering a keyed list keeps its items connected where the browser has moveBefore", async () => {

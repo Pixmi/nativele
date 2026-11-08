@@ -17,13 +17,14 @@ metadata:
 - The project depends on `@nativele/ts-dom` and lints with oxlint (`.oxlintrc.json`), Vite+ (`vp lint`, a `lint` block in `vite.config.ts`) or ESLint (`eslint.config.*`), and the Nativele rules should run in that linter, in the editor and in the project's lint command.
 - `ts-dom doctor` reports `oxlint-plugin-missing`, or a lint finding (`unused-ref`, `img-alt`, `unknown-prop`, ...) needs a decision: fix it, give the rule another severity, or ignore an id.
 - Generated files (`*.html.ts`, `ts-dom-tags.ts`) show up in the linter's output, or a template used only by tests is reported.
-- This Skill owns the lint configuration as far as Nativele is concerned: `.oxlintrc.json`, the `lint` block of `vite.config.ts`, and `eslint.config.*`. It does not own the rest of `vite.config.ts` (the build: `nativele-vite`), `tsconfig*.json` (`nativele-typescript`), formatting (`nativele-formatting`), the components themselves (`nativele-core`), tests (`nativele-testing`) or CI (`nativele-ci`). It keeps the project's linter, plugins and rules; it never replaces a linter, adds a second one, or rewrites a config.
+- This Skill owns the lint configuration as far as Nativele is concerned: `.oxlintrc.json`, the `lint` block of `vite.config.ts`, and `eslint.config.*`. It keeps the project's linter, plugins and rules, and never replaces a linter, adds a second one, or rewrites a config.
+- It does not own the rest of `vite.config.ts` (the build: `nativele-vite`), `tsconfig*.json` (`nativele-typescript`), formatting (`nativele-formatting`), the components themselves (`nativele-core`), tests (`nativele-testing`) or CI (`nativele-ci`).
 
 ## Versions
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | oxlint | 1.91.0 (`.oxlintrc.json`) |
 | vite-plus | 1.5.0 (`vp lint`, which runs oxlint 1.91.0, with the `lint` block in `vite.config.ts`) |
 | eslint | 10.14.0 and 9.39.4 (flat config `eslint.config.js`) |
@@ -36,44 +37,76 @@ Verified on 2026-11-08 in fresh projects built from the packed library, with a f
 
 Check first, then change only what the task needs. Keep the user's plugins, rules, categories, ignore patterns, key order and formatting.
 
-1. **Find the linter the project actually uses.** Look for `.oxlintrc.json` (or `.oxlintrc.jsonc`), a `lint:` block in `vite.config.ts` (Vite+), `eslint.config.js`/`.mjs`/`.ts`, and the `lint` script in `package.json`. Use the one the `lint` script runs. If there is none, do not add a linter: `ts-dom check` (which `nativele-core` already runs) and `ts-dom lint` give the same findings without one. Other linters were not tried; for them, run `npx ts-dom lint <dir>` as its own step and leave their config alone.
-2. **See what is reported today.** Run `npx ts-dom lint <dir> --a11y` with the folders the project passes to `ts-dom check`, and the project's own lint command. The first shows every Nativele finding; the second shows what the linter already reports, so a new finding after the change can be told apart from an old one. Run `npx ts-dom doctor <dir>`: `oxlint-plugin-missing` names the config file that lacks the plugin.
+1. **Find the linter the project actually uses: the one its `lint` script in `package.json` runs.** Look for:
+   - `.oxlintrc.json` (or `.oxlintrc.jsonc`);
+   - a `lint:` block in `vite.config.ts` (Vite+);
+   - `eslint.config.js`, `.mjs` or `.ts`.
+
+   If there is none, do not add a linter: `ts-dom check` (which `nativele-core` already runs) and `ts-dom lint` give the same findings without one. Other linters were not tried; for them, run `npx ts-dom lint <dir>` as its own step and leave their config alone.
+2. **See what is reported today.** Run these with the folders the project passes to `ts-dom check`:
+   - `npx ts-dom lint <dir> --a11y` shows every Nativele finding.
+   - The project's own lint command shows what the linter already reports, so a new finding after the change can be told apart from an old one.
+   - `npx ts-dom doctor <dir>`: `oxlint-plugin-missing` names the config file that lacks the plugin.
 3. **Load the plugin in that config, next to what is there.**
-   - oxlint (`.oxlintrc.json`) and Vite+ (`lint` in `vite.config.ts`, same keys): add `{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }` to `jsPlugins` (create the array if missing; keep other entries). The plain string `"@nativele/ts-dom/oxlint"` also works. Do not touch `plugins` (the built-in ones) or `categories`.
+   - oxlint (`.oxlintrc.json`) and Vite+ (`lint` in `vite.config.ts`, same keys): add `{ "name": "ts-dom", "specifier": "@nativele/ts-dom/oxlint" }` to `jsPlugins`, creating the array if missing and keeping other entries. The plain string `"@nativele/ts-dom/oxlint"` also works. Do not touch `plugins` (the built-in ones) or `categories`.
    - ESLint (flat config): `import tsDom from "@nativele/ts-dom/oxlint"` and add a config object `{ plugins: { "ts-dom": tsDom }, rules: { ... } }` to the exported array. The same module is a valid ESLint plugin. It needs the TypeScript parser the project already uses for `.ts` files (verified with `typescript-eslint`).
    - Loading the plugin enables nothing: with `jsPlugins` set and no `ts-dom/*` rule, nothing is reported and doctor is satisfied. Step 4 decides the rules.
 4. **Choose rules and severities** (see "Rules, groups and severities" below). The baseline is `"ts-dom/unused-markup": "error"`. Add `"ts-dom/data-flow"` and `"ts-dom/a11y"` as `"warn"` when the user wants them; ask before turning on a11y in an existing project with many templates, and show the count from step 2.
-5. **Keep generated files out of the linter.** The rules run on the component files, never on `*.html.ts` or `ts-dom-tags.ts`, but the project's own rules do. oxlint and `vp lint` skip what `.gitignore` lists, so when `.gitignore` has `*.html.ts` and `ts-dom-tags.ts` (as the setup guide recommends), nothing is needed. Otherwise, and always with ESLint (it does not read `.gitignore`), add `**/*.html.ts` and `**/ts-dom-tags.ts` to the existing ignore list: `ignorePatterns` for oxlint and Vite+, `globalIgnores([...])` from `eslint/config` for ESLint. Never fix a finding inside a generated file: it is rewritten on the next `ts-dom gen`.
-6. **Test folders.** Access from a test never counts as use (Known limitations 3), and the rules only report a template in the file of the class that uses it. Turn `ts-dom/unused-markup` off only for files that declare such a class themselves (a test-only host component): an `overrides` entry `{ "files": ["test/**"], "rules": { "ts-dom/unused-markup": "off" } }` in oxlint, or `{ files: ["test/**"], rules: { "ts-dom/unused-markup": "off" } }` in ESLint, with the project's own test globs. The override reaches only the linter: `ts-dom lint` and `ts-dom check` read no linter config and report every template under the folders they are given, so keep test hosts and their templates outside those folders (a `test/` next to `src/nv`, not `src/nv/__tests__/`); a test host inside them fails the `check` in the build script. Do not lower `unused-ref` for component files to make room for tests; a ref that only a test reads is removed and the test queries the DOM (the testing Skill owns how).
-7. **State what other areas need, and leave the how to them.** The lint script belongs to the build owner and the CI steps to `nativele-ci`: the project's lint command covers the Nativele rules, except `no-importer` (Known limitations 1), which `ts-dom check` reports. The type check order (generated files before `tsc`) is a requirement `nativele-typescript` states; the script that runs it belongs to the build owner. Formatting templates, and keeping the formatter off the generated files, belongs to `nativele-formatting`.
+5. **Keep generated files out of the linter.** The Nativele rules never run on `*.html.ts` or `ts-dom-tags.ts`, but the project's own rules do.
+   - oxlint and `vp lint` skip what `.gitignore` lists, so when `.gitignore` has `*.html.ts` and `ts-dom-tags.ts`, nothing is needed.
+   - Otherwise, and always with ESLint (it does not read `.gitignore`), add `**/*.html.ts` and `**/ts-dom-tags.ts` to the existing ignore list: `ignorePatterns` for oxlint and Vite+, `globalIgnores([...])` from `eslint/config` for ESLint.
+   - Never fix a finding inside a generated file: it is rewritten on the next `ts-dom gen`.
+6. **Turn `ts-dom/unused-markup` off for test files that declare their own component class (a test-only host component)**, with the project's own test globs:
+   - oxlint: an `overrides` entry `{ "files": ["test/**"], "rules": { "ts-dom/unused-markup": "off" } }`.
+   - ESLint: a config object `{ files: ["test/**"], rules: { "ts-dom/unused-markup": "off" } }`.
+   - The rules report a template only in the file of the class that uses it, and access from a test never counts as use (Known limitations 3). No other test file needs the override.
+   - The override reaches only the linter. `ts-dom lint` and `ts-dom check` report every template under the folders they are given, so keep test hosts and their templates outside those folders (a `test/` next to `src/nv`, not `src/nv/__tests__/`). A test host inside them fails the `check` in the build script.
+   - Do not lower `unused-ref` for component files to make room for tests. A ref that only a test reads is removed, and the test queries the DOM (the testing Skill owns how).
+7. **State what other areas need, and leave the how to them.**
+   - The lint script belongs to the build owner, and the CI steps to `nativele-ci`. The project's lint command covers the Nativele rules except `no-importer` (Known limitations 1), which `ts-dom check` reports.
+   - The type check order (generated files before `tsc`) is a requirement `nativele-typescript` states; the script that runs it belongs to the build owner.
+   - Formatting templates, and keeping the formatter off the generated files, belongs to `nativele-formatting`.
 8. **Run Verify.**
 
 ### What runs where
 
 | | `ts-dom lint [dirs]` | `ts-dom check [dirs]` | The `ts-dom` JS plugin in oxlint, `vp lint` or ESLint |
 |---|---|---|---|
-| unused-markup (errors) | all 7 ids, including `no-importer` | all 7 ids, including `no-importer` | 6 ids; `no-importer` does not exist here |
+| unused-markup (errors) | all 6 ids, including `no-importer` | all 6 ids, including `no-importer` | 5 ids; `no-importer` does not exist here |
 | data-flow (warnings) | always | always | when `ts-dom/data-flow` or a single id is on |
 | a11y (warnings) | with `--a11y` | with `--a11y` | when `ts-dom/a11y` or a single id is on |
-| `unchecked-custom-elements` (warning: tags lint has no single definition of, such as those of a library without a custom elements manifest) | once per run | once per run | not reported (it would repeat in every file) |
+| `unchecked-custom-elements` (warning) | once per run | once per run | not reported (it would repeat in every file) |
 | Also runs | nothing else; needs no generated files and writes nothing | codegen (writes the generated files unless `--no-write`) and `tsc` | the project's other rules |
-| Severity and ignore | fixed: unused-markup is an error, the rest warnings; no per-id switch (filter `--json` if needed) | the same | per rule in the config, `ignore` on the three groups |
+| Severity | fixed: unused-markup is an error, the rest warnings | the same | per rule in the config |
+| Ignoring an id | `--ignore=<id>` leaves out warnings; errors are always reported | the same | `ignore` on the three groups |
 | Where a finding points | `src/nv/card.html:3:3 error [unused-ref] ...` | the same | the template's `import` line in the `.ts` file, with the HTML location first: `src/nv/card.ts:2:1: error ts-dom(unused-markup): ./card.html.js:3:3 [unused-ref] ...` |
 | Exit code | 1 on an error (also with `--json`); 1 on a warning too with `--strict`; 0 otherwise | the same | the linter's own (oxlint and ESLint: 1 on an error, 0 on warnings only) |
 | `--json` | `{ "issues": [{ file, rule, severity, message, line, col }] }`; data-flow child issues add `tag`, `attrs`, `events` | `{ "issues": [...] }` | the linter's own format |
+
+`unchecked-custom-elements` names the tags lint has no single definition of, such as those of a library without a custom elements manifest.
 
 `ts-dom lint` and `ts-dom check` scan only the folders passed to them, and `--include`/`--exclude` do not filter their lint findings. Neither reads the linter's config, so a severity or ignore chosen there does not change them (Known limitations 2).
 
 ### Rules, groups and severities
 
-- Only modules that import a template as `./x.html.js` are Nativele templates to the rules; another template system's `import view from "./X.html"` is left alone. While both systems live side by side, give `ts-dom lint` and `ts-dom check` only the Nativele folders, and turn the plugin's rules on only for the migrated paths with an `overrides` entry (`{ "files": ["packages/chat/**"], "rules": { "ts-dom/unused-markup": "error" } }`) instead of in the top-level `rules`.
+- Only modules that import a template as `./x.html.js` are Nativele templates to the rules; another template system's `import view from "./X.html"` is left alone.
+- While both template systems live side by side, give `ts-dom lint` and `ts-dom check` only the Nativele folders. Turn the plugin's rules on only for the migrated paths with an `overrides` entry (`{ "files": ["packages/chat/**"], "rules": { "ts-dom/unused-markup": "error" } }`) instead of in the top-level `rules`.
 - The a11y name rules (`control-name`, `img-alt`, `form-label`, `iframe-title`, `dialog-name`, `heading-empty`) leave an element with a `data-ref` to TypeScript: when the code sets its text, `aria-label` or `alt`, give it a `data-ref` instead of ignoring the rule.
 - Three groups: `ts-dom/unused-markup`, `ts-dom/data-flow`, `ts-dom/a11y`. A group reports all of its ids; `["warn", { "ignore": ["img-alt"] }]` drops ids from it, for every file the rule covers (narrow it with an `overrides` entry for the files concerned). `npx ts-dom rules` lists every id by group, and `npx ts-dom rules --explain=<id>` says why it exists.
 - Every id is also a rule of its own (`ts-dom/unused-ref`, `ts-dom/img-alt`, `ts-dom/unknown-prop`, ...), for a severity per id. A single-id rule takes no options.
 - To give one id another severity, ignore it in its group and enable it alone: `"ts-dom/unused-markup": ["error", { "ignore": ["unused-ref"] }], "ts-dom/unused-ref": "warn"`. A group and one of its ids both on report the finding twice.
-- Choose by what each id costs when it is missed: unused-markup ids are dead or broken markup (blank text, an empty list) and stay errors. data-flow ids are design advice plus child contract checks (`unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot`, `unknown-custom-element`), warnings by default; raise the contract ids to `"error"` singly if the user wants. The contract ids also check another library's elements when its package declares a custom elements manifest (`customElements` in its `package.json`, as Web Awesome does) and is a dependency of the package that holds the templates. a11y ids are static hints, warnings, and `ignore` takes the ids that do not apply (for example `aria-idref` when labels point outside the template).
+- Choose by what each id costs when it is missed:
+
+  | Group | What it finds | Severity |
+  |---|---|---|
+  | unused-markup | dead or broken markup (blank text, an empty list) | keep `error` |
+  | data-flow | design advice, plus the child contract ids `unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot`, `unknown-custom-element` | `warn`; raise the contract ids to `"error"` singly if the user wants |
+  | a11y | static hints | `warn`; `ignore` the ids that do not apply (for example `aria-idref` when labels point outside the template) |
+
+- The contract ids also check another library's elements when its package declares a custom elements manifest (`customElements` in its `package.json`, as Web Awesome does) and is a dependency of the package that holds the templates.
 - An `ignore` id that does not exist is silently accepted: check every id against `npx ts-dom rules` before writing it.
-- `any` in the rest of the code is the project linter's choice: enable `typescript/no-explicit-any` (oxlint, `vp lint`) or `@typescript-eslint/no-explicit-any` (ESLint) when the user wants it forbidden. Nativele itself reports `any` only in component contracts (`any-in-contract`, from `ts-dom check`, not from the plugin). An `any` handler parameter is reported only once the class's `Component()` contract errors (an `any` in `state` or `props` among them) are fixed, as tsc checks the handlers at `define()` after the class compiles; run `ts-dom check` again after each fix.
+- `any` in the rest of the code is the project linter's choice: enable `typescript/no-explicit-any` (oxlint, `vp lint`) or `@typescript-eslint/no-explicit-any` (ESLint) when the user wants it forbidden.
+- Nativele itself reports `any` only in component contracts (`any-in-contract`, from `ts-dom check`, not from the plugin). An `any` handler parameter is reported only once the class's `Component()` contract errors are fixed, as tsc checks the handlers at `define()` after the class compiles; run `ts-dom check` again after each fix.
 
 ## Example
 
@@ -133,13 +166,20 @@ Without `globalIgnores`, `tseslint.configs.recommended` reports `@typescript-esl
 ## Known limitations
 
 1. **`no-importer` runs only in `ts-dom lint` and `ts-dom check`.** The plugin checks a template from the file of the class that uses it, so a template that no class uses is invisible to it, and `"ts-dom/no-importer"` fails with `Rule 'no-importer' not found in plugin 'ts-dom'`. Keep `ts-dom check` (or `ts-dom lint`) in the project's checks; a lint command alone does not cover it.
-2. **The CLI ignores the linter's choices.** `ts-dom lint` and `ts-dom check` always report unused-markup as errors and have no ignore option: an id set to `"warn"` or ignored in the linter still fails `ts-dom check`. Fix the finding rather than relax the linter when the project runs both; relax only what the user accepts in both places (or filter `--json` in the user's own script).
+2. **The CLI ignores the linter's choices.** `ts-dom lint` and `ts-dom check` read no linter config and always report unused-markup as errors, so an id set to `"warn"` or ignored in the linter still fails `ts-dom check`. Their `--ignore=<id>` leaves out only warnings (data-flow and a11y ids).
+
+   Fix the finding rather than relax the linter; relax a warning id only when the user accepts it, and then in both places: `ignore` in the linter and `--ignore=<id>` in the scripts.
 3. **Use from outside the class does not count.** `unused-markup` compares a template with the body of `class X extends Component(tpl)`; `el.refs.x` in a test, in another component or in a script outside the class is not use, in any of the three tools. Turning the rule off for test folders silences only templates those test files import.
-4. **Child contracts are read from the working directory.** `unknown-prop`, `invalid-prop-value`, `unknown-event` and `unknown-slot` need the child component's `define()` (a library element's manifest is found from the template's own `package.json` instead); the plugin scans for them from the folder the linter runs in. Run from a folder that does not contain the child (oxlint started in `test/` on `src`), the `unknown-prop` finding disappeared without a message. Run the linter from the project folder.
-5. **Disable comments hide the whole template.** Every finding is reported on the `import` line, so `// oxlint-disable-next-line ts-dom/unused-markup` (or `eslint-disable`) above it silences every unused-markup finding of that template, while `ts-dom check` keeps reporting them. Do not use disable comments for template findings; fix the template or use `ignore` for an a11y or data-flow id the user accepts.
+4. **Child contracts are read from the working directory.** `unknown-prop`, `invalid-prop-value`, `unknown-event` and `unknown-slot` need the child component's `define()`, which the plugin scans for from the folder the linter runs in. Run the linter from the project folder. Started in `test/` on `src`, oxlint dropped the `unknown-prop` finding without a message.
+
+   A library element's manifest is found from the template's own `package.json` instead.
+5. **Disable comments hide the whole template.** Every finding is reported on the `import` line, so `// oxlint-disable-next-line ts-dom/unused-markup` (or `eslint-disable`) above it silences every unused-markup finding of that template, while `ts-dom check` keeps reporting them.
+
+   Do not use disable comments for template findings: fix the template, or `ignore` an a11y or data-flow id the user accepts.
 6. **Doctor reads only `.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlintrc.json`, `oxlint.config.ts`, `oxlint.config.mts` and the `lint` block of `vite.config.*`.** It does not look at ESLint configs at all. Doctor also counts the plugin as configured when `jsPlugins` names it, even with no `ts-dom/*` rule on. Check the config yourself, and confirm with a finding (Verify).
 7. **No fixes, and no missing handlers.** The plugin offers no fixes or suggestions: an unused `data-ref` or a11y finding is fixed by editing the `.html`. A `data-on-*` method the class does not define is not a lint finding at all: tsc reports it at the `define()` call, and `ts-dom check` points it at the template as `missing-handler`, so keep `ts-dom check` (or `tsc`) in the project's checks.
-8. **Not verified:** the editor integration (the Oxc and ESLint VS Code extensions), whether the plugin picks up a child's new prop in a long-running editor session without a restart, legacy `.eslintrc*`, oxlint's JavaScript or TypeScript config files, and linters other than oxlint and ESLint.
+8. **Listeners added with `this.on()` are not read.** Data-flow rules read `data-on-*` and the `Component(...)` options. A `this.on()` listener that re-emits a child's event is the chain `emit-forwarding` reports, which lint then cannot see: remove the chain instead of moving it there ([Avoiding layer-by-layer passing](https://github.com/Pixmi/nativele/blob/main/docs/components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow)).
+9. **Not verified:** the editor integration (the Oxc and ESLint VS Code extensions), whether the plugin picks up a child's new prop in a long-running editor session without a restart, legacy `.eslintrc*`, oxlint's JavaScript or TypeScript config files, and linters other than oxlint and ESLint.
 
 ## Verify
 
@@ -150,7 +190,15 @@ npx ts-dom doctor src/nv           # expect: no oxlint-plugin-missing
 npx ts-dom check src/nv            # expect: ts-dom check: no issues
 ```
 
-Then prove the linter runs the rules: add `<span data-ref="probe"></span>` to a template, run the project's lint command, and expect `error ts-dom(unused-markup): ./<name>.html.js:<line>:<col> [unused-ref] data-ref="probe" is never used by the component class.` on the template's import line (when the class gets its template through a barrel, the location is the template's path from the `.ts` file instead, such as `../templates/card.html:5:1`; ESLint prints the same message under the `.ts` file); exit code 1. Remove it afterwards. If a11y or data-flow is on, an `<img>` without `alt` gives `[img-alt]`, and a misspelled attribute on a child tag gives `[unknown-prop]`, both as warnings.
+Then prove the linter runs the rules:
+
+1. Add `<span data-ref="probe"></span>` to a template.
+2. Run the project's lint command. Expect exit code 1 and, on the template's import line, `error ts-dom(unused-markup): ./<name>.html.js:<line>:<col> [unused-ref] data-ref="probe" is never used by the component class.`
+3. Remove the span.
+
+- When the class gets its template through a barrel, the location is the template's path from the `.ts` file instead, such as `../templates/card.html:5:1`.
+- ESLint prints the same message under the `.ts` file.
+- If a11y or data-flow is on, an `<img>` without `alt` gives `[img-alt]`, and a misspelled attribute on a child tag gives `[unknown-prop]`, both as warnings.
 
 ## Troubleshooting
 

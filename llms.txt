@@ -2,7 +2,9 @@
 
 > Designed for AI agents. Driven by TypeScript. Defined in vanilla HTML. A lightweight library for building web components: bind HTML templates to TypeScript custom elements. HTML describes structure and where data goes; TypeScript owns state and behavior; the DOM is the only view. Fully typed by tsc, no virtual DOM, no bundler required.
 
-Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.ts`, runs tsc, or vue-tsc when the project has it, and lint, points errors at the template). Lint with `npx ts-dom lint` (add `--a11y`). `npx ts-dom rules` lists every rule id. Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it. Each rule below is one line; its guide section has the details.
+Workflow: write `x.html` + `x.ts`, then run `npx ts-dom check`. It regenerates `x.html.ts`, runs tsc (or vue-tsc when the project has it) and lint, and points errors at the template; `--a11y` adds the accessibility checks.
+
+Every diagnostic is `file:line:col severity [rule-id] message` and ends with a `Fix:` hint: read the hint and apply it. Each rule below is one line; its guide section has the details.
 
 ## Template syntax (HTML only names things; no expressions)
 - `{{ name }}`: text hole, a single identifier (NOT `{{ a.b }}` / `{{ a + 1 }}`), never in an attribute: [templates](docs/templates.md#html-syntax).
@@ -10,8 +12,11 @@ Workflow: write `x.html` + `x.ts`, run `npx ts-dom check` (regenerates `x.html.t
 - `data-if="x"`: hidden by default (removed from the DOM, kept in memory); shown when `x` is truthy or by `this.show("x", true)`: [templates](docs/templates.md#html-syntax).
 - `<template data-each="x">`: a list with exactly one root element; never nested, no `<slot>` in it, no `data-if` on its root, not inside `<svg>` or `<math>` (`each-in-svg`); an item's `el` is typed by its root tag: [lists](docs/lists.md#items-as-plain-elements-replace).
 - Per-row state of the parent (selected, rank) is a separate prop of the item component, set on each row through `this.lists.x.get(key)` (`row.el.selected = ...`), so only changed rows render: [lists](docs/lists.md#per-row-state-selected-rank).
-- `data-on-<event>="method"`: a lowercase event name and a method name only; calls the public `method(e, hit: EventHit)` with `e` typed as the event it receives (`EmitEvent<Child, "name">` on a child component tag, else the DOM type: `click` is a `PointerEvent`), checked against the template; never name it like a DOM or Nativele member (`remove`, `click`, `set`, `render`): [events](docs/components.md#events-data-on-).
-- `<slot name="x">`: Light DOM by default (the library moves the children), native with `shadow: true`: [Light and Shadow](docs/components.md#light-default-and-shadow).
+- `data-on-<event>="method"`: a lowercase event name and a method name only; calls the public `method(e, hit: EventHit)`, checked against the template: [events](docs/components.md#events-data-on-).
+- A handler's `e` is typed as the event it receives: `EmitEvent<Child, "name">` on a child component tag, else the DOM type (`click` is a `PointerEvent`): [events](docs/components.md#events-data-on-).
+- Never name a handler like a DOM or Nativele member (`remove`, `click`, `set`, `render`): [events](docs/components.md#events-data-on-).
+- `<slot name="x">`: Light DOM by default (the library moves the children; a child with no matching slot is removed, with a console warning), native with `shadow: true`: [Slots in Light mode](docs/components.md#slots-in-light-mode).
+- `data-on-*` handles events that reach the component root; an element moved out of it (a `<dialog>` in `document.body`) no longer triggers them: [events](docs/components.md#events-data-on-).
 - `<style>` only at the top level of the file; `<style scoped>` limits it to the component in Light DOM: [styles](docs/components.md#styles).
 - Another component: write its tag; the generated module imports it: [composition](docs/components.md#composition-using-multiple-components-together).
 
@@ -36,7 +41,13 @@ class MyCounter extends Component(tpl, {
 }
 define("my-counter", MyCounter);
 ```
-The compiler rejects: a hole or `data-if` name missing from state, props and derive (`missingStateKeys`), a name used twice (`conflictingKeys`), a prop named like an element member (`reservedPropNames`), an emitted native event name (`nativeEventNames`), a missing `data-on-*` method (`missingHandlers`), a handler parameter the bound event cannot satisfy (`wrongHandlerParameters`), `any` in state, props, derive, an emitted detail (in the arrays, tuples, plain objects, index signatures, Maps and Sets they declare, not in DOM objects, functions or promises they hold), a handler or its event parameter, or the template, also inferred, as from `JSON.parse` (`anyInContract: "state.rows[]"`, `"this.onPick(event)"`, `"template"`; `ts-dom check` rule `any-in-contract`; declare the type, or `unknown` and narrow it, and import the template from its `./x.html.js` module); each of these errors also names the template (`template: "card.html"`): [safeguards](docs/components.md#safeguards-in-types-and-at-runtime).
+The compiler rejects these, and each error names the template (`template: "card.html"`): [safeguards](docs/components.md#safeguards-in-types-and-at-runtime).
+- A hole or `data-if` name missing from state, props and derive (`missingStateKeys`).
+- A name used twice (`conflictingKeys`).
+- A prop named like an element member (`reservedPropNames`).
+- An emitted native event name (`nativeEventNames`).
+- A missing `data-on-*` method (`missingHandlers`), or a handler parameter the bound event cannot satisfy (`wrongHandlerParameters`).
+- `any`, also inferred (as from `JSON.parse`), in state, props, derive, an emitted detail, a handler or its event parameter, or the template (`anyInContract`; `ts-dom check` rule `any-in-contract`): declare the type, or `unknown` and narrow it, and import the template from its `./x.html.js` module.
 
 ## Data flow (one direction)
 - `state`, `props`, `render`'s `view` and `derive`'s argument are `DeepReadonly`: replace objects (`{ ...item, done: true }`), never change them in place: [state](docs/components.md#data-and-view-state-optional).
@@ -45,17 +56,23 @@ The compiler rejects: a hole or `data-if` name missing from state, props and der
 - Lists, attributes and focus go in `render(view, changed)`; guard each part with `changed.has("x")` and annotate `changed` with the names you check (`ReadonlySet<"items" | "visible">`), never `ReadonlySet<string>`: [state](docs/components.md#data-and-view-state-optional).
 - With `state`, `props` or `derive`, every `{{ hole }}` and `data-if` outside a list item names one of them; show store data by copying it into state in the `bind` callback: [recipes](docs/recipes.md#showing-data-from-a-store).
 - Props go down: the parent sets them by attribute or typed property (`this.refs.child.value = v.x`); a component never assigns its own props: [data flow](docs/components.md#data-flow-props-down-events-up).
-- Events go up: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag with a handler typed `onX(e: EmitEvent<Child, "name">)` (no cast): [data flow](docs/components.md#data-flow-props-down-events-up). A wrapper element catches only an event declared `event<...>({ bubbles: true })`; a native element's `data-on-*` that nothing can deliver and that is one or two letters from one of its native events is reported (`unknown-native-event`, `<form data-on-submt>`).
+- Events go up: `emit` does not bubble; the parent handles it with `data-on-<event>` on the child tag with a handler typed `onX(e: EmitEvent<Child, "name">)` (no cast): [data flow](docs/components.md#data-flow-props-down-events-up).
+- A wrapper element catches only an event declared `event<...>({ bubbles: true })`.
+- A misspelled `data-on-*` on a native element (`<form data-on-submt>`) is `unknown-native-event`: [misspelled event names](docs/tooling.md#misspelled-event-names).
 - Data needed several levels away goes in a shared `createStore` that components `bind`; never forward props or re-emit events (`prop-forwarding`, `emit-forwarding`): [shared stores](docs/components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow).
 - `store.set` replaces the whole value (`this.set` merges): `store.set((s) => ({ ...s, status: "loading" }))`: [stores](docs/components.md#state-store-when-not-using-state).
 - Call `bind`, `on` and `onCleanup` in `connected()`, never in the constructor: [stores](docs/components.md#state-store-when-not-using-state).
+- Set the element's own class and attributes in `connected()`; a constructor that does it makes a browser create an unknown element (`constructor-host-change`): [components](docs/components.md#components).
+- Export the class passed to `define()`, or its tag is left out of `ts-dom-tags.ts` (`define-class-not-exported`): [checks](docs/tooling.md#errors-at-the-template).
 - Cancel a component's own request on removal: an `AbortController` made in `connected()`, aborted from `onCleanup`, `AbortError` ignored: [recipes](docs/recipes.md#cancelling-a-request-when-the-component-is-removed).
 - Write a form control's value in `render` only when it differs (`unguarded-input-value`): [form inputs](docs/components.md#a-small-reminder-about-form-inputs).
 - Loading and error states, modal dialogs, form validation, filtered lists: [recipes](docs/recipes.md) and `examples/recipes/` in the repository.
 - A table whose columns come from a config array: [recipes](docs/recipes.md#a-table-with-configurable-columns).
 - A component that is a control of a native `<form>`: [recipes](docs/recipes.md#a-form-control-of-your-own).
 - Re-rendering text when the locale changes: [recipes](docs/recipes.md#switching-the-language).
-- A custom element from another library in a template: [components](docs/components.md#custom-elements-from-other-libraries); when its package declares a custom elements manifest (`customElements` in its package.json, as Web Awesome does), lint checks its attribute names and values, event names and slot names against it (`unknown-prop`, `invalid-prop-value`, `unknown-event`, `unknown-slot`), reports a tag one or two edits from a known one (`unknown-custom-element`, `<wa-buton>`), and doctor reports a broken manifest (`custom-elements-manifest`): [custom elements manifests](docs/tooling.md#lint-optional); `ts-dom lint` and `ts-dom check` list the tags they cannot check once per run (`unchecked-custom-elements`), which `--ignore=unchecked-custom-elements` silences; with `--a11y`, an element around such a tag or a `<slot>` that `click-semantics`, `control-name` or `heading-empty` cannot judge without it gets one `unchecked-content` warning instead, which `--ignore=unchecked-content` silences: [ARIA checks](docs/tooling.md#aria--accessibility-checks), [data flow lint](docs/components.md#avoiding-layer-by-layer-passing-lint-ts-domdata-flow).
+- Components of another package in a template: lint checks them when the template's package depends on that package and it lists `@nativele/ts-dom`; `ts-dom gen` writes imports only from the scanned folders: [Nativele component packages](docs/tooling.md#nativele-component-packages).
+- A custom element from another library in a template: [components](docs/components.md#custom-elements-from-other-libraries). When its package declares a custom elements manifest (`customElements` in its package.json), lint checks attribute, event and slot names against it: [custom elements manifests](docs/tooling.md#custom-elements-manifests).
+- `unchecked-custom-elements` and `unchecked-content` name the custom elements lint cannot read, each cause with its fix; once the elements are right, silence them with `--ignore=<id>`: [custom elements lint cannot read](docs/tooling.md#custom-elements-lint-cannot-read).
 
 ## Template without a component
 `tpl.instantiate()` returns `{ root, rootElement, refs, lists, text, show }` for pieces created in code; `data-on-*` is inert and `<slot>` is not projected there: [templates](docs/templates.md#templates-without-a-component).
@@ -69,22 +86,24 @@ The compiler rejects: a hole or `data-if` name missing from state, props and der
 - Full example (add, remove, sort, toggle, child emit): `examples/readme/task-board.ts` and `task-row.ts` in the repository.
 
 ## Rules for agents
-- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, `nativele-react`, `nativele-vue`, `nativele-svelte` and `nativele-angular` for those frameworks, `nativele-vite` for Vite, `nativele-integration` for other frameworks, `nativele-state-management`, `nativele-testing`, `nativele-tanstack-query`, `nativele-zod` and `nativele-tailwind` for those tools, `nativele-web-awesome` for Web Awesome components in templates, `nativele-architecture` for laying out an app with several pages, `nativele-typescript`, `nativele-linting`, `nativele-formatting` and `nativele-ci` for the tsconfig, the linter, the formatter and CI, `nativele-monorepo` for a workspace of several packages, ...), each with verified versions; `npx ts-dom skills <name>` prints one, `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`, and `npx ts-dom doctor` suggests the ones that match the project's dependencies.
+- Before working on Nativele components, run `npx ts-dom skills nativele-core` and follow it.
+- `npx ts-dom skills` lists the Skills shipped with the package and shows which ones cover the project's dependencies; `npx ts-dom skills <name>` prints one: [Skills](README.md#nativele-skills).
 - `npx ts-dom rules --explain=<id>` (or `rules --json`) explains any rule id from a diagnostic: why it exists, a wrong example and the fix.
-- Markup well-formedness is a formatter's job (`oxfmt --check`): [checks](docs/tooling.md#checks). With a formatter, generate with `--whitespace=collapse`: [whitespace](docs/tooling.md#installation-and-setup).
-- If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first; fix each issue by its `Fix:` hint: [checks](docs/tooling.md#checks).
+- Markup well-formedness is a formatter's job (`oxfmt --check`): [checks](docs/tooling.md#checks). With a formatter, generate with `--whitespace=collapse`: [whitespace](docs/tooling.md#whitespace).
+- If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first; fix each issue by its `Fix:` hint: [doctor](docs/tooling.md#ts-dom-doctor).
 - `npx ts-dom gen --check` (writes nothing, exit 1) tells whether the generated files are stale before you trust `tsc` errors.
-- Never edit `x.html.ts` or `ts-dom-tags.ts` (generated). After any `.html` or component change run `npx ts-dom check --json` and fix every issue by its `Fix:` hint; never cast a type error away.
+- After any `.html` or component change run `npx ts-dom check --json` and fix every issue by its `Fix:` hint; never cast a type error away.
 
 ## Setup
 ```sh
 npm i -D typescript && npm i @nativele/ts-dom
-npx ts-dom gen && npx tsc          # tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict true (required on TypeScript 5; 6 and 7 only reject false)
+npx ts-dom gen && npx tsc          # tsconfig: module/moduleResolution NodeNext (or bundler), lib includes DOM, strict true (doctor warns when it is false, or left out on TypeScript 5)
 ```
 In a browser without a bundler map the bare name once: `<script type="importmap">{"imports":{"@nativele/ts-dom":"/node_modules/@nativele/ts-dom/dist/index.mjs"}}</script>`; relative imports in your own code need `.js` extensions. With Vite, `@nativele/ts-dom/vite` is optional: [setup](docs/tooling.md#installation-and-setup).
 
 ## Pitfalls
-- Import templates with `./x.html.js`, not `./x.html`. Run `ts-dom gen` before `tsc`; `x.html.ts` and `ts-dom-tags.ts` are generated, never edited or committed: [setup](docs/tooling.md#installation-and-setup).
+- Import templates with `./x.html.js`, not `./x.html`, and run `ts-dom gen` before `tsc`: [setup](docs/tooling.md#installation-and-setup).
+- Never edit `x.html.ts` or `ts-dom-tags.ts`; most projects git-ignore them: [generated files](docs/tooling.md#generated-files).
 - `export class` a component to get typed `refs.child` in parent templates: [composition](docs/components.md#composition-using-multiple-components-together).
 - `package.json` needs `"type": "module"` (with `tsc` emitting NodeNext, and with Vite): [setup](docs/tooling.md#installation-and-setup).
 - `slotchange()` is Light DOM only; with `shadow: true` use the native `slotchange` event: [Light and Shadow](docs/components.md#light-default-and-shadow).
@@ -92,6 +111,7 @@ In a browser without a bundler map the bare name once: `<script type="importmap"
 - Inside a framework, children the framework later changes in a Light DOM host with slots break or land in the wrong slot: use `shadow: true`, or one stable element per slot: [framework children](docs/components.md#slots-and-children-managed-by-a-framework).
 
 ## Docs
-- [README](README.md): introduction, the short version, rules for agents, quick start. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.
-- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [recipes](docs/recipes.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md). The same guides are in the installed package under `node_modules/@nativele/ts-dom/docs/`.
-- `npx ts-dom rules`: every rule id with a description.
+- [README](README.md): introduction, the short version, Nativele Skills, quick start, examples. [README.zh-TW.md](README.zh-TW.md): the same in Traditional Chinese.
+- Guides (English): [templates](docs/templates.md), [components and data flow](docs/components.md), [recipes](docs/recipes.md), [lists](docs/lists.md), [architecture](docs/architecture.md), [setup, checks and lint](docs/tooling.md), [performance](docs/performance.md), [design](docs/design.md), [developing Nativele](docs/contributing.md).
+- The same guides are in the installed package under `node_modules/@nativele/ts-dom/docs/`.
+- `npx ts-dom rules`: the id of every static check with a description.

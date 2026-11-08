@@ -26,7 +26,7 @@ export interface Diagnostic {
 export const CODEGEN_RULES = {
   "invalid-hole": "a {{ hole }} must be a single identifier (no paths or expressions)",
   "attr-hole": "{{ }} is only supported in text, not in attributes",
-  "invalid-event-name": "the event name in data-on-<event> must be lowercase",
+  "invalid-event-name": "the event name in data-on-<event> must be a plain lowercase name, with no modifiers",
   "invalid-handler": "data-on-* must be a plain method name (no calls or expressions)",
   "reserved-handler": "the handler name would override a DOM or ts-dom member",
   "empty-ref": "data-ref must not be empty",
@@ -35,7 +35,7 @@ export const CODEGEN_RULES = {
   "if-on-item-root": "data-if cannot be on the root element of a data-each item",
   "slot-in-list": "<slot> cannot be inside a data-each template",
   "style-not-top-level": "<style> must be a top-level element of the template",
-  "duplicate-slot": "slot names should be unique (warning)",
+  "duplicate-slot": "two slots in one template have the same name, so only one of them receives the content",
   "each-not-template": "data-each only works on <template>",
   "empty-each": "data-each must not be empty",
   "nested-each": "data-each templates cannot be nested",
@@ -91,10 +91,12 @@ export interface Analysis {
 const RESERVED_ELEMENT_NAMES = new Set(["annotation-xml", "color-profile", "font-face", "font-face-src", "font-face-uri", "font-face-format", "font-face-name", "missing-glyph"]);
 const isCustomElementName = (tag: string): boolean => /^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(tag) && !RESERVED_ELEMENT_NAMES.has(tag);
 const URL_ATTRS = /^(href|src|action|formaction|xlink:href)$/i;
-const HTML_NS = "http://www.w3.org/1999/xhtml";
+export const HTML_NS = "http://www.w3.org/1999/xhtml";
 const newScope = (): Scope => ({ refs: new Map(), text: new Set(), ifs: new Set() });
-const attr = (el: Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
-const isEl = (n: Node): n is Element => "tagName" in n;
+export const attr = (el: Element, name: string): string | undefined => el.attrs.find((a) => a.name === name)?.value;
+export const isEl = (n: Node): n is Element => "tagName" in n;
+/** The child nodes of `n`, those of its content for a `<template>`. */
+export const kids = (n: Node): Node[] => ("content" in n && n.nodeName === "template" ? (n as DefaultTreeAdapterMap["template"]).content.childNodes : "childNodes" in n ? n.childNodes : []);
 const isRaw = (n: Element) => n.tagName === "style" || n.tagName === "script";
 type SourceLoc = { startLine: number; startCol: number; attrs?: Record<string, { startLine: number; startCol: number }> };
 const locOf = (n: Node, attrName?: string): Loc => {
@@ -492,7 +494,7 @@ ${needsEl ? `import type { El } from ${q(runtime)};\n` : ""}export default templ
 `;
 }
 
-export function modulePathFor(htmlPath: string): string {
+function modulePathFor(htmlPath: string): string {
   return `${htmlPath}.ts`;
 }
 
@@ -501,8 +503,18 @@ export function isFullPage(html: string): boolean {
   return /^\s*(<!--[\s\S]*?-->\s*)*<(!doctype|html)\b/i.test(html);
 }
 
+/** One issue as every command prints it: `file:line:col severity [rule-id] message`. */
+export function formatIssue(i: Diagnostic & { file: string }): string {
+  return `${i.file}:${i.line}:${i.col} ${i.severity} [${i.rule}] ${i.message}`;
+}
+
 export function formatDiagnostics(file: string, ds: Diagnostic[]): string {
-  return ds.map((d) => `${file}:${d.line}:${d.col} ${d.severity} [${d.rule}] ${d.message}`).join("\n");
+  return ds.map((d) => formatIssue({ ...d, file })).join("\n");
+}
+
+/** The issue for a generated file that `ts-dom gen` would write, change or delete, at `file` as the caller prints it. */
+export function staleIssue(file: string, reason: string): Diagnostic & { file: string } {
+  return { file, line: 1, col: 1, rule: "stale-generated", severity: "error", message: `The generated file is ${reason}, so tsc may check the components against old templates. Fix: run ts-dom gen (or ts-dom check, which regenerates first).` };
 }
 
 export class CodegenError extends Error {
@@ -523,7 +535,7 @@ function shapeOf(file: string, html: string, ws: Workspace, parse = () => analyz
 }
 
 /** What `generateFile` would write for a template, without writing it; throws CodegenError when the template has error diagnostics. When it parses the template, it adds the analysis to `parsed` under the template's path. */
-export function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace(), parsed?: Map<string, Analysis>): { out: string; next: string } {
+function renderFile(htmlPath: string, options: GenerateOptions = {}, defs: string | readonly DefineDef[] | undefined, dir: string, ws = new Workspace(), parsed?: Map<string, Analysis>): { out: string; next: string } {
   const file = resolve(htmlPath);
   const html = ws.text(file) ?? readFileSync(htmlPath, "utf8");
   if (options.whitespace === undefined) options = { ...options, whitespace: recordedWhitespace(modulePathFor(htmlPath)) };
@@ -601,20 +613,17 @@ const relImport = (fromDir: string, file: string) => {
   return r.startsWith(".") ? r : `./${r}`;
 };
 
-/**
- * A tag that two of the directories define with different classes, reported at its second define() call.
- * A tag defined twice within one directory is reported by `generateTags` instead.
- */
-export function crossDirDuplicates(dirs: readonly string[], ws?: Workspace): (Diagnostic & { file: string })[] {
-  const byTag = new Map<string, DefineDef[]>();
-  for (const d of scanDefines(dirs, ws)) byTag.set(d.tag, [...(byTag.get(d.tag) ?? []), d]);
-  const inside = (dir: string, file: string) => resolve(file).startsWith(resolve(dir) + sep);
+/** A tag that the directories define with another class than at its first define() call, reported at each such call. Defining the same class again is not a duplicate. */
+export function duplicateDefines(dirs: readonly string[], ws?: Workspace): (Diagnostic & { file: string })[] {
+  const first = new Map<string, DefineDef>();
   const out: (Diagnostic & { file: string })[] = [];
-  for (const [tag, defs] of byTag) {
-    const [first, second] = defs as [DefineDef, DefineDef];
-    if (defs.length < 2 || dirs.some((dir) => defs.every((d) => inside(dir, d.file)))) continue;
-    const at = (d: DefineDef) => `${relative(process.cwd(), d.file)}:${d.line ?? 1}`;
-    out.push({ file: second.file, line: second.line ?? 1, col: second.col ?? 1, severity: "error", rule: "duplicate-define", message: `The tag <${tag}> is defined more than once in the scanned folders (${at(first)} and ${at(second)}), so at runtime only the class whose define() runs first is registered, and the other define() is skipped without an error. Fix: each custom element name can be defined only once; rename one of them.` });
+  const at = (d: DefineDef) => `${relative(process.cwd(), d.file)}:${d.line ?? 1}`;
+  for (const d of scanDefines(dirs, ws)) {
+    const prev = first.get(d.tag);
+    if (!prev) first.set(d.tag, d);
+    else if (prev.classFile !== d.classFile || prev.className !== d.className) {
+      out.push({ file: d.file, line: d.line ?? 1, col: d.col ?? 1, severity: "error", rule: "duplicate-define", message: `The tag <${d.tag}> is defined more than once in the scanned folders (${at(prev)} and ${at(d)}), so at runtime only the class whose define() runs first is registered, and the other define() is skipped without an error. Fix: each custom element name can be defined only once; rename one of them.` });
+    }
   }
   return out;
 }
@@ -637,17 +646,11 @@ export function generateTags(dir: string, ws?: Workspace): string | null {
 }
 
 /** What `generateTags` would write, without writing it; `next` is null when the directory defines no exported component. */
-export function renderTags(dir: string, ws?: Workspace): { out: string; next: string | null } {
+function renderTags(dir: string, ws?: Workspace): { out: string; next: string | null } {
   const defs = scanTags(dir, ws);
   const out = join(dir, TAGS_FILE);
   const seen = new Map<string, TagDef>();
-  for (const d of defs) {
-    const prev = seen.get(d.tag);
-    if (prev && (prev.from !== d.from || prev.className !== d.className)) {
-      throw new CodegenError(`${dir}: [duplicate-define] the tag <${d.tag}> is defined more than once (${prev.from} and ${d.from}), so at runtime only the class whose define() runs first is registered, and the other define() is skipped without an error. Fix: each custom element name can be defined only once; rename one of them.`);
-    }
-    seen.set(d.tag, d);
-  }
+  for (const d of defs) if (!seen.has(d.tag)) seen.set(d.tag, d);
   if (!defs.length) return { out, next: null };
   const aliases = new Map([...seen.keys()].map((tag, i) => [tag, `Tag${i}`]));
   const alias = (d: TagDef) => aliases.get(d.tag) as string;
@@ -668,7 +671,7 @@ export interface StaleFile {
  * Templates with error diagnostics are left out and their messages returned in `errors`.
  * `scanned` are all the directories of the run: a ts-dom-tags.ts in a subfolder is an orphan unless that subfolder is one of them.
  */
-export function planGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace()): { files: Map<string, string | null>; errors: string[] } {
+function planGenerated(dir: string, options: GenerateOptions = {}, defs?: readonly DefineDef[], scanned: readonly string[] = [dir], ws = new Workspace()): { files: Map<string, string | null>; errors: string[] } {
   const known = defs ?? scanDefines(dir, ws);
   const files = new Map<string, string | null>();
   const errors: string[] = [];
@@ -682,13 +685,8 @@ export function planGenerated(dir: string, options: GenerateOptions = {}, defs?:
       else throw e;
     }
   }
-  try {
-    const tags = renderTags(dir, ws);
-    files.set(tags.out, tags.next);
-  } catch (e) {
-    if (e instanceof CodegenError) errors.push(e.message);
-    else throw e;
-  }
+  const tags = renderTags(dir, ws);
+  files.set(tags.out, tags.next);
   for (const f of orphans(dir, scanned, ws)) files.set(f, null);
   return { files, errors };
 }
@@ -750,13 +748,8 @@ export function generateAll(dir: string, options: GenerateOptions = {}, defs?: r
       else throw e;
     }
   }
-  try {
-    const tags = generateTags(dir, ws);
-    if (tags) written.push(tags);
-  } catch (e) {
-    if (e instanceof CodegenError) errors.push(e.message);
-    else throw e;
-  }
+  const tags = generateTags(dir, ws);
+  if (tags) written.push(tags);
   for (const f of orphans(dir, scanned, ws)) rmSync(f, { force: true });
   if (errors.length) throw new CodegenError(errors.join("\n"), written);
   return written;
@@ -780,7 +773,7 @@ export function generateDirs(dirs: readonly string[], options: GenerateOptions =
       written.push(...e.written);
     }
   }
-  for (const d of crossDirDuplicates(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
+  for (const d of duplicateDefines(dirs, ws)) errors.push(formatDiagnostics(d.file, [d]));
   if (errors.length) throw new CodegenError(errors.join("\n"), written);
   return written;
 }

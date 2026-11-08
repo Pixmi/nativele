@@ -1,32 +1,32 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 let calls = 0;
 
 beforeAll(async () => {
-  const s = await startServer(5311);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.route("**/api/contacts", async (route) => {
-    calls++;
-    if (calls === 1) return route.fulfill({ status: 500, body: "" });
-    await route.fulfill({ json: [{ id: 1, name: "Ada", email: "ada@example.com" }, { id: 2, name: "Grace", email: "grace@example.com" }] });
-  });
-  await page.goto(`${s.url}/browser/fixtures/recipes-page.html`);
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/recipes-page.html",
+    before: async (page) => {
+      await page.route("**/api/contacts", async (route) => {
+        calls++;
+        if (calls === 1) return route.fulfill({ status: 500, body: "" });
+        await route.fulfill({
+          json: [
+            { id: 1, name: "Ada", email: "ada@example.com" },
+            { id: 2, name: "Grace", email: "grace@example.com" },
+          ],
+        });
+      });
+    },
+  }));
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 const names = () => page.$$eval("#app contact-row span:first-child", (els) => els.map((e) => e.textContent));
 const total = () => page.textContent("#app contact-stats p");

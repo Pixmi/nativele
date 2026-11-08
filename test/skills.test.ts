@@ -43,10 +43,10 @@ describe("Skills shipped with the package", () => {
   });
 });
 
-/** The `| \`name\` | ... |` rows of the Skill table in a README, with whether the row carries the Experimental marker. */
-function readmeSkillRows(text: string, marker: string): Map<string, boolean> {
-  const rows = new Map<string, boolean>();
-  for (const m of text.matchAll(/^\| `([\w-]+)` \|(.*)\|$/gm)) rows.set(m[1]!, m[2]!.includes(marker));
+/** The tier column of each `| \`name\` | Tier | ... |` row of the Skill table in skills/README.md, lowercased. */
+function skillTableTiers(text: string): Map<string, string> {
+  const rows = new Map<string, string>();
+  for (const m of text.matchAll(/^\| `([\w-]+)` \| ([^|]+?) \|/gm)) rows.set(m[1]!, m[2]!.toLowerCase());
   return rows;
 }
 
@@ -94,18 +94,10 @@ describe("README Skill tables and links", () => {
   const repo = resolve(".");
   const skills = listSkills(skillsRoot());
 
-  it.each([
-    ["README.md", "(Experimental)"],
-    ["README.zh-TW.md", "（Experimental）"],
-  ])("%s lists every Skill, marked Experimental exactly when its tier is", (readme, marker) => {
-    const rows = readmeSkillRows(readFileSync(readme, "utf8"), marker);
+  it("skills/README.md lists every Skill with the tier its metadata gives", () => {
+    const rows = skillTableTiers(readFileSync("skills/README.md", "utf8"));
     expect([...rows.keys()].sort()).toEqual(skills.map((s) => s.name).sort());
-    for (const s of skills) expect(rows.get(s.name), `${readme}: ${s.name} is ${s.tier}`).toBe(s.tier === "experimental");
-  });
-
-  it("finds a missing or wrong Experimental marker", () => {
-    const rows = readmeSkillRows("| Skill | Covers |\n|---|---|\n| `nativele-a` | a (Experimental) |\n| `nativele-b` | b |", "(Experimental)");
-    expect([...rows]).toEqual([["nativele-a", true], ["nativele-b", false]]);
+    for (const s of skills) expect(rows.get(s.name), s.name).toBe(s.tier);
   });
 
   it("every link in the READMEs, llms.txt, the guides and the Skills resolves", () => {
@@ -182,25 +174,24 @@ describe("ts-dom doctor and Skills", () => {
   };
   const skillIssues = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).filter((i) => i.rule.startsWith("skill-"));
 
-  it("recommends the Skills whose dependencies the project has, as info", () => {
-    const cwd = project({ dependencies: { "@nativele/ts-dom": "0.5.0", react: "19.3.1" } });
-    const issues = skillIssues(cwd);
-    expect(issues.map((i) => [i.rule, i.severity, i.file])).toEqual([
-      ["skill-available", "info", "package.json"],
-      ["skill-available", "info", "package.json"],
-    ]);
-    expect(issues[1]?.message).toContain("ts-dom skills add nativele-react");
-    expect(skillIssues(project({ dependencies: { lodash: "4" } }))).toEqual([]);
-    expect(skillIssues(project({ dependencies: { vue: "3" } }))[0]?.message).toContain("ts-dom skills add nativele-vue");
-  });
-
-  it("stops recommending a copied Skill, and reports a copy that differs from the shipped one", () => {
+  it("reports a copy that differs from the shipped one as a warning, and nothing for a project without copies", () => {
     const cwd = project({ dependencies: { "@nativele/ts-dom": "0.5.0" } });
     mkdirSync(join(cwd, ".claude"));
     const core = listSkills(skillsRoot()).find((s) => s.name === "nativele-core")!;
     const dest = addSkill(core, skillsTarget(cwd));
     expect(skillIssues(cwd)).toEqual([]);
     writeFileSync(join(dest, "SKILL.md"), "old copy");
-    expect(skillIssues(cwd).map((i) => [i.rule, i.file])).toEqual([["skill-outdated", ".claude/skills/nativele-core/SKILL.md"]]);
+    expect(skillIssues(cwd).map((i) => [i.rule, i.severity, i.file])).toEqual([["skill-outdated", "warning", ".claude/skills/nativele-core/SKILL.md"]]);
+    expect(skillIssues(project({ dependencies: { react: "19.3.1" } }))).toEqual([]);
+  });
+});
+
+describe("ts-dom skills in a project", () => {
+  it("names, for each Skill, the dependencies of the project in the current folder it covers", async () => {
+    const { cliJson, writeTree } = await import("./helpers.ts");
+    const dir = writeTree({ "package.json": JSON.stringify({ dependencies: { react: "19" }, peerDependencies: { vue: "3" } }) });
+    const { skills } = cliJson<{ skills: { name: string; uses: string[] }[] }>(["skills", "--json"], dir);
+    const uses = Object.fromEntries(skills.filter((s) => s.uses.length).map((s) => [s.name, s.uses]));
+    expect(uses).toEqual({ "nativele-react": ["react"], "nativele-vue": ["vue"] });
   });
 });

@@ -4,7 +4,7 @@ description: "Validate a form inside a Nativele component with Zod 4 (or Valibot
 metadata:
   tier: official
   nativele: ">=0.7.0 <0.8.0"
-  verified: "2026-11-06"
+  verified: "2026-11-08"
   tools: "zod@4.6.7 valibot@1.5.0 vite@8.3.6 typescript@7.0.2 create-vite@9.3.4"
   author: "Nativele maintainers"
   detects: "zod valibot"
@@ -23,14 +23,16 @@ metadata:
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | zod | 4.6.7 (the procedure was also run with 3.25.76, with the schema changes in limitation 10) |
 | valibot | 1.5.0 (limitation 11) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
 
-Verified on 2026-11-06 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build, in a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`). These steps use Zod 4.6.7; Zod 3.25.76 and Valibot 1.5.0 need only the schema changes in Known limitations 10 and 11. With any other major version of Zod or Valibot, treat every step as unverified.
+Verified on 2026-11-06 in Google Chrome 148, with Playwright against both the Vite dev server and `vite preview` of the production build. The app was a fresh `npm create vite@latest -- --template vanilla-ts` app set up with Nativele by the `nativele-vite` Skill (components in `src/nv/`).
+
+These steps use Zod 4.6.7; Zod 3.25.76 and Valibot 1.5.0 need only the schema changes in Known limitations 10 and 11. With any other major version of Zod or Valibot, treat every step as unverified.
 
 ## Set-up
 
@@ -38,7 +40,11 @@ Start from a Vite app that already uses Nativele, with the components in `src/nv
 
 1. `npm i zod`.
 2. Keep the schema in its own module next to the component, together with one function that runs `safeParse` and turns the issues into a map from path to message (`signup.ts` in the Example). The component imports only that function and the inferred type, so it never handles Zod objects, and a schema change touches one file.
-3. In the template, give every input a `name` equal to its path in the schema, with dots for nested fields (`name="address.city"`), and the same `name` for every input of an array field (`name="guests"`). After each field, put one message element with an `id`, a `data-if` and a hole, both named `<field>Error` (`<p id="signup-city-error" data-if="cityError">{{ cityError }}</p>`). Add `novalidate` to the `<form>` so the browser does not show its own messages first.
+3. In the template, give every input a `name` equal to its path in the schema.
+   - Use dots for nested fields (`name="address.city"`).
+   - Give every input of an array field the same `name` (`name="guests"`).
+   - After each field, put one message element with an `id`, a `data-if` and a hole, both named `<field>Error`: `<p id="signup-city-error" data-if="cityError">{{ cityError }}</p>`.
+   - Add `novalidate` to the `<form>`, so the browser does not show its own messages first.
 4. In the component, keep all messages in one state field, `errors`, a map from the dot path to the message, and add one `derive` entry per message element that reads its path (`cityError: (s) => s.errors["address.city"] ?? ""`). Holes and `data-if` take a single name, never a path, so the derived names are what the template sees, and one `set({ errors })` updates every message at once.
 5. Read the values in the handler with `FormData`, building the object the schema expects field by field (limitation 2), and pass it to the function from step 2:
    - on `submit`: `preventDefault()`, validate, `set({ errors })`, then focus the first `[aria-invalid=true]` in the form (rendering is synchronous, so the attributes are already set); when valid, clear `errors` and `emit` the parsed data;
@@ -238,25 +244,44 @@ export const age: number = submitted.detail.age;
 export const parsed: Signup = raw;
 ```
 
-What it does, as checked in the browser:
-
-- Submitting the empty form shows every message (`Name is required`, `Enter a valid email`, `Age is required`, `City is required`, `Accept the terms`), sets `aria-invalid="true"` and `aria-describedby` on each invalid input, and focuses the name field. Chrome's accessibility tree then reports the name input as invalid with the description `Name is required`.
-- Typing in a field removes only that field's message and its two attributes. Submitting again focuses the next invalid field in document order.
-- Leaving a field shows its message (`bad` in email shows `Enter a valid email`; age `abc`, `17` and `18.5` show `Enter a number`, `You must be 18 or older` and `Whole years only`).
-- An invalid second guest shows `Enter a valid email` inside that list item only; four guests show `At most 3 guests` under the list.
-- A valid submit clears every message and emits `{ name, email, age: 36, address: { city }, guests: [...], terms: true }`, with `age` a number.
-
 ## Known limitations
 
 1. **One derived name per message.** A hole and a `data-if` take a single identifier, so `{{ errors.name }}` is a template error. Keep the map in state and add a `derive` entry per message element; a name used in the template that is not in `derive` is a `missing-binding` tsc error, which `ts-dom check` reports.
-2. **Build the input object from `FormData` by hand.** In Chrome, `FormData.get` returns the string (`""` for an empty input) or `null` for a name the form does not have, which Zod reports as `Invalid input: expected string, received null`. `Object.fromEntries(new FormData(form))` looks shorter but loses data: repeated names keep only the last value (`guests` became one string), an unchecked checkbox is missing and a checked one is `"on"`, and nested names stay flat keys (`"address.city"`). So read each field: `get` for single values, `getAll` for repeated names, `has` for a checkbox, and nest the object as the schema does. Reading a control directly works as well: with a `data-ref` on the `<form>`, `this.refs.form.elements.email.value` (`.checked`, `selectedOptions`) is typed by the control's tag and a misspelled name is a tsc error (https://github.com/Pixmi/nativele/blob/main/docs/components.md#reading-a-form), but `FormData` is still what reads repeated names and builds the nested object here; the `unguarded-input-value` lint rule reports only a `render()` that writes a control's value without comparing it first, and neither reading values nor writing them in a handler (`form.reset()` after submit) is reported. This procedure writes no value in `render`.
-3. **Numbers from text inputs.** `z.coerce.number()` turns `""` into `0` (in Zod 4.6.7 and 3.25.76 alike), so an empty age fails with `Too small: expected number to be >=18` instead of a "required" message, or passes when `0` is allowed. Check the string first and coerce after: `z.string().min(1, "Age is required").pipe(z.coerce.number<string>("Enter a number")...)`. Without the `<string>` type argument, Zod 4's `pipe` is a tsc error (`TS2345 ... Type 'unknown' is not assignable to type 'string'`). Zod reports a non-number such as `abc` with the coerce message (`Enter a number`).
-4. **Nested fields** (paths with more than one segment): name the input with the dot path (`name="address.city"`), nest the value in `readForm`, and key the map with `issue.path.join(".")`, so the input name, the issue path and the map key are the same string. Do not use `z.flattenError(error)` (or Zod 3's `error.flatten()`): its `fieldErrors` keep only the first path segment, so `address.city` comes back under `address`.
-5. **Array fields**: an issue inside an array has the index in its path (`guests.1`); one about the array itself (`.max(3)`) has the field name only (`guests`). Show item messages in the `replace` callback of the list, by index, and the array message in its own element under the list. `pathOf` maps a repeated input to its index in document order, which is the order `getAll` returns. Adding or removing an item shifts the indexes, so the example clears `errors` then. An item's elements are not in the component's `refs`, so its input gets `aria-invalid` in the callback, and its description is set with `ariaDescribedByElements`, because an id inside a `data-each` template repeats for every item (`id-in-list`). In Zod 4 a failing `.max()` (or `.min()`) on the array hides the issues of its items: with four guests and `.max(3)`, an empty guest gets no message until the list is short enough; disable the add button at the limit so the case cannot arise.
-6. **Ids repeat when the component is on a page more than once.** In the default Light DOM, each instance renders the same `id`s, and `aria-describedby="signup-name-error"` then finds the first one in the document. For a form that can appear more than once, drop the ids, put a `data-ref` on the message element (`<p data-ref="nameMsg" data-if="nameError">`) and set `this.refs.name.ariaDescribedByElements = view.nameError ? [this.refs.nameMsg] : null` in `render`. This was verified with two instances in Chrome 148 (each input described by its own message; at the component level, unlike in a list item, a ref on a `data-if` element is there even while the block is hidden), and TypeScript 7 types the property; other browsers were not checked.
+2. **Build the input object from `FormData` by hand.** Read each field: `get` for single values, `getAll` for repeated names, `has` for a checkbox, and nest the object as the schema does.
+   - `FormData.get` returns the string (`""` for an empty input), or `null` for a name the form does not have. Zod reports that as `Invalid input: expected string, received null`.
+   - `Object.fromEntries(new FormData(form))` looks shorter but loses data: repeated names keep only the last value, an unchecked checkbox is missing and a checked one is `"on"`, and nested names stay flat keys (`"address.city"`).
+3. **Numbers from text inputs.** Check the string first and coerce after: `z.string().min(1, "Age is required").pipe(z.coerce.number<string>("Enter a number")...)`.
+   - `z.coerce.number()` alone turns `""` into `0` (in Zod 4.6.7 and 3.25.76 alike). An empty age then fails with `Too small: expected number to be >=18` instead of a "required" message, or passes when `0` is allowed.
+   - Without the `<string>` type argument, Zod 4's `pipe` is a tsc error (`TS2345 ... Type 'unknown' is not assignable to type 'string'`).
+   - Zod reports a non-number such as `abc` with the coerce message (`Enter a number`).
+4. **Nested fields** (paths with more than one segment): make the input name, the issue path and the map key the same string.
+   - Name the input with the dot path (`name="address.city"`), nest the value in `readForm`, and key the map with `issue.path.join(".")`.
+   - Do not use `z.flattenError(error)` (or Zod 3's `error.flatten()`). Its `fieldErrors` keep only the first path segment, so `address.city` comes back under `address`.
+5. **Array fields.** Show item messages in the `replace` callback of the list, by index, and the array message in its own element under the list.
+   - An issue inside an array has the index in its path (`guests.1`); one about the array itself (`.max(3)`) has the field name only (`guests`).
+   - `pathOf` maps a repeated input to its index in document order, which is the order `getAll` returns.
+   - Adding or removing an item shifts the indexes, so the example clears `errors` then.
+   - An item's elements are not in the component's `refs`, so its input gets `aria-invalid` in the callback. Its description is set with `ariaDescribedByElements`, because an id inside a `data-each` template repeats for every item (`id-in-list`).
+   - In Zod 4 a failing `.max()` (or `.min()`) on the array hides the issues of its items: with four guests and `.max(3)`, an empty guest gets no message. Disable the add button at the limit so the case cannot arise.
+6. **Ids repeat when the component is on a page more than once.** In the default Light DOM each instance renders the same `id`s, and `aria-describedby="signup-name-error"` finds the first one in the document. For a form that can appear more than once:
+   1. Drop the ids.
+   2. Put a `data-ref` on the message element: `<p data-ref="nameMsg" data-if="nameError">`.
+   3. In `render`, set `this.refs.name.ariaDescribedByElements = view.nameError ? [this.refs.nameMsg] : null`.
+
+   Verified with two instances in Chrome 148: each input was described by its own message. At the component level, unlike in a list item, a ref on a `data-if` element is there even while the block is hidden. TypeScript 7 types the property; other browsers were not checked.
 7. **Blur does not bubble.** Use `data-on-focusout` on the `<form>`, which receives every field's blur; `e.target` is the field. Validate the whole form and take only that field's message, so checks that read more than one field still apply. The example skips checkboxes on blur, because tabbing past an unchecked box would show its message too early.
 8. **`aria-invalid` needs the value `"true"`.** `toggleAttribute("aria-invalid", on)` writes `aria-invalid=""`, which Chrome's accessibility tree reports as not invalid. Set `input.ariaInvalid = invalid ? "true" : null`. Whether a screen reader announces the message was not checked; the accessibility tree shows each invalid input with its message as the description.
-9. **Checks across fields**: `.refine((d) => d.password === d.confirm, { message: "Passwords differ", path: ["confirm"] })` puts the message under `confirm`. Give such a refinement a `path`; without one its path is empty and the map key is `""`, which no field shows. In Zod 4 the object-level `refine` runs only when every failing field failed a check on a value of the right type (`too_small`, `invalid_format`, a field's own `refine`); a field that fails with `invalid_value` or `invalid_type` stops it, and the cross-field message is missing until that field is fixed. Those are `z.literal(...)` (an unchecked `z.literal(true)` box), `z.enum([...])` given an empty `<select>`, and `z.coerce.number()` given text. Write them so they fail with a check instead: a box as `z.boolean().refine((v) => v, "...")`, a select as `z.string().min(1, "Choose a role").pipe(z.enum([...]))`, a number as in the example (checked with `safeParse` in Node). Valibot's `v.forward(v.partialCheck(...))` does not have this problem.
+9. **Checks across fields.** Give such a refinement a `path`: `.refine((d) => d.password === d.confirm, { message: "Passwords differ", path: ["confirm"] })` puts the message under `confirm`. Without a `path` the map key is `""`, which no field shows.
+
+   In Zod 4 the object-level `refine` runs only when every failing field failed a check on a value of the right type (`too_small`, `invalid_format`, a field's own `refine`). A field that fails with `invalid_value` or `invalid_type` stops it, and the cross-field message is missing until that field is fixed. Write such fields so they fail with a check instead (checked with `safeParse` in Node):
+
+   | Field | Stops the refine | Write it as |
+   |---|---|---|
+   | a checkbox left unchecked | `z.literal(true)` | `z.boolean().refine((v) => v, "...")` |
+   | a `<select>` left empty | `z.enum([...])` | `z.string().min(1, "Choose a role").pipe(z.enum([...]))` |
+   | a number field given text | `z.coerce.number()` | the example's `age` |
+
+   Valibot's `v.forward(v.partialCheck(...))` does not have this problem.
 10. **Zod 4 vs Zod 3.** These steps use Zod 4. The same component, browser checks and `issue.path.join(".")` passed with Zod 3.25.76 after these schema changes:
 
     | In the schema | Zod 4.6.7 | Zod 3.25.76 |
@@ -295,7 +320,10 @@ What it does, as checked in the browser:
     }
     ```
 
-    For the `types-check.ts` file, use `v.InferInput<typeof SignupSchema>` instead of `z.input`. Valibot's issue path is a list of objects, not keys; `v.getDotPath(issue)` gives the same dot path (`address.city`, `guests.1`). The parsed data is `result.output`, the type `v.InferOutput`. A check across fields is `v.forward(v.partialCheck([["password"], ["confirm"]], (d) => d.password === d.confirm, "Passwords differ"), ["confirm"])` on the object's `v.pipe` (checked in Node). The production bundle of this example page was 26.42 kB (9.55 kB gzip) with Valibot and 106.08 kB (31.88 kB gzip) with Zod 4.
+    For the `types-check.ts` file, use `v.InferInput<typeof SignupSchema>` instead of `z.input`. The parsed data is `result.output`, the type `v.InferOutput`.
+
+    - Valibot's issue path is a list of objects, not keys; `v.getDotPath(issue)` gives the same dot path (`address.city`, `guests.1`).
+    - A check across fields is `v.forward(v.partialCheck([["password"], ["confirm"]], (d) => d.password === d.confirm, "Passwords differ"), ["confirm"])` on the object's `v.pipe` (checked in Node).
 12. Not verified: Zod Mini, the `zod/v4` entry of Zod 3.25, async refinements (`safeParseAsync`), `<select multiple>`, file inputs, forms inside a `shadow: true` component, the `role="alert"` of the recipe together with `aria-describedby`, screen reader output, and browsers other than Chrome.
 
 ## Verify
@@ -308,7 +336,13 @@ npx ts-dom lint src/nv --a11y   # expect: ts-dom lint: no issues
 npm run build              # expect: ts-dom check: no issues, then ✓ built
 ```
 
-The `@ts-expect-error` in `types-check.ts` and the check below rely on a field whose parsed type differs from its input (here `age`, a string that becomes a number); for a schema without such a transform, input and output types are equal and the directive is reported as unused (`TS2578`), so drop it. Change `event<Signup>()` to `event<z.input<typeof SignupSchema>>()` once to see the type check work: `ts-dom check` must then report `TS2345` at the `emit` (and `TS6133` for the schema's output type, now unused, when `noUnusedLocals` is on) (`Type 'number' is not assignable to type 'string'` for `age`) and `TS2322` in `types-check.ts`.
+The `@ts-expect-error` in `types-check.ts` and the check below rely on a field whose parsed type differs from its input (here `age`, a string that becomes a number). For a schema without such a transform, input and output types are equal and the directive is reported as unused (`TS2578`), so drop it.
+
+Change `event<Signup>()` to `event<z.input<typeof SignupSchema>>()` once to see the type check work. `ts-dom check` must then report:
+
+- `TS2345` at the `emit` (`Type 'number' is not assignable to type 'string'` for `age`);
+- `TS2322` in `types-check.ts`;
+- `TS6133` for the schema's output type, now unused, when `noUnusedLocals` is on.
 
 In the browser, against `npm run dev` and against `npx vite preview` of the build, check with a test (Playwright or by hand). Submit with Enter or `form.requestSubmit()` in a test: a message that appears when a field loses focus can move the submit button, and a mouse click aimed at it then misses.
 
@@ -340,6 +374,5 @@ In the browser, against `npm run dev` and against `npx vite preview` of the buil
 - `state`, `derive`, `render` and `changed`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-and-view-state-optional
 - `emits`, `event<T>()` and `EmitEvent`: https://github.com/Pixmi/nativele/blob/main/docs/components.md#data-flow-props-down-events-up
 - Event delegation, `focusout` and blur: https://github.com/Pixmi/nativele/blob/main/docs/components.md#events-data-on-
-- Writing form control values in `render` (`unguarded-input-value`): https://github.com/Pixmi/nativele/blob/main/docs/components.md#a-small-reminder-about-form-inputs
 - Lists, `replace` and `show` in items: https://github.com/Pixmi/nativele/blob/main/docs/lists.md#items-as-plain-elements-replace
 - Setting up Nativele in the Vite app: `npx ts-dom skills nativele-vite`

@@ -110,7 +110,7 @@ export class List<L extends ListSchema = ListSchema> {
     if (!customElements.get(tag)) return;
     const probe = this.#items.values().next().value?.el ?? document.importNode(this.proto, false);
     if (!(prop in probe)) {
-      throw new Error(`[unknown-prop] <${tag}> has no "${prop}" property (data-prop). Fix: declare ${prop} in the component's props, or change data-prop.`);
+      throw new Error(`[item-prop-missing] <${tag}> has no "${prop}" property (data-prop). Fix: declare ${prop} in the component's props, or change data-prop.`);
     }
   }
 

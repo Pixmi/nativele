@@ -8,29 +8,24 @@ Nativele (`@nativele/ts-dom`) builds web components from an HTML template and a 
 2. `ts-dom gen` turns each `x.html` into `x.html.ts` (generated types and node data), so `tsc` can check that the HTML and the TypeScript agree.
 3. `ts-dom check` runs gen, `tsc` (or `vue-tsc`) and lint in one pass and points errors at the template.
 
-Import templates as `./x.html.js`. Never edit or commit `x.html.ts` or `ts-dom-tags.ts`.
+Import templates as `./x.html.js`. Never edit `x.html.ts` or `ts-dom-tags.ts`: they are generated.
 
 ## Rules that shape the code you write
 
-- HTML holds single identifiers, not expressions: `{{ a.b }}` and `{{ a + 1 }}` are errors. Compute in TypeScript and fill a named hole.
-- Data flows one way: a component changes its own `state` with `this.set(...)`, the parent sets props, events go up with `emit` (no bubbling). For data several levels away use a shared `createStore` and `bind`, never forward props or re-emit events.
-- `state`, `props` and `view` are deeply readonly: replace objects, never mutate them.
-- Rendering is synchronous; combine updates with `this.batch(fn)`. Lists, attributes and focus go in `render(view, changed)`.
-- Call `bind`, `on` and `onCleanup` in `connected()`, not in the constructor.
-- Never cast a type error away: fix the template or the component.
+`llms.txt` holds the rules, one line each with a link to its guide section. Read it before writing a template or a component.
 
 ## Workflow
 
-1. After any `.html` or component change, run `npx ts-dom check --json` and fix every issue by its `Fix:` hint. Diagnostics read `file:line:col severity [rule-id] message`.
-2. `npx ts-dom rules --explain=<id>` explains a rule id: why it exists, a wrong example, the fix.
-3. If checks behave oddly (no types, a template not found), run `npx ts-dom doctor --json` first.
-4. `npx ts-dom gen --check` tells whether generated files are stale before you trust `tsc` errors.
+1. Before working on Nativele components, run `npx ts-dom skills nativele-core` and follow it.
+2. After any `.html` or component change, run `npx ts-dom check --json` and fix every issue by its `Fix:` hint.
+
+The other commands for agents are in the "Rules for agents" section of `llms.txt`.
 
 ## Where to look
 
 - `llms.txt`: the full syntax and API reference in one page, with a link per rule to its guide section.
 - `docs/`: the guides (`templates`, `components`, `lists`, `recipes`, `architecture`, `tooling`, `performance`, `design`). The same files ship in the installed package under `node_modules/@nativele/ts-dom/docs/`.
-- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (`nativele-core` for building components, plus framework, tooling and architecture topics); `npx ts-dom skills <name>` prints one and `npx ts-dom skills add <name>` copies it into `.claude/skills/` or `.agents/skills/`. Before working on Nativele components, run `npx ts-dom skills nativele-core` and follow it.
+- Skills: `npx ts-dom skills` lists the task procedures shipped with the package (building components, frameworks, tooling and architecture) and shows which ones cover the project's dependencies.
 - `examples/`: runnable examples, including `examples/readme/` and `examples/recipes/`.
 
 ## Scope

@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { A11Y_RULES } from "./lib/a11y.ts";
 import { CHECK_RULES, runCheck, splitDirs } from "./lib/check.ts";
-import { DOCTOR_RULES, formatDoctorIssue, runDoctor } from "./lib/doctor.ts";
+import { DOCTOR_RULES, runDoctor } from "./lib/doctor.ts";
 import { RULE_DOCS } from "./lib/rule-docs.ts";
 import { addSkill, libraryVersion, listSkills, skillsTarget, staleReason } from "./lib/skills.ts";
-import { checkGenerated, CODEGEN_RULES, CodegenError, crossDirDuplicates, formatDiagnostics, generateDirs, watchAll } from "./lib/codegen.ts";
-import { scanDefines } from "./lib/components.ts";
+import { packageDependencies } from "./lib/manifest.ts";
+import { checkGenerated, CODEGEN_RULES, CodegenError, duplicateDefines, formatDiagnostics, generateDirs, staleIssue, watchAll } from "./lib/codegen.ts";
+import { scanDefines, Workspace } from "./lib/components.ts";
 import { DATA_FLOW_RULES, UNUSED_MARKUP_RULES, formatIssue, runLint } from "./lib/lint.ts";
 
 const HELP = `ts-dom <command> [dirs...] [flags]
@@ -20,7 +21,7 @@ Commands
         --exclude=<glob>  leave these templates out (repeatable)
         --whitespace=collapse   collapse whitespace in text and drop line-break-only text between tags
         --whitespace=preserve   keep whitespace as written; without either, the mode the generated files were
-                                last written with is kept (gen, gen --check, check and doctor all follow it)
+                                last written with is kept (gen, gen --check and check all follow it)
   lint  [dirs...]   Check templates against the code that uses them (default dir: src)
         --a11y            also check ARIA / accessibility (warnings)
         --ignore=<id>     leave out the warnings with this rule id (repeatable; errors are always reported)
@@ -36,15 +37,15 @@ Commands
         --ignore=<id>     as for lint
         --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text
-  doctor [dirs...]  Check the project set-up: tsconfig, template imports, generated files, the runtime package,
-                    and the Vite, oxlint and formatter configuration (default dir: src)
+  doctor [dirs...]  Check the project set-up: tsconfig, template imports, the runtime package, the Vite, oxlint
+                    and formatter configuration, and the project's copies of Skills (default dir: src)
         --project=<path>  tsconfig to check (default: tsconfig.json)
-        --include=<glob>, --exclude=<glob>, --whitespace=collapse|preserve   as for gen (they decide which
-                          generated files are stale)
-        --strict          exit with code 1 on warnings too (errors always do; info never does)
+        --ignore=<id>     as for lint
+        --strict          exit with code 1 on warnings too (errors always do)
         --json            print the issues as JSON instead of text
   skills            List the Nativele Skills shipped with this version: task procedures for coding agents
-                    (set-up, a complete example, known limitations, verification), with the versions verified
+                    (set-up, a complete example, known limitations, verification), with the versions verified,
+                    and which of them cover a dependency of the project in the current folder
         <name>            print one Skill
         add <name...>     copy Skills into the project: .claude/skills/ when the project has .claude,
                           otherwise .agents/skills/
@@ -62,7 +63,7 @@ Exit code: 0 = clean, 1 = errors found (or warnings with --strict).
 function ruleGroups(): [string, string, Record<string, string>][] {
   return [
     ["gen", "reported by `ts-dom gen` while analyzing a template (errors stop code generation)", CODEGEN_RULES],
-    ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state)", CHECK_RULES],
+    ["check", "reported by `ts-dom check` (tsc errors mapped back to the templates, and generated file state); stale-generated also by `ts-dom gen --check`, and dir-not-found by every command and the Vite plugin", CHECK_RULES],
     ["doctor", "reported by `ts-dom doctor` (project set-up)", DOCTOR_RULES],
     ["lint: unused-markup", "errors from `ts-dom lint` / oxlint rule ts-dom/unused-markup (or ts-dom/<id>); no-importer only from `ts-dom lint`, as the oxlint plugin sees one file at a time and cannot tell that no file imports a template", UNUSED_MARKUP_RULES],
     ["lint: data-flow", "warnings from `ts-dom lint` / oxlint rule ts-dom/data-flow (or ts-dom/<id>); unchecked-custom-elements only from `ts-dom lint` and `ts-dom check`, as it is reported once per run over every scanned template", DATA_FLOW_RULES],
@@ -128,9 +129,10 @@ function skillsCommand(): void {
     }
     return;
   }
+  const deps = new Set(packageDependencies(new Workspace(), process.cwd()));
   const rows = skills.map((skill) => {
     const { dir: _dir, ...s } = skill;
-    return { ...s, stale: staleReason(skill, version) };
+    return { ...s, stale: staleReason(skill, version), uses: skill.detects.filter((d) => deps.has(d)) };
   });
   if (flags.has("--json")) {
     console.log(JSON.stringify({ version, skills: rows }, null, 2));
@@ -140,6 +142,7 @@ function skillsCommand(): void {
   for (const s of rows) {
     console.log(`  ${s.name.padEnd(28)} ${s.tier.padEnd(13)} verified ${s.verified}${s.stale ? ` (stale: ${s.stale})` : ""}`);
     console.log(`  ${"".padEnd(28)} ${s.description}`);
+    if (s.uses.length) console.log(`  ${"".padEnd(28)} This project depends on ${s.uses.join(", ")}.`);
   }
   console.log("\nts-dom skills <name> prints one; ts-dom skills add <name> copies it into the project for your agent.");
 }
@@ -160,10 +163,10 @@ try {
     const defs = scanDefines(found);
     const results = found.map((d) => checkGenerated(d, generate, defs, found));
     const stale = results.flatMap((r) => r.stale);
-    const errors = [...missing.map(formatIssue), ...results.flatMap((r) => r.errors), ...crossDirDuplicates(found).map((d) => formatDiagnostics(d.file, [d]))];
+    const errors = [...missing.map(formatIssue), ...results.flatMap((r) => r.errors), ...duplicateDefines(found).map((d) => formatDiagnostics(d.file, [d]))];
     if (flags.has("--json")) console.log(JSON.stringify({ stale: stale.map((s) => ({ ...s, file: relative(process.cwd(), s.file) })), errors }, null, 2));
     else {
-      for (const s of stale) console.error(`${relative(process.cwd(), s.file)}:1:1 error [stale-generated] The generated file is ${s.reason}. Fix: run ts-dom gen.`);
+      for (const s of stale) console.error(formatIssue(staleIssue(relative(process.cwd(), s.file), s.reason)));
       for (const e of errors) console.error(e);
       if (!stale.length && !errors.length) console.log("ts-dom gen --check: generated files are up to date");
     }
@@ -198,11 +201,11 @@ try {
     if (!flags.has("--json") && !issues.length) console.log("ts-dom check: no issues");
   } else if (cmd === "doctor") {
     const project = args.find((a) => a.startsWith("--project="))?.slice("--project=".length);
-    const issues = runDoctor({ dirs, generate, ...(project ? { project } : {}) });
+    const issues = kept(runDoctor({ dirs, ...(project ? { project } : {}) }));
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));
-    else for (const i of issues) (i.severity === "error" ? console.error : i.severity === "warning" ? console.warn : console.log)(formatDoctorIssue(i));
-    if (issues.some((i) => i.severity === "error" || (flags.has("--strict") && i.severity === "warning"))) process.exitCode = 1;
-    if (!flags.has("--json") && !issues.some((i) => i.severity !== "info")) console.log("ts-dom doctor: the set-up looks right");
+    else for (const i of issues) (i.severity === "error" ? console.error : console.warn)(formatIssue(i));
+    if (issues.some((i) => i.severity === "error") || (flags.has("--strict") && issues.length)) process.exitCode = 1;
+    if (!flags.has("--json") && !issues.length) console.log("ts-dom doctor: the set-up looks right");
   } else if (cmd === "lint") {
     const issues = kept([...missing, ...runLint(found, { a11y: flags.has("--a11y"), ignore: [...ignored] })]).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line || x.col - y.col);
     if (flags.has("--json")) console.log(JSON.stringify({ issues }, null, 2));

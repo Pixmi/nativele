@@ -301,6 +301,18 @@ inc() { this.count = this.count + 1; }`,
     good: `// counter.ts
 inc() { this.emit("count-change", { value: this.props.count + 1 }); }`,
   },
+  "constructor-host-change": {
+    why: "A browser creates a custom element with document.createElement or the HTML parser and then requires the new element to have no attributes and no children: a constructor that adds one makes the browser report NotSupportedError and create an HTMLUnknownElement instead, so the component never renders. happy-dom and jsdom accept it, so unit tests pass and the error shows only in a browser. Code in a function or arrow the constructor defines runs later and is not reported.",
+    bad: `// card.ts
+constructor() {
+  super();
+  this.classList.add("card");
+}`,
+    good: `// card.ts
+override connected(): void {
+  this.classList.add("card");
+}`,
+  },
   "unguarded-input-value": {
     why: "render() runs on every change, including the change the user is typing. Assigning a form control's value, even to the same text, moves the caret to the end, so the write must be skipped when nothing differs. value, valueAsNumber and valueAsDate count as one: a write to any of them is checked, and a comparison of any of them on the same ref guards it when it gates the write: if (<value> !== next) before the write on the same line, or on the line before with nothing but { after it, or if (<value> === next) return; (or continue) on the line before. A comparison whose if does not decide whether the write runs is not a guard.",
     bad: `// form.ts
@@ -313,10 +325,14 @@ override render(view: { name: string }) {
 }`,
   },
   "unchecked-custom-elements": {
-    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, or a component outside the scanned folders), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) in the scanned folders (a plain custom element, or a class from a package), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
+    why: "Lint checks the attributes, events and data-on-click on a child tag against the child's define() and template, and the attributes, events and slots of another library's element against the custom elements manifest its package declares (the customElements field of its package.json). The child's define() is read from the scanned folders and from the Nativele component packages the template's package depends on (those that list @nativele/ts-dom, read from the modules their exports name). For a tag it has no single definition of, those checks are skipped, and this one warning per run lists the tags by cause, each with its fix, so the gap is visible: no define() in the scanned folders or such a package and no manifest of the template's package or its dependencies that defines it (an element from a library without a manifest, a component outside the scanned folders, or one of a package the template's package does not list), a tag declared only in TypeScript (a customElements.define() call or an HTMLElementTagNameMap entry, which names the tag but none of its attributes, events or slots), define() passes a class that lint cannot follow through relative imports to a class extending Component(...) (a plain custom element), or a tag defined in several packages and not exactly once in the template's package (also a tag two manifests or two component packages of the package's dependencies define). A tag that unknown-custom-element reports as a likely typo is not listed, unless unknown-custom-element is ignored. ts-dom lint and ts-dom check report it; the oxlint plugin does not, as it would repeat it in every file. Silence it with --ignore=unchecked-custom-elements, for example in a --strict run that uses another library's elements.",
     bad: `# the app's own components live in src/ui, which is not scanned
-npx ts-dom lint src/pages`,
+npx ts-dom lint src/pages
+# the app uses <ui-button> from the workspace package @acme/ui without listing it
+cat package.json   # no "@acme/ui" in its dependencies`,
     good: `npx ts-dom lint src/pages src/ui
+# list the component package; lint reads its define() calls from its exports
+npm pkg set "dependencies.@acme/ui=*"
 # only elements from another library are left: nothing to change
 npx ts-dom lint src --strict --ignore=unchecked-custom-elements`,
   },
@@ -374,7 +390,7 @@ this.refs.list.items = ["a", "b"];
 </wa-dialog>`,
   },
   "unknown-custom-element": {
-    why: "A misspelled tag renders as an undefined element that shows only its children, with no error anywhere. Lint reports a tag that nothing it reads defines (a define() in the scanned folders, a customElements.define() call or HTMLElementTagNameMap entry in the scanned TypeScript, the custom elements manifests of the template's package and its dependencies) only when a known tag with the same prefix is one or two edits away; any other unknown tag is listed by unchecked-custom-elements instead. A tag defined at run time by code outside the scanned folders, one or two letters from a known tag, is a false positive: pass --ignore=unknown-custom-element.",
+    why: "A misspelled tag renders as an undefined element that shows only its children, with no error anywhere. Lint reports a tag that nothing it reads defines (a define() in the scanned folders or in a Nativele component package the template's package depends on, a customElements.define() call or HTMLElementTagNameMap entry in the scanned TypeScript, the custom elements manifests of the template's package and its dependencies) only when a known tag with the same prefix is one or two edits away; any other unknown tag is listed by unchecked-custom-elements instead. A tag defined at run time by code outside the scanned folders, one or two letters from a known tag, is a false positive: pass --ignore=unknown-custom-element.",
     bad: `<wa-buton>Save</wa-buton>`,
     good: `<wa-button>Save</wa-button>`,
   },
@@ -517,11 +533,20 @@ this.refs.list.items = ["a", "b"];
 
   // CHECK_RULES
   "stale-generated": {
-    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom doctor reports the same condition as a warning.",
+    why: "Types come from the generated *.html.ts files. If one is missing, outdated or orphaned (its template was deleted, or a ts-dom-tags.ts was left in a subfolder that is no longer scanned and declares its tags a second time), tsc checks against old templates and its errors may not match the HTML. ts-dom gen --check reports it too.",
     bad: `# card.html was edited, card.html.ts was not regenerated
 npx ts-dom check --no-write`,
     good: `npx ts-dom gen
 # or: npx ts-dom check (it regenerates first)`,
+  },
+  "define-class-not-exported": {
+    why: "ts-dom-tags.ts registers each tag with the type of its class, which it can only import when the class is exported. A tag whose class is not exported is left out, so a ref of it is typed as plain HTMLElement and tsc checks none of its props; the only error is a TS2339 where the code reads one. Reported by ts-dom check at the define() call, as a warning, for a tag a scanned template uses; a class kept private for a tag no template uses, such as a test's own host, is not reported.",
+    bad: `// card.ts
+class Card extends Component(tpl) {}
+define("x-card", Card);`,
+    good: `// card.ts
+export class Card extends Component(tpl) {}
+define("x-card", Card);`,
   },
   "missing-binding": {
     why: "Every {{ hole }} and data-if must be backed by a field in state, props or derive. tsc finds the ones that are not, which usually means a typo or a forgotten declaration.",
@@ -724,7 +749,7 @@ import viteConfig from "./vite.config";
 export default mergeConfig(viteConfig, defineConfig({ test: { environment: "happy-dom" } }));`,
   },
   "oxlint-plugin-missing": {
-    why: "The oxlint plugin runs the template rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI. In a package of a workspace, the nearest lint config up to the workspace root is read.",
+    why: "The oxlint plugin runs the lint rules (unused markup, data flow, accessibility) in the editor. Without it they only run from the CLI. In a package of a workspace, the nearest lint config up to the workspace root is read.",
     bad: `// .oxlintrc.json
 { "rules": {} }`,
     good: `// .oxlintrc.json
@@ -748,12 +773,6 @@ npx ts-dom check src`,
     bad: `// node_modules/some-lib/package.json: "customElements": "dist/custom-elements.json", and the file is not in the package`,
     good: `npm i some-lib@latest   # a version that ships its manifest
 # or report the missing manifest to the package's maintainers`,
-  },
-  "skill-available": {
-    why: "A Nativele Skill gives an agent the verified steps, limitations and checks for a tool the project already uses. This is a suggestion and never changes the exit code.",
-    bad: `// package.json lists "react", and the project has no copy of the nativele-react Skill`,
-    good: `npx ts-dom skills add nativele-react   # copies it into .claude/skills/ or .agents/skills/
-npx ts-dom skills nativele-react       # or just read it`,
   },
   "skill-outdated": {
     why: "A copied Skill does not update with the package. After an upgrade the copy may describe an older version of Nativele or of the tool it covers.",

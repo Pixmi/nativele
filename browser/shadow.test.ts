@@ -1,22 +1,20 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5304);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "warning" && errors.push(`warn: ${m.text()}`));
-  await page.goto(`${s.url}/browser/fixtures/shadow/page.html`);
-  await page.waitForFunction(() => document.querySelector("#plain")?.shadowRoot?.querySelector("p"));
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/shadow/page.html",
+    ready: () => document.querySelector("#plain")?.shadowRoot?.querySelector("p"),
+    before: async (page, errors) => {
+      page.on("console", (m) => m.type() === "warning" && errors.push(`warn: ${m.text()}`));
+    },
+  }));
   // Count custom events that bubble out to the window: emitted events must not (they do not bubble by default).
   await page.evaluate(() => {
     const w = window as unknown as { leaked: string[] };
@@ -25,10 +23,7 @@ beforeAll(async () => {
   });
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 /** Run a function in the page with the shadow root of the element matching `host`. The function must not use closure variables. */
 const inShadow = <T>(host: string, fn: (root: ShadowRoot) => T): Promise<T> =>

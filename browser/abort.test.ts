@@ -1,36 +1,31 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page, Route } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Page, Route } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
-const errors: string[] = [];
+let errors: string[];
+let close: () => Promise<void>;
 const held: Route[] = [];
 let requests = 0;
 let aborted = 0;
 
 beforeAll(async () => {
-  const s = await startServer(5317);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  page.on("requestfailed", (r) => r.url().endsWith("/api/slow") && aborted++);
-  await page.route("**/api/slow", (route) => {
-    requests++;
-    held.push(route);
-  });
-  await page.goto(`${s.url}/browser/fixtures/page.html`);
-  await page.waitForSelector("light-card");
+  ({ page, errors, close } = await openPage({
+    path: "/browser/fixtures/page.html",
+    ready: "light-card",
+    before: async (page, errors) => {
+      page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("requestfailed", (r) => r.url().endsWith("/api/slow") && aborted++);
+      await page.route("**/api/slow", (route) => {
+        requests++;
+        held.push(route);
+      });
+    },
+  }));
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 const settle = () => page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
 const status = () => page.evaluate(() => document.querySelector("abort-load")?.textContent?.trim());

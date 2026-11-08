@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { analyze } from "../src/lib/codegen.ts";
 import { runDoctor } from "../src/lib/doctor.ts";
+import { lintRun } from "../src/lib/lint.ts";
+import { runCli, writeTree } from "./helpers.ts";
 
 const project = (files: Record<string, string>) => {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-doctor-"));
-  mkdirSync(join(dir, "src"));
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+  const dir = writeTree(files, "nativele-doctor-");
+  mkdirSync(join(dir, "src"), { recursive: true });
   return dir;
 };
 const rules = (cwd: string) => runDoctor({ dirs: ["src"], cwd }).map((i) => i.rule).sort();
 
 describe("ts-dom doctor", () => {
   it("a project without tsconfig and runtime package", () => {
-    expect(rules(project({ "src/x.html": "<p></p>" }))).toEqual(["no-tsconfig", "runtime-not-installed", "stale-generated"]);
+    expect(rules(project({ "src/x.html": "<p></p>" }))).toEqual(["no-tsconfig", "runtime-not-installed"]);
   });
 
   it("tsconfig problems, read through extends and comments", () => {
@@ -41,13 +41,13 @@ describe("ts-dom doctor", () => {
   it("Vite, oxlint and formatter configuration", () => {
     const base = { "tsconfig.json": `{ "compilerOptions": { "strict": true, "paths": { "@nativele/ts-dom": ["x"] } } }`, "src/x.html": "<p></p>" };
     const missing = project({ ...base, "vite.config.ts": `export default { plugins: [], lint: {} }`, "package.json": `{ "scripts": { "fmt": "oxfmt ." } }` });
-    expect(rules(missing).filter((r) => r !== "stale-generated")).toEqual(["formatter-whitespace", "oxlint-plugin-missing", "vite-plugin-missing"]);
+    expect(rules(missing)).toEqual(["formatter-whitespace", "oxlint-plugin-missing", "vite-plugin-missing"]);
     const fine = project({
       ...base,
       "vite.config.ts": `import { tsDom } from "@nativele/ts-dom/vite";\nexport default { plugins: [tsDom({ whitespace: "collapse" })], lint: { jsPlugins: [{ name: "ts-dom", specifier: "@nativele/ts-dom/oxlint" }] } }`,
       "package.json": `{ "scripts": { "fmt": "oxfmt ." } }`,
     });
-    expect(rules(fine).filter((r) => r !== "stale-generated")).toEqual([]);
+    expect(rules(fine)).toEqual([]);
   });
 });
 
@@ -93,10 +93,11 @@ describe("ts-dom doctor: tsconfig extends and include", () => {
 });
 
 describe("ts-dom doctor output", () => {
-  it("every line has file:line:col, also without a file", async () => {
-    const { formatDoctorIssue } = await import("../src/lib/doctor.ts");
-    expect(formatDoctorIssue({ rule: "runtime-not-installed", severity: "error", message: "m" })).toBe(".:1:1 error [runtime-not-installed] m");
-    expect(formatDoctorIssue({ rule: "template-import-without-js", severity: "error", message: "m", file: "src/a.ts", line: 2 })).toBe("src/a.ts:2:1 error [template-import-without-js] m");
+  it("every issue has a file, line and column, also when it is about the project as a whole", () => {
+    expect(runDoctor({ dirs: ["src"], cwd: project({ "src/x.html": "<p></p>" }) }).map((i) => [i.file, i.line, i.col])).toEqual([
+      [".", 1, 1],
+      [".", 1, 1],
+    ]);
   });
 });
 
@@ -145,11 +146,6 @@ describe("ts-dom doctor: pages, solution configs and missing folders", () => {
     expect(rules).not.toContain("tsconfig-no-dom-lib");
     expect(rules).not.toContain("tsconfig-not-strict");
     expect(rules).not.toContain("tsconfig-misses-templates");
-  });
-
-  it("a folder that does not exist is reported", () => {
-    const cwd = project({ "tsconfig.json": `{ "compilerOptions": { ${strictPaths} } }` });
-    expect(runDoctor({ dirs: ["app"], cwd }).map((i) => i.rule)).toContain("dir-not-found");
   });
 });
 
@@ -210,11 +206,9 @@ describe("ts-dom doctor: another framework's templates in a scanned folder", () 
   });
 
   it("the invalid-hole and no-importer hints mention a folder that is not meant to be scanned", async () => {
-    const { analyze } = await import("../src/lib/codegen.ts");
-    const { lintUsage } = await import("../src/lib/lint.ts");
     expect(analyze("<p>{{ user.name }}</p>").diagnostics[0]?.message).toContain("this folder is not meant to be scanned");
     const cwd = project({ "src/lone.html": "<p></p>" });
-    const lone = lintUsage([join(cwd, "src")], []).find((i) => i.rule === "no-importer");
+    const lone = lintRun([join(cwd, "src")], { groups: ["unused-markup"] }).issues.find((i) => i.rule === "no-importer");
     expect(lone?.message).toContain("this folder is not meant to be scanned");
   });
 });
@@ -246,15 +240,10 @@ describe("ts-dom doctor: a type check that runs before gen", () => {
   });
 });
 
-const tree = (files: Record<string, string>) => {
-  const dir = mkdtempSync(join(tmpdir(), "nativele-doctor-"));
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, name)), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return dir;
-};
-const withTypeScript = (version: string) => ({ "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version }) });
+const tree = (files: Record<string, string>) => writeTree(files, "nativele-doctor-");
+const withTypeScript = (version: string) => ({
+  "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version }),
+});
 const issuesOf = (cwd: string, rule: string, extra: { project?: string } = {}) => runDoctor({ dirs: ["src"], cwd, ...extra }).filter((i) => i.rule === rule);
 const paths = `"paths": { "@nativele/ts-dom": ["x"] }`;
 
@@ -380,7 +369,6 @@ describe("ts-dom doctor in a package of a workspace", () => {
       const issues = runDoctor({ dirs: ["src"], cwd: join(root, pkg) });
       const name = Object.keys(marker)[0];
       expect(issues.filter((i) => i.rule === "typecheck-before-gen"), name).toHaveLength(1);
-      expect(issues.filter((i) => i.rule === "skill-available"), name).toEqual([]);
       expect(issues.filter((i) => i.rule === "skill-outdated").map((i) => i.file), name).toEqual(["../../.claude/skills/nativele-core/SKILL.md"]);
     }
   });
@@ -432,19 +420,23 @@ describe("ts-dom doctor --project", () => {
 });
 
 describe("ts-dom doctor on the command line", () => {
-  const cli = join(process.cwd(), "src/cli.ts");
-  const warningsOnly = () => tree({ "tsconfig.json": `{ "compilerOptions": { "strict": false, ${paths} } }`, "tsconfig.app.json": `{ "compilerOptions": { "strict": true, ${paths} } }`, "src/a.ts": "export {};\n" });
+  const warningsOnly = () =>
+    tree({
+      "tsconfig.json": `{ "compilerOptions": { "strict": false, ${paths} } }`,
+      "tsconfig.app.json": `{ "compilerOptions": { "strict": true, ${paths} } }`,
+      "src/a.ts": "export {};\n",
+    });
 
   it("--strict exits with 1 on warnings, like check --strict", () => {
     const cwd = warningsOnly();
-    expect(spawnSync(process.execPath, [cli, "doctor", "src"], { cwd, encoding: "utf8" }).status).toBe(0);
-    const strict = spawnSync(process.execPath, [cli, "doctor", "src", "--strict"], { cwd, encoding: "utf8" });
+    expect(runCli(["doctor", "src"], cwd).status).toBe(0);
+    const strict = runCli(["doctor", "src", "--strict"], cwd);
     expect(strict.stderr).toContain("[tsconfig-not-strict]");
     expect(strict.status).toBe(1);
   }, 30_000);
 
   it("--project picks the tsconfig", () => {
-    const run = spawnSync(process.execPath, [cli, "doctor", "src", "--project=tsconfig.app.json", "--strict"], { cwd: warningsOnly(), encoding: "utf8" });
+    const run = runCli(["doctor", "src", "--project=tsconfig.app.json", "--strict"], warningsOnly());
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
   }, 30_000);

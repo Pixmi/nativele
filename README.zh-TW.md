@@ -8,9 +8,13 @@ Nativele 以 `@nativele/ts-dom` 發布這個函式庫（從 `@nativele/ts-dom` �
 
 [English](README.md) | 繁體中文
 
-用來建構 Web Components 的輕量函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。它為型別安全與 AI agent 協作而設計：`tsc` 會檢查 HTML 用到的每個名稱，每則診斷都說明怎麼修。複雜的介面以原生自訂元素組合而成。
+用來建構 Web Components 的輕量函式庫：HTML 描述結構與資料要放的位置，TypeScript 負責行為與狀態，由原生 DOM 渲染，沒有虛擬 DOM，也沒有範本表達式。複雜的介面以原生自訂元素組合而成。
 
-**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom check`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。`ts-dom gen` 與 `ts-dom lint` 的每則診斷都標明規則並附上可直接套用的 `Fix:` 提示，[`llms.txt`](llms.txt) 用一頁說明整個 API，[Nativele Skills](#nativele-skills) 則提供 agent 經過驗證的流程，用於開發元件以及與其他工具整合。
+**Nativele 是為 AI coding agent 打造的。** agent 寫好範本與類別，執行 `ts-dom check`，就能從型別錯誤自行修正：HTML 用了類別沒有的名稱、事件處理方法不存在、清單項目的形狀不對。
+
+沒有要另外學的範本語言，也沒有要推敲的隱式響應式，agent 在 HTML 與類別裡讀到的就是實際發生的全部。
+
+每則診斷都標明規則並附上可直接套用的 `Fix:` 提示。[`llms.txt`](llms.txt) 用一頁說明整個 API，[Nativele Skills](#nativele-skills) 則提供 agent 經過驗證的流程，用於開發元件以及與其他工具整合。
 
 ```html
 <!-- user-card.html：HTML 只描述結構、資料要放的位置、事件要找哪個方法 -->
@@ -56,33 +60,9 @@ npx ts-dom skills nativele-core        # 顯示其中一份
 npx ts-dom skills add nativele-core    # 複製到 .claude/skills/（專案有 .claude 時）或 .agents/skills/
 ```
 
-`npx ts-dom doctor` 會讀取你的 `package.json` 並建議相符的 Skill，例如相依 React 時建議 `nativele-react`。
+`npx ts-dom skills` 也會標出哪些 Skill 涵蓋你專案的相依套件，例如相依 React 時的 `nativele-react`。
 
-| Skill | 內容 |
-|---|---|
-| `nativele-core` | 開發元件：`ts-dom check` 循環、範本、state、清單、資料流 |
-| `nativele-react` | 在 React 19 中使用 Nativele 元件：props、事件、子元素與 slot、生命週期、TSX 型別 |
-| `nativele-vue` | 在 Vue 3 中使用 Nativele 元件：props、事件、`v-model`、slot、`<KeepAlive>`、範本型別 |
-| `nativele-svelte` | 在 Svelte 5 中使用 Nativele 元件：props、事件、slot、範本型別 |
-| `nativele-angular` | 在 Angular 中使用 Nativele 元件：綁定、變更偵測、建置流程、內容投影 |
-| `nativele-architecture` | 應用的結構：功能資料夾、共用元件與 store、由 router 掛載的頁面、延遲載入、測試分層 |
-| `nativele-vite` | 在 Vite 應用中使用 Nativele：外掛與 `root`、多頁建置、熱更新 |
-| `nativele-integration` | 在沒有專屬 Skill 的框架（Preact、Solid 等）中使用 Nativele 元件：property、事件、slot、生命週期、範本型別 |
-| `nativele-state-management` | 狀態放在哪裡；`createStore`，以及透過 `bind` 接上 Zustand、Redux Toolkit、nanostores |
-| `nativele-testing` | 用 Vitest 做元件測試、真實瀏覽器測試 |
-| `nativele-tanstack-query` | 用 `@tanstack/query-core` 取資料 |
-| `nativele-zod` | 用 Zod 或 Valibot 驗證表單 |
-| `nativele-tailwind` | 在範本與 Shadow DOM 中使用 Tailwind CSS |
-| `nativele-web-awesome` | 在範本中使用 Web Awesome 元件：有型別的事件、表單、Light 與 Shadow DOM |
-| `nativele-typescript` | tsconfig：Nativele 需要什麼、更嚴格的選項、型別檢查如何納入產生的檔案 |
-| `nativele-linting` | 在 oxlint、Vite+ 或 ESLint 中使用 Nativele 的 lint 規則：規則、嚴重度、忽略清單 |
-| `nativele-formatting` | 以 oxfmt、Prettier 或 `vp fmt` 格式化範本：空白模式、讓格式化工具避開產生的檔案 |
-| `nativele-ci` | CI 中的 Nativele 步驟：先產生檔案、產生的檔案提交或忽略、結束碼 |
-| `nativele-monorepo` | 在 workspace 的多個套件間使用 Nativele：共用的元件套件、建置順序 |
-
-等級：Official 經 agent 實際驗收、由維護者維護；Community 由社群貢獻，標示作者與最後驗證版本；Experimental 尚未充分驗證。驗證超過六個月，或不涵蓋已安裝的版本時，`ts-dom skills` 會標示為可能過期。
-
-Nativele 維持輕量的 UI 層，整合能力透過 Skill 擴展：新增 Skill 不改動執行期程式碼，也不增加依賴。規劃中的 Skill 與貢獻方式見 [Skills 指南](https://github.com/Pixmi/nativele/blob/main/skills/README.md)。
+Skill 清單、等級與貢獻方式見 [Skills 指南](https://github.com/Pixmi/nativele/blob/main/skills/README.md)。
 
 如果你的 agent 不會載入 Skill，在它的指引檔（`AGENTS.md`、`CLAUDE.md` 等）加一行：「處理 Nativele 元件前，先執行 `npx ts-dom skills nativele-core` 並照著做。」
 
@@ -97,8 +77,6 @@ npx tsc             # 型別檢查並編譯；不需要 Vite 或其他 bundler
 下面兩個範例都是 `examples/readme/` 裡真實可執行的檔案（有型別檢查、lint 與測試）。
 
 ### 範例 1：計數器（state、衍生值、事件、data-if）
-
-HTML 只描述結構、資料放哪裡、事件找哪個方法：
 
 ```html
 <p>Count: {{ count }} (double: {{ double }})</p>
@@ -126,8 +104,6 @@ export class MyCounter extends Component(tpl, {
 }
 define("my-counter", MyCounter);
 ```
-
-HTML 用了 `state` 與 `derive` 都沒有的名稱、`data-on-click` 指向不存在的方法，`tsc` 都會報錯。
 
 ### 範例 2：元件組成的清單（`items =`、props 往下、事件往上）
 

@@ -78,8 +78,8 @@ rm src/bad.ts
 echo "[smoke] skills"
 npx ts-dom skills | grep -q "nativele-core"
 npx ts-dom skills nativele-react | grep -q "^name: nativele-react"
-npx ts-dom doctor | grep -q "\[skill-available\].*nativele-core"
+npx ts-dom skills | grep -A2 "nativele-core" | grep -q "This project depends on @nativele/ts-dom"
 npx ts-dom skills add nativele-core >/dev/null
 test -s .agents/skills/nativele-core/SKILL.md
-if npx ts-dom doctor | grep -q "nativele-core"; then echo "[smoke] doctor still recommends a copied Skill" >&2; exit 1; fi
+if npx ts-dom doctor | grep -q "skill-outdated"; then echo "[smoke] doctor reports the copy just added as outdated" >&2; exit 1; fi
 echo "[smoke] OK"

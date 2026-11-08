@@ -17,14 +17,15 @@ metadata:
 - A Vite app with no UI framework (for example one started with `npm create vite@latest -- --template vanilla-ts`) that adds components written with Nativele (`@nativele/ts-dom`).
 - Any Vite project with Nativele whose set-up goes beyond the defaults: `root` in a sub-folder, several HTML pages, Vite+, or questions about what `vite dev` does when a template changes.
 - Signals: `vite` or `vite-plus` and `@nativele/ts-dom` in `package.json`, a `vite.config.ts`.
-- With a UI framework, follow its Skill: `nativele-react`, `nativele-vue`, `nativele-svelte`, `nativele-angular`, or `nativele-integration` for any other. The parts about `dirs` and `root` apply there too; the build script in step 5 does not: it is for a project whose type check is plain `tsc`, while a framework project keeps its own type check (`tsc -b`, `vue-tsc -b`, `svelte-check`) and puts `ts-dom gen <folder> &&` in front of that script. The hot-update behavior below was verified without a framework.
+- With a UI framework, follow its Skill: `nativele-react`, `nativele-vue`, `nativele-svelte`, `nativele-angular`, or `nativele-integration` for any other. The plugin, `dirs`, `root` and the build script (step 5) apply there too.
+- The hot-update behavior below was verified without a framework.
 - Not for writing the components themselves (`npx ts-dom skills add nativele-core`), and not for setting Vite up.
 
 ## Versions
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.0 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vite | 8.3.6 |
 | typescript | 7.0.2 |
 | create-vite (`vanilla-ts` template, the starting point) | 9.3.4 |
@@ -48,15 +49,28 @@ Starting from the `vanilla-ts` template, which already has `"type": "module"`, a
    export default defineConfig({ plugins: [tsDom({ dirs: ["src/nv"] })] });
    ```
 
-   `dirs` is resolved against Vite's `root`, not against the folder you run commands in (see step 8). The other options are in the setup guide. When the project has a formatter, the whitespace mode is decided by the formatting Skill (`npx ts-dom skills nativele-formatting`); give the plugin that mode (for `collapse`: `tsDom({ dirs: ["src/nv"], whitespace: "collapse" })`), and pass the same mode (`--whitespace=collapse`) to every `ts-dom gen` and `ts-dom check` in the scripts.
+   - `dirs` is resolved against Vite's `root`, not against the folder you run commands in (see step 8).
+   - With a formatter, give the plugin the whitespace mode the formatting Skill decides (`npx ts-dom skills nativele-formatting`), for example `tsDom({ dirs: ["src/nv"], whitespace: "collapse" })`. Pass the same `--whitespace=collapse` to every `ts-dom gen` and `ts-dom check` in the scripts.
+   - The other options are in the Vite plugin guide (See also).
 
-5. Replace `tsc` in the build script with `ts-dom check`, given the same folder:
+5. Make the build script generate the templates before its type check, given the same folder:
+
+   | Type check of the project | Build script |
+   |---|---|
+   | plain `tsc` (this template) | replace `tsc` with `ts-dom check`: `ts-dom check src/nv && vite build` |
+   | a framework's own (`tsc -b`, `vue-tsc -b`, `svelte-check`) | keep it and put `ts-dom gen` first: `ts-dom gen src/nv && vue-tsc -b && vite build` |
 
    ```sh
    npm pkg set scripts.build="ts-dom check src/nv && vite build"
    ```
 
-   The generated files are not committed, so on a clean checkout `tsc` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` and follow-on errors. `ts-dom check` writes them, then runs `tsc` and the lint rules. `vite build` writes them too, but it never type-checks. CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
+   On a clean checkout, a script that starts with `tsc` fails with `TS2307: Cannot find module './x.html.js'` and follow-on errors. The generated files are not committed, so nothing has written them yet.
+
+   - `ts-dom check` writes them, then runs `tsc` and the lint rules.
+   - `ts-dom gen` only writes them.
+   - `vite build` writes them too, but never type-checks.
+
+   CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
 
 6. Add `*.html.ts` and `ts-dom-tags.ts` to `.gitignore`.
 7. Import each page's components from that page's entry module, and write the tags straight into the page's HTML (`<hello-card name="home"></hello-card>`; attributes reach string props). Import the component modules the way the project imports its own (`./nv/hello-card.ts` in this template), and templates always as `./x.html.js`.
@@ -160,17 +174,17 @@ define("hello-card", HelloCard);
 
 2. **Do not call `import.meta.hot.accept()` in a module that imports components.** Vite then re-runs the modules instead of reloading, `define()` finds the tag already defined and keeps the old class, and the edit silently has no effect until a manual reload.
 3. **Neither `vite dev` nor `vite build` type-checks.** Run `ts-dom check` (the build script in step 5 does), and run it after a template change that `vite dev` accepted without complaint.
-4. **A wrong `dirs` fails without a warning from the plugin.** If `dirs` does not point at the templates from Vite's `root` (for example `["web/src/nv"]` with `root: "web"`), nothing is generated, and the first sign is an unresolved `./x.html.js` (see Troubleshooting).
+4. **A wrong `dirs` only warns.** For a folder that does not exist from Vite's `root` (for example `["web/src/nv"]` with `root: "web"`), the plugin prints `warning [dir-not-found]` when the build starts and goes on. A folder that exists but holds none of the templates gives no warning. Either way nothing is generated, and the build then fails at an unresolved `./x.html.js` (see Troubleshooting).
 5. **Pass one folder to every `ts-dom` command.** `ts-dom-tags.ts` is written into the folder a command is given, so `ts-dom check web` next to `ts-dom check web/src/nv` leaves a second `ts-dom-tags.ts` in `web/`; delete it and use the same folder everywhere.
 6. Not verified: hot updates under a framework plugin (React Fast Refresh, Vue), server-side rendering, Vite library mode, and Vite versions other than 8.3. An app with its own `package.json` in a workspace is covered by `nativele-monorepo`.
 
 ## Verify
 
-Run in the project (with `root: "web"`, the folder is `web/src/nv`):
+Run in the project, with the folder the build script checks (`src/nv`, or `web/src/nv` with `root: "web"`):
 
 ```sh
 npm run build                 # expect: ts-dom check: no issues, then ✓ built, and one HTML file per page in the output
-npx ts-dom doctor src/nv      # expect: ts-dom doctor: the set-up looks right
+npx ts-dom doctor <folder>    # expect: ts-dom doctor: the set-up looks right
 ```
 
 Then run `npm run dev`, open every page and check that its components render and respond. Edit a template and check that the page reloads once and shows the change.
@@ -179,8 +193,8 @@ Then run `npm run dev`, open every page and check that its components render and
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | the build script starts with `tsc`, before anything generated the files | `"build": "ts-dom check <folder> && vite build"`; for CI, `nativele-ci` |
-| `vite build`: `[UNRESOLVED_IMPORT] Could not resolve './x.html.js'`; `vite dev`: `Failed to resolve import "./x.html.js"` and a 500 for the module | `dirs` is not relative to Vite's `root`, or leaves out the folder | give `dirs` relative to `root` (`["src/nv"]` with `root: "web"`) |
+| `TS2307: Cannot find module './x.html.js'` from `npm run build` on a clean checkout | the build script starts with `tsc`, before anything generated the files | the build script of step 5; for CI, `nativele-ci` |
+| `vite build`: `[UNRESOLVED_IMPORT] Could not resolve './x.html.js'`; `vite dev`: `Failed to resolve import "./x.html.js"` and a 500 for the module | `dirs` is not relative to Vite's `root` (the plugin warned `[dir-not-found]`), or leaves out the folder | give `dirs` relative to `root` (`["src/nv"]` with `root: "web"`) |
 | `ts-dom check`: `[dir-not-found] The folder src does not exist` | the commands default to `src` in the folder they run in | pass the folder from there: `ts-dom check web/src/nv` |
 | `ts-dom doctor`: `[tsconfig-misses-templates]`; `ts-dom check`: `TS18003: No inputs were found` | `include` is relative to the tsconfig, not to Vite's `root` | `"include": ["web/src"]` (`nativele-typescript`) |
 | An edit to a component has no effect until the page is reloaded by hand | a module calls `import.meta.hot.accept()` | remove it |

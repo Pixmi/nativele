@@ -25,7 +25,7 @@ Nativele components are native custom elements. Vue renders them like any other 
 
 | Tool | Verified version |
 |---|---|
-| @nativele/ts-dom | 0.7.1 (the last agent trial) |
+| @nativele/ts-dom | 0.7.4 (the last agent trial) |
 | vue | 3.5.44 |
 | vite | 8.3.6 |
 | @vitejs/plugin-vue | 6.0.10 |
@@ -95,7 +95,9 @@ Verified on 2026-11-08 in Google Chrome 157, starting from `create-vite` 9.3.4 w
 
    The component class must be exported and passed to `define()` in a folder that `ts-dom gen` scans, so it appears in `ts-dom-tags.ts`. A template ref is typed from the same map: `useTemplateRef<HTMLElementTagNameMap["nv-info-card"]>("card")`.
 
-The generated files are not committed, so on a clean checkout the type check in `npm run build` runs before anything has written them and fails with `TS2307: Cannot find module './x.html.js'` (why: `nativele-typescript`). Generate them first: `"build": "ts-dom gen src/nv && vue-tsc -b && vite build"` (the template's script with `ts-dom gen src/nv &&` in front). CI starts from such a checkout; the rest of what its job needs is in `npx ts-dom skills nativele-ci`.
+8. Put `ts-dom gen src/nv &&` in front of the build script: `"build": "ts-dom gen src/nv && vue-tsc -b && vite build"`.
+
+   On a clean checkout the generated files do not exist yet, so `vue-tsc -b` alone fails with `TS2307: Cannot find module './x.html.js'` (why the order matters: https://github.com/Pixmi/nativele/blob/main/skills/nativele-vite/SKILL.md#set-up).
 
 ## Example
 
@@ -214,17 +216,40 @@ define("nv-light-card", LightCard);
 
 ## Known limitations
 
-1. **`isCustomElement` must match only the Nativele tags.** With `(tag) => tag.includes("-")`, every kebab-case Vue component (an SFC used as `<hello-box>`, `<router-view>`) stops resolving: it renders as an empty unknown element, with no warning. Use the prefix from step 1. Without `isCustomElement` at all, Nativele tags still render and work, but Vue logs `[Vue warn]: Failed to resolve component: nv-info-card` for each tag in development.
-2. **Define before mount.** Import every Nativele module before `mount()` (step 6). A `:item` binding on an element that is not defined yet becomes the attribute `item="[object Object]"`, and the component gets `null` after `define()` runs. When a module really is loaded later (a dynamic `import()`), bind object props with the property modifier, `.item="item"` (or `:item.prop="item"`): the property is kept and the component takes it over when it is defined.
-3. **camelCase prop names in templates.** Write Nativele props as they are declared: `:selectedItem="item"`, `:maxCount="3"`. Vue sets a kebab-case binding (`:selected-item`) as an attribute, because the element has no property of that name: a number or string still converts from the attribute, an object or array arrives as `"[object Object]"` and the prop stays `null`. `vue-tsc` does not report this (limitation 10).
-4. **Exact event names.** On a custom element, Vue listens to the event name exactly as written after `@`: `@item-select` hears `item-select`, `@pickedOne` hears `pickedOne`, and `@itemSelect` never hears `item-select`. Name events in kebab-case and write that name. Nativele events do not bubble by default, so the listener goes on the element that emits.
-5. **`v-model` does not work on a Nativele component.** It compiles, `vue-tsc` accepts it and Vue logs no warning; it writes the first value into the element, but typing never updates the Vue state. Use a prop and an event, as `nv-text-field` above: `:value="text" @value-change="(e) => (text = e.detail.value)"`. In the component, compare before writing the input's value, so the cursor does not jump (see "A Small Reminder About Form Inputs" in the components guide).
-6. **Light DOM slots and Vue children do not mix** (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework). When Vue inserts, removes or reorders the children of a Light DOM host with slots (`v-if`, `v-for`), the update throws (`Cannot read properties of null (reading 'insertBefore')`, `Cannot set properties of null (setting '__vnode')`) and the slots show the wrong children. Use `shadow: true`, or one stable element per slot as in the example.
-7. **Lifecycle follows the DOM.** When a keyed `v-for` reorders Nativele elements, Vue moves the same element with `insertBefore`: it runs `disconnected()` then `connected()`, keeps its props and its Light DOM slot children, and `bind` subscriptions end and start again. `<KeepAlive>` deactivation takes the element out of the document (`disconnected()`, no store updates while inactive); activation puts the same element back (`connected()`, and `bind` calls back at once with the current value). `v-if` removal runs `disconnected()` and ends the subscriptions. So subscribe in `connected()`, as the lists guide says for moved items.
-8. **Object props change by a new object.** A Nativele prop renders again only when it receives a new value (`Object.is`), so changing a field of a reactive object in place (`item.qty = 5`, or `selected.value.qty = value`) updates Vue's state but not the element bound with `:item`: replace the object in the state (`items.value[i] = { ...items.value[i], qty: value }`). Measured: the in-place change left the element showing the old quantity; the replacement rendered it.
-9. **`<KeepAlive>` caches components, not elements.** A Nativele tag with `v-if` placed directly inside `<KeepAlive>` is created again each time it is shown. To keep the same element (and its state) while it is hidden, put it in a small Vue component and keep that component alive (`<KeepAlive><summary-panel v-if="shown" /></KeepAlive>` with the Nativele tag inside `SummaryPanel.vue`).
-10. **What `vue-tsc` checks.** With the declaration from step 7, it reports a wrong prop type (`count="1"` on a number prop), a wrong object shape and a wrong use of `e.detail`. It does not report an unknown prop name, an unknown tag with the prefix, a kebab-case prop name, `v-model`, or an event name whose case differs from the declared one. In a template, mark an expected error with `<!-- @vue-expect-error -->`; `// @ts-expect-error` is rendered as text and suppresses nothing.
-9. Not verified: server-side rendering and hydration, Nuxt, `<Transition>` around Nativele elements, and Vue versions other than 3.5.
+1. **`isCustomElement` must match only the Nativele tags.** Use the prefix from step 1.
+   - With `(tag) => tag.includes("-")`, every kebab-case Vue component (`<hello-box>`, `<router-view>`) stops resolving: it renders as an empty unknown element, with no warning.
+   - Without `isCustomElement` at all, Nativele tags still work, but Vue logs `[Vue warn]: Failed to resolve component: nv-info-card` for each tag in development.
+2. **Define before mount.** Import every Nativele module before `mount()` (step 6).
+   - A `:item` binding on an element that is not defined yet becomes the attribute `item="[object Object]"`, and the component gets `null` after `define()` runs.
+   - When a module really is loaded later (a dynamic `import()`), bind object props with the property modifier, `.item="item"` or `:item.prop="item"`. The property is kept, and the component takes it over when it is defined.
+3. **camelCase prop names in templates.** Write Nativele props as they are declared: `:selectedItem="item"`, `:maxCount="3"`. `vue-tsc` does not report a kebab-case name (limitation 10).
+   - Vue sets a kebab-case binding (`:selected-item`) as an attribute, because the element has no property of that name.
+   - A number or string still converts from the attribute; an object or array arrives as `"[object Object]"` and the prop stays `null`.
+4. **Exact event names.** Name events in kebab-case and write that exact name after `@`.
+   - On a custom element, Vue listens to the name exactly as written: `@item-select` hears `item-select`, and `@itemSelect` never hears it.
+   - Nativele events do not bubble by default, so the listener goes on the element that emits.
+5. **`v-model` does not work on a Nativele component.** Use a prop and an event, as `nv-text-field` above: `:value="text" @value-change="(e) => (text = e.detail.value)"`.
+   - `v-model` compiles, `vue-tsc` accepts it and Vue logs no warning. It writes the first value into the element, but typing never updates the Vue state.
+   - In the component, compare before writing the input's value, so the cursor does not jump ("A Small Reminder About Form Inputs" in the components guide).
+6. **Light DOM slots and Vue children do not mix.** Use `shadow: true`, or one stable element per slot as in the example (https://github.com/Pixmi/nativele/blob/main/docs/components.md#slots-and-children-managed-by-a-framework).
+   - When `v-if` or `v-for` changes the children of a Light DOM host with slots, the update throws and the slots show the wrong children.
+   - The errors are `Cannot read properties of null (reading 'insertBefore')` and `Cannot set properties of null (setting '__vnode')`.
+7. **Lifecycle follows the DOM.** Subscribe in `connected()`, as the lists guide says for moved items.
+
+   | Vue action | What the element sees |
+   |---|---|
+   | keyed `v-for` reorders | the same element moves: `disconnected()` then `connected()`, props and Light DOM slot children kept, `bind` subscriptions restart |
+   | `<KeepAlive>` deactivates | `disconnected()`; no store updates while inactive |
+   | `<KeepAlive>` activates | the same element returns: `connected()`, and `bind` calls back at once with the current value |
+   | `v-if` removes | `disconnected()`; subscriptions end |
+8. **Object props change by a new object.** Replace the object in the state: `items.value[i] = { ...items.value[i], qty: value }`.
+   - A Nativele prop renders again only when it receives a new value (`Object.is`).
+   - Changing a field in place (`item.qty = 5`) updates Vue's state but not the element bound with `:item`. Measured: the element kept showing the old quantity.
+9. **`<KeepAlive>` caches components, not elements.** To keep the same element and its state while it is hidden, put it in a small Vue component and keep that component alive: `<KeepAlive><summary-panel v-if="shown" /></KeepAlive>`, with the Nativele tag inside `SummaryPanel.vue`. A Nativele tag with `v-if` placed directly inside `<KeepAlive>` is created again each time it is shown.
+10. **What `vue-tsc` checks.** In a template, mark an expected error with `<!-- @vue-expect-error -->`; `// @ts-expect-error` is rendered as text and suppresses nothing.
+    - With the declaration from step 7, it reports a wrong prop type (`count="1"` on a number prop), a wrong object shape and a wrong use of `e.detail`.
+    - It does not report an unknown prop name, an unknown tag with the prefix, a kebab-case prop name, `v-model`, or an event name whose case differs from the declared one.
+11. Not verified: server-side rendering and hydration, Nuxt, `<Transition>` around Nativele elements, and Vue versions other than 3.5.
 
 ## Verify
 
@@ -232,7 +257,7 @@ Run in the project:
 
 ```sh
 npx ts-dom check src/nv      # expect: ts-dom check: no issues
-npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right (info lines are suggestions)
+npx ts-dom doctor src/nv     # expect: ts-dom doctor: the set-up looks right
 npx vue-tsc -b               # expect: no output
 npx vite build               # expect: built
 ```
@@ -254,7 +279,14 @@ Prove that the declaration types props: keep a `.vue` file that the app never im
 
 `vue-tsc -b` passes only while each of these is an error; if the declaration stops working, it reports `TS2578: Unused '@ts-expect-error' directive`.
 
-In the browser, against the dev server (production builds drop Vue warnings), check that an element with an object prop has no attribute for it (`el.getAttributeNames()`) and that `el.item` is the object, that the listener runs once per event, that a kebab-case Vue component still renders, and that there are no errors or `[Vue warn]` lines in the console. A Light DOM component has no `<slot>` elements once rendered; read a slot with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
+In the browser, against the dev server (production builds drop Vue warnings), check that:
+
+- an element with an object prop has no attribute for it (`el.getAttributeNames()`), and `el.item` is the object;
+- the listener runs once per event;
+- a kebab-case Vue component still renders;
+- the console has no errors or `[Vue warn]` lines.
+
+A Light DOM component has no `<slot>` elements once rendered. Read a slot with `el.assignedNodes(name)`, where `""` is the default slot, and compare elements only, because Vue leaves comment and empty text nodes among the children.
 
 ## Troubleshooting
 
@@ -270,7 +302,6 @@ In the browser, against the dev server (production builds drop Vue warnings), ch
 | `TS7006: Parameter 'e' implicitly has an 'any' type` in an `@item-select` handler, wrong props not reported | the declaration is missing, or the component class is not exported | add `src/nativele-vue.d.ts`, export the class, run `ts-dom gen` |
 | `TS1117: An object literal cannot have multiple properties with the same name` | two spellings of one event on the same element (`@picked-one` and `@pickedOne` are both `onPickedOne` in the types) | keep one, with the exact event name |
 | `ts-dom check` reports `TS2307: Cannot find module './App.vue'` | `vue-tsc` is not installed, so `ts-dom check` runs plain `tsc` | keep `vue-tsc` in `devDependencies` |
-| `ts-dom check` reports `unused-ref` | a `data-ref` the class never reads | use it in the class or remove the attribute |
 
 ## See also
 

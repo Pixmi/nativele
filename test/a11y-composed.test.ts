@@ -99,6 +99,11 @@ describe("unchecked-content: an element a rule cannot judge because its composed
     expect(ds[0]?.[1]).toContain("<wa-icon>");
     expect(ds[0]?.[1]).toContain("<slot>");
   });
+  it("names only the rules that are not ignored, and is not reported when all of them are", () => {
+    const html = `<button><slot></slot></button>\n<div data-on-click="go"><slot></slot></div>`;
+    expect(checkA11y(html).map((d) => d.rule)).toEqual(["unchecked-content", "unchecked-content"]);
+    expect(checkA11y(html, ["control-name"]).map((d) => d.message.slice(0, d.message.indexOf(":")))).toEqual(["<div> was not checked for click-semantics"]);
+  });
   it("content lint can read decides, whatever else is there", () => {
     expect(found(`<button type="button"><wa-icon></wa-icon> Save</button><h2><slot></slot>Title</h2><div data-on-click="go"><wa-icon></wa-icon>${button}</div>`)).toEqual([]);
     expect(found(`<button type="button"><slot>Save</slot></button>`)).toEqual([]);
@@ -113,7 +118,7 @@ describe("unchecked-content: an element a rule cannot judge because its composed
     expect(own).toContain("<x-broken> (the template file the class imports does not exist: x-broken.html)");
     expect(own).not.toContain("to the scanned folders");
     const [outside] = messages(`<div data-on-click="go"><x-elsewhere></x-elsewhere></div>`);
-    expect(outside).toContain("for <x-elsewhere>, add the folders that define the project's own components to the scanned folders");
+    expect(outside).toContain("for <x-elsewhere>, when the package defines it, add the folder with its define() to the scanned folders");
   });
   it("is left out with the rules it names", () => {
     expect(checkA11y(`<div data-on-click="go"><wa-icon></wa-icon></div>`, ["click-semantics"], children)).toEqual([]);

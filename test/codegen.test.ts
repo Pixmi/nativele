@@ -1,24 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
 import { parseFragment } from "parse5";
-import { analyze, CODEGEN_RULES, formatDiagnostics, generateModule, isFullPage, isSelected, toNodes } from "../src/lib/codegen.ts";
+import {
+  analyze,
+  checkGenerated,
+  CODEGEN_RULES,
+  CodegenError,
+  duplicateDefines,
+  formatDiagnostics,
+  generateAll,
+  generateDirs,
+  generateModule,
+  generateTags,
+  isFullPage,
+  isSelected,
+  staleGenerated,
+  toNodes,
+} from "../src/lib/codegen.ts";
 import { A11Y_RULES } from "../src/lib/a11y.ts";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { scanDefines } from "../src/lib/components.ts";
+import { runCli, writeTree } from "./helpers.ts";
 
 const errs = (html: string) => analyze(html).diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
 const ruleIds = (html: string) => analyze(html).diagnostics.map((d) => d.rule);
-
-const makeDir = async (files: Record<string, string>) => {
-  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
-  const { dirname, join } = await import("node:path");
-  const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-  for (const [n, c] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, n)), { recursive: true });
-    writeFileSync(join(dir, n), c);
-  }
-  return dir;
-};
 
 describe("codegen diagnostics", () => {
   it("a valid template has no diagnostics and yields the right structure", () => {
@@ -145,21 +150,8 @@ describe("codegen diagnostics", () => {
 });
 
 describe("generateTags (define → HTMLElementTagNameMap)", () => {
-  const setup = async (files: Record<string, string>) => {
-    const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { dirname, join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    for (const [n, c] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, n)), { recursive: true });
-      writeFileSync(join(dir, n), c);
-    }
-    return dir;
-  };
-  it("only exported classes are included; paths are relative to the scanned directory and end in .js", async () => {
-    const { generateTags } = await import("../src/lib/codegen.ts");
-    const { readFileSync } = await import("node:fs");
-    const dir = await setup({
+  it("only exported classes are included; paths are relative to the scanned directory and end in .js", () => {
+    const dir = writeTree({
       "a.ts": `export class A {}\ndefine("x-a", A);`,
       "sub/b.ts": `export default class B {}\ndefine('x-b', B)`,
       "c.ts": `class C {}\ndefine("x-c", C);`, // not exported: skipped
@@ -177,15 +169,8 @@ describe("generateTags (define → HTMLElementTagNameMap)", () => {
     expect(text).toContain(`"x-a": Tag0;`);
     expect(text).toContain("interface HTMLElementTagNameMap");
   });
-  it("throws when the same tag is defined in different files", async () => {
-    const { generateTags } = await import("../src/lib/codegen.ts");
-    const dir = await setup({ "a.ts": `export class A {}\ndefine("x-dup", A);`, "b.ts": `export class B {}\ndefine("x-dup", B);` });
-    expect(() => generateTags(dir)).toThrow(/x-dup.*more than once.*Fix:/);
-  });
-  it("removes the previously generated file when no define remains, but never deletes a same-named file we did not generate", async () => {
-    const { generateTags } = await import("../src/lib/codegen.ts");
-    const { existsSync, writeFileSync, unlinkSync } = await import("node:fs");
-    const dir = await setup({ "a.ts": `export class A {}\ndefine("x-a", A);` });
+  it("removes the previously generated file when no define remains, but never deletes a same-named file we did not generate", () => {
+    const dir = writeTree({ "a.ts": `export class A {}\ndefine("x-a", A);` });
     generateTags(dir);
     expect(existsSync(`${dir}/ts-dom-tags.ts`)).toBe(true);
     unlinkSync(`${dir}/a.ts`);
@@ -206,16 +191,12 @@ describe("child component auto-import", () => {
     const a = analyze(`<x-a></x-a><div></div><template data-each="l"><li><x-b></x-b></li></template>`);
     expect([...a.customTags].sort()).toEqual(["x-a", "x-b"]);
   });
-  it("generateAll: a tag used by a template that has a define() in the directory imports that module (whether or not the class is exported)", async () => {
-    const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { generateAll } = await import("../src/lib/codegen.ts");
-    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    mkdirSync(join(dir, "kids"));
-    writeFileSync(join(dir, "kids/kid.ts"), `class Kid {}\ndefine("x-kid", Kid);`); // must be loaded even without export
-    writeFileSync(join(dir, "kids/kid.html"), `<i></i>`);
-    writeFileSync(join(dir, "parent.html"), `<x-kid></x-kid><x-external></x-external><b></b>`);
+  it("generateAll: a tag used by a template that has a define() in the directory imports that module (whether or not the class is exported)", () => {
+    const dir = writeTree({
+      "kids/kid.ts": `class Kid {}\ndefine("x-kid", Kid);`, // must be loaded even without export
+      "kids/kid.html": `<i></i>`,
+      "parent.html": `<x-kid></x-kid><x-external></x-external><b></b>`,
+    });
     generateAll(dir);
     const parent = readFileSync(join(dir, "parent.html.ts"), "utf8");
     expect(parent).toContain(`import "./kids/kid.js";`);
@@ -287,20 +268,16 @@ describe("rule ids and diagnostic shape", () => {
     // the table has no stale entries either
     for (const rule of Object.keys(RULE_INPUTS)) expect(CODEGEN_RULES, rule).toHaveProperty(rule);
   });
-  it("duplicate-define is produced by generateTags, not analyze", async () => {
-    const { generateTags, CodegenError } = await import("../src/lib/codegen.ts");
-    const dir = await makeDir({ "a.ts": `export class A {}\ndefine("x-dup", A);`, "b.ts": `export class B {}\ndefine("x-dup", B);` });
+  it("duplicate-define is reported at the second define() of a tag with another class, by generateDirs, not analyze; the same class defined again is not", () => {
+    const dir = writeTree({
+      "a.ts": `export class A {}\ndefine("x-dup", A);`,
+      "b.ts": `export class B {}\ndefine("x-dup", B);\ndefine("x-b", B);\ndefine("x-b", B);`,
+    });
     expect(Object.keys(RULE_INPUTS)).not.toContain("duplicate-define");
-    let err: unknown;
-    try {
-      generateTags(dir);
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(CodegenError);
-    expect((err as Error).message).toContain("[duplicate-define]");
-    expect((err as Error).message).toContain("Fix:");
-    expect((err as Error).message).toContain("only the class whose define() runs first is registered, and the other define() is skipped without an error");
+    const found = duplicateDefines([dir]);
+    expect(found.map((d) => [d.file, d.line, d.col, d.rule, d.severity])).toEqual([[join(dir, "b.ts"), 2, 1, "duplicate-define", "error"]]);
+    expect(found[0]?.message).toMatch(/<x-dup> is defined more than once .*only the class whose define\(\) runs first is registered, and the other define\(\) is skipped without an error\. Fix:/);
+    expect(() => generateDirs([dir])).toThrow(CodegenError);
   });
   it("every analyze diagnostic has line >= 1, col >= 1, a rule, a severity and a Fix: hint", () => {
     for (const [rule, html] of Object.entries(RULE_INPUTS)) {
@@ -351,12 +328,11 @@ describe("rule ids and diagnostic shape", () => {
 });
 
 describe("CLI", () => {
-  const cli = join(process.cwd(), "src/cli.ts"); // vitest runs from the repo root
-  const run = (args: string[], cwd?: string) => spawnSync("node", [cli, ...args], { cwd, encoding: "utf8" });
+  const run = runCli;
   const comp = `import tpl from "./x.html.js";\nclass X extends Component(tpl) {}\n`;
 
   it("rules lists ids from every group", () => {
-    const out = execFileSync("node", [cli, "rules"], { encoding: "utf8" });
+    const out = runCli(["rules"]).stdout;
     for (const id of ["invalid-hole", "duplicate-define", "unused-ref", "missing-handler", "prop-forwarding", "unknown-event", "img-alt", "click-semantics"]) {
       expect(out, id).toContain(id);
     }
@@ -364,8 +340,8 @@ describe("CLI", () => {
     for (const id of Object.keys(A11Y_RULES)) expect(out, id).toContain(id);
     for (const group of ["gen", "lint: unused-markup", "lint: data-flow", "lint: a11y"]) expect(out).toContain(`${group}:`);
   });
-  it("lint --json prints { issues } and exits 1 on an error", async () => {
-    const dir = await makeDir({ "x.html": `<p>{{ a }}</p>`, "x.ts": comp });
+  it("lint --json prints { issues } and exits 1 on an error", () => {
+    const dir = writeTree({ "x.html": `<p>{{ a }}</p>`, "x.ts": comp });
     const r = run(["lint", ".", "--json"], dir);
     expect(r.status).toBe(1);
     const json = JSON.parse(r.stdout) as { issues: Record<string, unknown>[] };
@@ -376,8 +352,8 @@ describe("CLI", () => {
     expect(issue?.col).toBeGreaterThanOrEqual(1);
     expect(issue?.message).toContain("Fix:");
   });
-  it("lint exits 0 and prints { issues: [] } when clean", async () => {
-    const dir = await makeDir({ "x.html": `<p>hi</p>`, "x.ts": comp });
+  it("lint exits 0 and prints { issues: [] } when clean", () => {
+    const dir = writeTree({ "x.html": `<p>hi</p>`, "x.ts": comp });
     const r = run(["lint", ".", "--json"], dir);
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({ issues: [] });
@@ -385,14 +361,14 @@ describe("CLI", () => {
     expect(text.status).toBe(0);
     expect(text.stdout).toContain("no issues");
   });
-  it("lint text output uses file:line:col severity [rule] message", async () => {
-    const dir = await makeDir({ "x.html": `<p>{{ a }}</p>`, "x.ts": comp });
+  it("lint text output uses file:line:col severity [rule] message", () => {
+    const dir = writeTree({ "x.html": `<p>{{ a }}</p>`, "x.ts": comp });
     const r = run(["lint", "."], dir);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/x\.html:1:\d+ error \[unused-text\] .*Fix:/);
   });
-  it("--strict makes warnings fail; without it warnings exit 0", async () => {
-    const dir = await makeDir({ "x.html": `<img src="a.png">`, "x.ts": comp });
+  it("--strict makes warnings fail; without it warnings exit 0", () => {
+    const dir = writeTree({ "x.html": `<img src="a.png">`, "x.ts": comp });
     const lax = run(["lint", ".", "--a11y", "--json"], dir);
     expect(lax.status).toBe(0);
     const issues = (JSON.parse(lax.stdout) as { issues: { rule: string; severity: string }[] }).issues;
@@ -402,9 +378,10 @@ describe("CLI", () => {
     // without --a11y the same template is clean, even with --strict
     expect(run(["lint", ".", "--strict"], dir).status).toBe(0);
   });
-  it("--help lists --include, --exclude and --whitespace under check and doctor, which accept them", () => {
+  it("--help lists --include, --exclude and --whitespace under check, which accepts them, and not under doctor", () => {
     const sections = run(["--help"]).stdout.split(/\n(?= {2}[a-z])/);
-    for (const cmd of ["check", "doctor"]) {
+    expect(sections.find((s) => s.startsWith("  doctor "))).not.toMatch(/--include=|--exclude=|--whitespace=/);
+    for (const cmd of ["check"]) {
       const section = sections.find((s) => s.startsWith(`  ${cmd} `));
       expect(section, cmd).toMatch(/--include=<glob>/);
       expect(section, cmd).toMatch(/--exclude=<glob>/);
@@ -419,33 +396,22 @@ describe("CLI", () => {
 });
 
 describe("scanDefines ignores define() calls inside strings and comments", () => {
-  it("only real calls are found; sample code in strings, template literals and comments is skipped", async () => {
-    const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { scanDefines } = await import("../src/lib/components.ts");
-    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "docs.ts"),
-      [
-        'const sample = `export class Fake extends Component(tpl) {}\ndefine("x-fake-template", Fake);`;',
-        'const other = \'define("x-fake-string", Fake)\';',
-        '// define("x-fake-line-comment", Fake)',
-        '/* define("x-fake-block-comment", Fake) */',
-        "export class Real {}",
-        'define("x-real", Real);',
-      ].join("\n"),
-    );
+  it("only real calls are found; sample code in strings, template literals and comments is skipped", () => {
+    const docs = [
+      'const sample = `export class Fake extends Component(tpl) {}\ndefine("x-fake-template", Fake);`;',
+      "const other = 'define(\"x-fake-string\", Fake)';",
+      '// define("x-fake-line-comment", Fake)',
+      '/* define("x-fake-block-comment", Fake) */',
+      "export class Real {}",
+      'define("x-real", Real);',
+    ].join("\n");
+    const dir = writeTree({ "docs.ts": docs });
     expect(scanDefines(dir).map((d) => d.tag)).toEqual(["x-real"]);
   });
-  it("a class that is only exported inside a string is not treated as exported", async () => {
-    const { mkdtempSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { scanDefines } = await import("../src/lib/components.ts");
-    const dir = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    writeFileSync(join(dir, "a.ts"), 'const s = "export class A {}";\nclass A {}\ndefine("x-a", A);');
+  it("a class that is only exported inside a string is not treated as exported", () => {
+    const dir = writeTree({
+      "a.ts": 'const s = "export class A {}";\nclass A {}\ndefine("x-a", A);',
+    });
     expect(scanDefines(dir)).toMatchObject([{ tag: "x-a", exported: false }]);
   });
 });
@@ -457,10 +423,9 @@ describe("data-key and data-prop", () => {
     expect(ruleIds(list(`<li></li>`))).toContain("each-binding-root");
     expect(ruleIds(list(`<font-face></font-face>`))).toContain("each-binding-root");
   });
-  it("lint hint for a list that is never assigned points to items", async () => {
-    const { analyze: run } = await import("../src/lib/codegen.ts");
-    expect(run(list(`<x-row></x-row>`)).boundLists.has("a")).toBe(true);
-    expect(run(`<template data-each="a"><li></li></template>`).boundLists.has("a")).toBe(false);
+  it("lint hint for a list that is never assigned points to items", () => {
+    expect(analyze(list(`<x-row></x-row>`)).boundLists.has("a")).toBe(true);
+    expect(analyze(`<template data-each="a"><li></li></template>`).boundLists.has("a")).toBe(false);
   });
 });
 
@@ -514,14 +479,11 @@ describe("include / exclude", () => {
     expect(isSelected(dir, "/p/src/new/x.html", options)).toBe(true);
     expect(isSelected(dir, "/p/src/new/draft/x.html", options)).toBe(false);
   });
-  it("generateAll skips templates that are not selected", async () => {
-    const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { generateAll } = await import("../src/lib/codegen.ts");
-    const root = mkdtempSync(join(tmpdir(), "ts-dom-"));
-    mkdirSync(join(root, "old"));
-    writeFileSync(join(root, "old/a.html"), `<i></i>`);
-    writeFileSync(join(root, "b.html"), `<i></i>`);
+  it("generateAll skips templates that are not selected", () => {
+    const root = writeTree({
+      "old/a.html": `<i></i>`,
+      "b.html": `<i></i>`,
+    });
     generateAll(root, { exclude: ["old/**"] });
     expect(existsSync(join(root, "old/a.html.ts"))).toBe(false);
     expect(existsSync(join(root, "b.html.ts"))).toBe(true);
@@ -529,14 +491,12 @@ describe("include / exclude", () => {
 });
 
 describe("gen --check: generated files out of step", () => {
-  it("reports missing, outdated and orphaned generated files, and the tag map", async () => {
-    const { mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
-    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
-    writeFileSync(join(dir, "a.html"), `<p>{{ a }}</p>`);
-    writeFileSync(join(dir, "b.html"), `<p></p>`);
-    writeFileSync(join(dir, "kid.ts"), `export class Kid {}\ndefine("x-kid", Kid);`);
+  it("reports missing, outdated and orphaned generated files, and the tag map", () => {
+    const dir = writeTree({
+      "a.html": `<p>{{ a }}</p>`,
+      "b.html": `<p></p>`,
+      "kid.ts": `export class Kid {}\ndefine("x-kid", Kid);`,
+    });
     expect(staleGenerated(dir).map((s) => s.reason)).toEqual(["missing", "missing", "missing"]);
     generateAll(dir);
     expect(staleGenerated(dir)).toEqual([]);
@@ -552,13 +512,11 @@ describe("gen --check: generated files out of step", () => {
 });
 
 describe("gen --check and gen with errors and orphans", () => {
-  it("checkGenerated reports the errors that make gen fail, and gen removes an orphaned module", async () => {
-    const { existsSync, mkdtempSync, writeFileSync, unlinkSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { checkGenerated, generateAll } = await import("../src/lib/codegen.ts");
-    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
-    writeFileSync(join(dir, "ok.html"), `<p></p>`);
-    writeFileSync(join(dir, "gone.html"), `<p></p>`);
+  it("checkGenerated reports the errors that make gen fail, and gen removes an orphaned module", () => {
+    const dir = writeTree({
+      "ok.html": `<p></p>`,
+      "gone.html": `<p></p>`,
+    });
     generateAll(dir);
     unlinkSync(join(dir, "gone.html"));
     generateAll(dir);
@@ -570,12 +528,8 @@ describe("gen --check and gen with errors and orphans", () => {
 });
 
 describe("the whitespace mode is kept from the generated files", () => {
-  it("gen without the option keeps collapse; gen --check agrees", async () => {
-    const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { generateAll, staleGenerated } = await import("../src/lib/codegen.ts");
-    const dir = mkdtempSync(join(tmpdir(), "nativele-"));
-    writeFileSync(join(dir, "a.html"), `<p>\n  a  b\n</p>`);
+  it("gen without the option keeps collapse; gen --check agrees", () => {
+    const dir = writeTree({ "a.html": `<p>\n  a  b\n</p>` });
     generateAll(dir, { whitespace: "collapse" });
     const collapsed = readFileSync(join(dir, "a.html.ts"), "utf8");
     expect(collapsed).toContain("// whitespace: collapse");

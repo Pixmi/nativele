@@ -2,33 +2,31 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Page } from "playwright-core";
+import type { Page } from "playwright-core";
 import { generateFile } from "../src/lib/codegen.ts";
-import { launchChrome, startServer } from "./server.ts";
+import { openPage } from "./server.ts";
 
 const template = new URL("./fixtures/hot.html", import.meta.url).pathname;
 const generated = `${template}.ts`;
 const original = readFileSync(template, "utf8");
-let browser: Browser;
 let page: Page;
-let stop: () => void;
+let close: () => Promise<void>;
 let navigations = 0;
 
 beforeAll(async () => {
-  const s = await startServer(5309);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  page.on("framenavigated", () => navigations++);
-  await page.goto(`${s.url}/browser/fixtures/hot-page.html`);
-  await page.waitForSelector("#hot p");
+  ({ page, close } = await openPage({
+    path: "/browser/fixtures/hot-page.html",
+    ready: "#hot p",
+    before: async (page) => {
+      page.on("framenavigated", () => navigations++);
+    },
+  }));
 }, 60_000);
 
 afterAll(async () => {
   writeFileSync(template, original);
   generateFile(template, { runtime: "@nativele/ts-dom" }, new URL("./fixtures", import.meta.url).pathname, dirname(template));
-  await browser?.close();
-  stop?.();
+  await close();
 });
 
 const shows = (text: string, timeout: number) =>

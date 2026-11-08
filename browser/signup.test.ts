@@ -1,21 +1,14 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Browser, Locator, Page } from "playwright-core";
-import { launchChrome, startServer } from "./server.ts";
+import type { Locator, Page } from "playwright-core";
+import { openPage } from "./server.ts";
 
-let browser: Browser;
 let page: Page;
-let stop: () => void;
+let errors: string[];
+let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const s = await startServer(5303);
-  stop = s.stop;
-  browser = await launchChrome();
-  page = await browser.newPage();
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${s.url}/`);
-  await page.waitForSelector("signup-form form-field input");
+  ({ page, errors, close } = await openPage({ path: "/", ready: "signup-form form-field input" }));
   // Record every field-input / remove-entry that bubbles up to window: child component events do not bubble by default, so there should be none
   await page.evaluate(() => {
     const w = window as unknown as { leaked: string[] };
@@ -25,10 +18,7 @@ beforeAll(async () => {
   expect(errors).toEqual([]);
 }, 60_000);
 
-afterAll(async () => {
-  await browser?.close();
-  stop?.();
-});
+afterAll(() => close());
 
 const field = (n: number): Locator => page.locator("signup-form form-field").nth(n);
 const input = (n: number): Locator => field(n).locator("input");

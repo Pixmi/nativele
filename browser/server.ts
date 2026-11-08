@@ -1,13 +1,24 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
 import { chromium, firefox, webkit } from "playwright-core";
-import type { Browser } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 
 const CHROME = process.env.CHROME_BIN ?? "/usr/bin/google-chrome";
 
-/** Start `vp dev` and return its URL once it accepts connections. */
-export async function startServer(port: number): Promise<{ url: string; stop: () => void }> {
+const freePort = () =>
+  new Promise<number>((resolve, reject) => {
+    const probe = createServer().once("error", reject);
+    probe.listen(0, () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
+
+/** Start `vp dev` and return its URL once it accepts connections. Port 0 picks a free port. */
+export async function startServer(requested: number): Promise<{ url: string; stop: () => void }> {
+  const port = requested || (await freePort());
   const child: ChildProcess = spawn("npx", ["vp", "dev", "--port", String(port), "--strictPort"], {
     stdio: ["ignore", "ignore", "ignore"],
     detached: true, // its own process group: npx starts vp dev underneath, so the whole group must be stopped together
@@ -50,4 +61,47 @@ export function launchChrome(): Promise<Browser> {
     args: ["--no-sandbox", "--no-zygote", "--disable-gpu", "--disable-dev-shm-usage", "--disable-crash-reporter"],
     env: { ...process.env, HOME: process.env.TSDOM_CHROME_HOME ?? "/tmp/chome" } as Record<string, string>,
   });
+}
+
+/**
+ * Start a dev server and a browser, open `path`, and wait until `ready` (a selector or a function run in the page) holds.
+ * `before` runs on the new page before it navigates (routes, listeners; it gets the `errors` list); `errors` collects the page errors unless `collectErrors` is false.
+ */
+export async function openPage({
+  path,
+  ready,
+  collectErrors = true,
+  before,
+}: {
+  path: string;
+  ready?: string | (() => unknown);
+  collectErrors?: boolean;
+  before?: (page: Page, errors: string[]) => Promise<void> | void;
+}): Promise<{
+  page: Page;
+  browser: Browser;
+  url: string;
+  errors: string[];
+  close: () => Promise<void>;
+}> {
+  const server = await startServer(0);
+  let browser: Browser | undefined;
+  const close = async () => {
+    await browser?.close();
+    server.stop();
+  };
+  try {
+    browser = await launchChrome();
+    const page = await browser.newPage();
+    const errors: string[] = [];
+    if (collectErrors) page.on("pageerror", (e) => errors.push(e.message));
+    await before?.(page, errors);
+    await page.goto(`${server.url}${path}`);
+    if (typeof ready === "string") await page.waitForSelector(ready);
+    else if (ready) await page.waitForFunction(ready);
+    return { page, browser, url: server.url, errors, close };
+  } catch (e) {
+    await close();
+    throw e;
+  }
 }
