@@ -595,8 +595,21 @@ const HOST_CALL = /\bthis\s*\.\s*(setAttribute|setAttributeNS|toggleAttribute|ap
 const HOST_MEMBER = /\bthis\s*\.\s*(classList|dataset|style)\s*\.\s*\w+/;
 const HOST_PROPERTY = /\bthis\s*\.\s*(className|id|title|hidden|tabIndex|role|lang|dir|slot|inert|draggable|textContent|innerHTML|innerText|aria[A-Z]\w*)\s*=(?!=)/;
 
-/** The initializers of the instance fields of a class `body`, which run in the constructor. */
-function fieldInitializers(body: string): string {
+/** `code` with its comments blanked to spaces, so positions stay; strings are kept. */
+function withoutComments(code: string): string {
+  let out = "";
+  for (let i = 0; i < code.length; i++) {
+    const end = skipNonCode(code, i);
+    if (end > i) {
+      out += code[i] === "/" ? " ".repeat(end - i) : code.slice(i, end);
+      i = end - 1;
+    } else out += code[i];
+  }
+  return out;
+}
+
+/** The members of a class `body` at its top level, each with the blocks inside it collapsed to `{}`: one member ends at a `;`, or at a line end outside parentheses and brackets. */
+function classMembers(body: string): string[] {
   let depth = 0;
   let top = "";
   for (let i = body.indexOf("{") + 1; i < body.length; i++) {
@@ -610,10 +623,33 @@ function fieldInitializers(body: string): string {
       if (depth-- === 0) break;
     } else if (depth === 0) top += body[i];
   }
-  return top
-    .split(/;|\n/)
-    .map((m) => m.trim())
-    .filter((m) => !/^static\b/.test(m) && /^(?:(?:private|protected|public|readonly|declare|override)\s+)*#?[\w$]+\s*[?!]?\s*(?::[^=]*)?=(?![=>])/.test(m))
+  const members: string[] = [];
+  let nesting = 0;
+  let start = 0;
+  for (let i = 0; i < top.length; i++) {
+    const end = skipNonCode(top, i);
+    if (end > i) {
+      i = end - 1;
+      continue;
+    }
+    const c = top[i] as string;
+    if (c === "(" || c === "[") nesting++;
+    else if (c === ")" || c === "]") nesting--;
+    else if (nesting === 0 && (c === ";" || c === "\n")) {
+      members.push(top.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  members.push(top.slice(start).trim());
+  return members.filter(Boolean);
+}
+
+const FIELD = /^(?:(?:private|protected|public|readonly|declare|override|accessor)\s+)*#?[\w$]+\s*[?!]?\s*(?::[^=]*)?=(?![=>])/;
+
+/** The initializers of the instance fields of a class `body`, which run in the constructor. */
+function fieldInitializers(body: string): string {
+  return classMembers(withoutComments(body))
+    .filter((m) => !/^static\b/.test(m) && FIELD.test(m))
     .map((m) => m.slice(m.indexOf("=") + 1))
     .join(";\n");
 }
@@ -669,12 +705,13 @@ export function constructorHostChange(body: string): string | undefined {
 const CALLBACKS = ["connectedCallback", "disconnectedCallback", "attributeChangedCallback"] as const;
 
 export function callbackWithoutSuper(body: string): string | undefined {
+  const code = withoutComments(body);
   for (const name of CALLBACKS) {
-    const fn = methodBody(body, name);
+    const fn = methodBody(code, name);
     if (fn && !new RegExp(`\\bsuper\\.${name}\\s*\\(`).test(fn)) return name;
   }
-  const getter = /\bstatic\s+get\s+observedAttributes\s*\(/.exec(body) ? methodBody(body, "observedAttributes") : null;
-  const field = /\bstatic\s+(?:readonly\s+)?observedAttributes\s*(?::[^=]+)?=([^;]*)/.exec(body)?.[1];
+  const getter = /\bstatic\s+(?:override\s+)?get\s+observedAttributes\s*\(/.test(code) ? methodBody(code, "observedAttributes") : null;
+  const field = classMembers(code).find((m) => /^static\s+(?:(?:override|readonly)\s+)*observedAttributes\b[^=]*=/.test(m));
   const declared = getter ?? field;
   if (declared != null && !/\bsuper\.observedAttributes\b/.test(declared)) return "observedAttributes";
   return undefined;
@@ -685,7 +722,7 @@ const DOM_NODE = /(?<![\w$.])((?:HTML|SVG|MathML)\w*Element|Element|Node|Text|Do
 /** The DOM node type a state or prop value holds several of (an array, a map or set, a fragment or a node list), from the type written after `as` or in `new Map<...>`; a single element a parent passes in, such as an anchor, is a reference, not a copy, and a function that returns nodes holds none. */
 export function domCollection(value: string): string | undefined {
   const typed = /\bas\s([\s\S]*)/.exec(value)?.[1] ?? "";
-  if (typed.includes("=>")) return undefined;
+  if (/^\(*\s*\([^)]*\)\s*=>/.test(typed.replace(/\s*\|\s*(?:null|undefined)\b/g, "").trim())) return undefined;
   const generic = /\bnew\s+(?:Map|Set|WeakMap|WeakSet)\s*<([\s\S]*)/.exec(value)?.[1];
   const node = DOM_NODE.exec(generic ?? typed)?.[1];
   if (!node) return undefined;
@@ -705,14 +742,7 @@ function blockEnd(code: string, from: number): number {
 }
 
 export function staticMarkup(body: string): { tag: string; write: string } | undefined {
-  let code = "";
-  for (let i = 0; i < body.length; i++) {
-    const end = skipNonCode(body, i);
-    if (end > i) {
-      code += body[i] === "/" ? " ".repeat(end - i) : body.slice(i, end);
-      i = end - 1;
-    } else code += body[i];
-  }
+  const code = withoutComments(body);
   for (const m of code.matchAll(/(?<![\w$.])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*(?:[\w$.]+\.)?(?:document|ownerDocument)\.createElement(?:NS\s*\([^,]*,|\s*\()\s*["']([\w-]+)["']/g)) {
     const [decl, name, tag] = m as unknown as [string, string, string];
     const scope = code.slice(m.index + decl.length, blockEnd(code, m.index));
@@ -734,6 +764,7 @@ export function staticMarkup(body: string): { tag: string; write: string } | und
  * - unknown-custom-element: a tag nothing defines is close to one of the `known` tags
  * - static-markup-in-code: an element the class creates gets a fixed text or attribute
  * - dom-node-in-state: a state or prop value holds several DOM nodes
+ * - callback-without-super: a Custom Elements callback or observedAttributes is overridden without super
  */
 export function dataFlow(
   html: string,
@@ -936,7 +967,7 @@ export function dataFlow(
       report(
         "callback-without-super",
         missing === "observedAttributes"
-          ? `The class replaces observedAttributes without super.observedAttributes. The component observes the attributes of its props there, so a prop written as an attribute in HTML (<x-dialog bare>) is never read and keeps its default. Fix: static get observedAttributes() { return [...super.observedAttributes, "class"]; }`
+          ? `The class replaces observedAttributes without super.observedAttributes. The component observes the attributes of its props there, so a prop written as an attribute in HTML (<x-dialog bare>) is never read and keeps its default. Fix: static override get observedAttributes() { return [...super.observedAttributes, "class"]; }`
           : missing === "attributeChangedCallback"
             ? `The class overrides attributeChangedCallback() without calling super.attributeChangedCallback(...). The component reads its props from their attributes there, so a prop written as an attribute is never updated. Fix: call super.attributeChangedCallback(name, oldValue, newValue) first in it.`
             : `The class overrides ${missing}() without calling super.${missing}(). The component starts or stops there (render, bind, on, onCleanup and ${missing === "connectedCallback" ? "connected()" : "disconnected()"} run from it), which then never happens. Fix: override ${missing === "connectedCallback" ? "connected()" : "disconnected()"} instead, or call super.${missing}() in it.`,

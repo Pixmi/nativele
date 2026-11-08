@@ -63,6 +63,7 @@ The compiler rejects these, and each error names the template (`template: "card.
 - `store.set` replaces the whole value (`this.set` merges): `store.set((s) => ({ ...s, status: "loading" }))`: [stores](docs/components.md#state-store-when-not-using-state).
 - Call `bind`, `on` and `onCleanup` in `connected()`, never in the constructor: [stores](docs/components.md#state-store-when-not-using-state).
 - Set the element's own class and attributes in `connected()`; a constructor that does it makes a browser create an unknown element (`constructor-host-change`): [components](docs/components.md#components).
+- An override of `connectedCallback`, `disconnectedCallback` or `attributeChangedCallback` calls `super`, and a `static override get observedAttributes()` of your own extends `super.observedAttributes` (`callback-without-super`); prefer `connected()` and `disconnected()`: [components](docs/components.md#components).
 - Export the class passed to `define()`, or its tag is left out of `ts-dom-tags.ts` (`define-class-not-exported`): [checks](docs/tooling.md#errors-at-the-template).
 - Cancel a component's own request on removal: an `AbortController` made in `connected()`, aborted from `onCleanup`, `AbortError` ignored: [recipes](docs/recipes.md#cancelling-a-request-when-the-component-is-removed).
 - Write a form control's value in `render` only when it differs (`unguarded-input-value`): [form inputs](docs/components.md#a-small-reminder-about-form-inputs).

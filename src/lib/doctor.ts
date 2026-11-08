@@ -110,7 +110,6 @@ function importsTagMap(file: string, tagMap: string): boolean {
 const templateFolders =(dir: string): string[] => [...new Set(listHtml(dir).map((f) => dirname(f)))];
 const hasTemplates = (dir: string): boolean => listHtml(dir).length > 0;
 
-/** Check the project set-up an agent or a developer could get wrong; every issue names its rule and ends with a Fix hint. */
 /** Whether a config imports the ts-dom Vite plugin, itself or through the modules it imports by a relative path (a helper that returns tsDom()), up to three imports deep. */
 function usesVitePlugin(file: string, text: string, depth = 0, seen = new Set<string>()): boolean {
   if (/@nativele\/ts-dom\/vite|vite-plugin(\.ts)?["']/.test(text)) return true;
@@ -124,6 +123,7 @@ function usesVitePlugin(file: string, text: string, depth = 0, seen = new Set<st
   return false;
 }
 
+/** Check the project set-up an agent or a developer could get wrong; every issue names its rule and ends with a Fix hint. */
 export function runDoctor(options: DoctorOptions): LintIssue[] {
   const cwd = options.cwd ?? process.cwd();
   const runtime = options.runtime ?? "@nativele/ts-dom";

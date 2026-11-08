@@ -359,7 +359,7 @@ attributeChangedCallback(name: string) {
   if (name === "class") this.sync();
 }`,
     good: `// dialog.ts
-static get observedAttributes() {
+static override get observedAttributes() {
   return [...super.observedAttributes, "class"];
 }
 override attributeChangedCallback(name: string, old: string | null, value: string | null) {

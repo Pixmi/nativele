@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
+- A component class's type declares `attributeChangedCallback` and the static `observedAttributes`, so a subclass can write `static override get observedAttributes() { return [...super.observedAttributes, "class"]; }` and `super.attributeChangedCallback(name, oldValue, newValue)`, which did not compile before.
 - Lint rule `callback-without-super` (data-flow, warning): a component class that overrides `connectedCallback`, `disconnectedCallback` or `attributeChangedCallback` without calling `super`, or replaces `static observedAttributes` without `super.observedAttributes`; a prop written as an attribute then keeps its default, or the component does not start, with no error.
 
 ### Changed
